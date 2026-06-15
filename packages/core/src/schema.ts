@@ -1,0 +1,232 @@
+/**
+ * PromptKiddie database schema (Drizzle ORM, PostgreSQL).
+ *
+ * One Postgres database is the source of truth for engagements. Disk artifacts live under
+ * `engagements/<slug>/` and are referenced from the `evidence` table by path + sha256.
+ */
+import {
+  pgEnum,
+  pgTable,
+  uuid,
+  text,
+  boolean,
+  integer,
+  doublePrecision,
+  jsonb,
+  timestamp,
+  index,
+} from "drizzle-orm/pg-core";
+
+// --- Enums -----------------------------------------------------------------
+
+export const engagementType = pgEnum("engagement_type", [
+  "ctf",
+  "whitebox",
+  "blackbox",
+  "bugbounty",
+]);
+
+export const engagementStatus = pgEnum("engagement_status", [
+  "scoping",
+  "active",
+  "paused",
+  "reporting",
+  "done",
+]);
+
+export const targetKind = pgEnum("target_kind", [
+  "host",
+  "domain",
+  "url",
+  "app",
+  "repo",
+]);
+
+export const severity = pgEnum("severity", [
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+]);
+
+export const findingStatus = pgEnum("finding_status", [
+  "triage",
+  "confirmed",
+  "reported",
+  "remediated",
+]);
+
+export const phase = pgEnum("phase", [
+  "scoping",
+  "recon",
+  "enum",
+  "exploit",
+  "postexploit",
+  "report",
+]);
+
+export const actor = pgEnum("actor", ["orchestrator", "agent", "human"]);
+
+export const evidenceType = pgEnum("evidence_type", [
+  "screenshot",
+  "scan",
+  "output",
+  "file",
+]);
+
+export const agentRunStatus = pgEnum("agent_run_status", [
+  "running",
+  "ok",
+  "failed",
+]);
+
+export const messageDirection = pgEnum("message_direction", [
+  "inbound",
+  "outbound",
+]);
+
+export const messageStatus = pgEnum("message_status", ["new", "read", "done"]);
+
+// --- Tables ----------------------------------------------------------------
+
+/** One per CTF / assessment / bug-bounty program. Holds type, status, scope, RoE. */
+export const engagements = pgTable("engagements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  type: engagementType("type").notNull(),
+  status: engagementStatus("status").notNull().default("scoping"),
+  /** Free-form scope summary; structured targets live in `targets`. */
+  scope: text("scope"),
+  /** Rules of Engagement: authorization, allowed/disallowed actions, windows. */
+  roe: jsonb("roe").$type<Record<string, unknown>>(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Hosts/domains/URLs/apps/repos within an engagement, with in-scope flag. */
+export const targets = pgTable(
+  "targets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    kind: targetKind("kind").notNull(),
+    identifier: text("identifier").notNull(),
+    inScope: boolean("in_scope").notNull().default(false),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("targets_engagement_idx").on(t.engagementId)],
+);
+
+/** Vulnerabilities / flags with severity, CVSS, and framework mappings. */
+export const findings = pgTable(
+  "findings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id").references(() => targets.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull(),
+    severity: severity("severity").notNull().default("info"),
+    cvss: doublePrecision("cvss"),
+    status: findingStatus("status").notNull().default("triage"),
+    /** OWASP refs, e.g. "A03:2021" or "WSTG-INPV-05". */
+    owasp: text("owasp").array(),
+    /** MITRE ATT&CK technique ids, e.g. "T1190". */
+    attackTechniques: text("attack_techniques").array(),
+    /** CVE ids, e.g. "CVE-2024-1234". */
+    cve: text("cve").array(),
+    description: text("description"),
+    remediation: text("remediation"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("findings_engagement_idx").on(t.engagementId)],
+);
+
+/** Files/screenshots/scan output, hashed (sha256) and linked to engagement/finding. */
+export const evidence = pgTable(
+  "evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    findingId: uuid("finding_id").references(() => findings.id, {
+      onDelete: "set null",
+    }),
+    type: evidenceType("type").notNull(),
+    /** Path on disk under engagements/<slug>/. */
+    path: text("path").notNull(),
+    sha256: text("sha256"),
+    sizeBytes: integer("size_bytes"),
+    meta: jsonb("meta").$type<Record<string, unknown>>(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("evidence_engagement_idx").on(t.engagementId)],
+);
+
+/** Append-only audit trail: every notable command/action the orchestrator takes. */
+export const activityLog = pgTable(
+  "activity_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    actor: actor("actor").notNull().default("orchestrator"),
+    phase: phase("phase").notNull(),
+    action: text("action").notNull(),
+    command: text("command"),
+    /** Optional pointer to an evidence row capturing the result. */
+    resultEvidenceId: uuid("result_evidence_id").references(() => evidence.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("activity_engagement_idx").on(t.engagementId)],
+);
+
+/** One row per sub-agent invocation: agent, phase, status, summary. */
+export const agentRuns = pgTable(
+  "agent_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    agent: text("agent").notNull(),
+    phase: phase("phase").notNull(),
+    status: agentRunStatus("status").notNull().default("running"),
+    summary: text("summary"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+  },
+  (t) => [index("agent_runs_engagement_idx").on(t.engagementId)],
+);
+
+/** Bidirectional human<->orchestrator inbox driving background operation. */
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id").references(() => engagements.id, {
+      onDelete: "cascade",
+    }),
+    direction: messageDirection("direction").notNull(),
+    /** Who wrote it: "human", "orchestrator", or a named source/agent. */
+    author: text("author").notNull(),
+    body: text("body").notNull(),
+    status: messageStatus("status").notNull().default("new"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("messages_engagement_idx").on(t.engagementId)],
+);
