@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Engagement data — evidence, loot, scans. NEVER commit client/target data.
+engagements/*
+!engagements/.gitkeep
+!engagements/README.md
+
+# Postgres volume (if bind-mounted)
+pgdata/
+
+# Logs / scratch
+*.log
+.DS_Store
+scratch/
+
+# Local CLI state (active engagement pointer)
+.pk/
