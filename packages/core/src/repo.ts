@@ -282,6 +282,26 @@ export async function finishAgentRun(input: {
 
 // --- Inbox -----------------------------------------------------------------
 
+export async function subscribeMessages(
+  callback: (payload: Record<string, unknown>) => void,
+): Promise<() => void> {
+  const pg = await import("pg");
+  const { databaseUrl } = await import("./db.js");
+  const client = new pg.default.Client({ connectionString: databaseUrl() });
+  await client.connect();
+  await client.query("LISTEN new_message");
+  client.on("notification", (msg) => {
+    if (msg.channel === "new_message" && msg.payload) {
+      try {
+        callback(JSON.parse(msg.payload));
+      } catch {
+        // ignore parse errors
+      }
+    }
+  });
+  return () => { client.end().catch(() => {}); };
+}
+
 export async function listMessages(engagementId: string) {
   const db = getDb();
   return db

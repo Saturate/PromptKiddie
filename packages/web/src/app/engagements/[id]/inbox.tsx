@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { sendInboxMessage } from "./actions";
 
 interface Message {
@@ -16,30 +16,31 @@ export function Inbox({ engagementId }: { engagementId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [live, setLive] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    async function poll() {
-      try {
-        const res = await fetch(`/api/messages?engagementId=${engagementId}`);
-        if (res.ok && active) {
-          const msgs: Message[] = await res.json();
-          setMessages(msgs);
-        }
-      } catch {
-        // network error, retry next cycle
-      }
-    }
-
-    poll();
-    const interval = setInterval(poll, 3000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
+  const fetchMessages = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/messages?engagementId=${engagementId}`);
+      if (res.ok) setMessages(await res.json());
+    } catch { /* retry next cycle */ }
   }, [engagementId]);
+
+  useEffect(() => {
+    fetchMessages();
+
+    const es = new EventSource(`/api/messages/stream?engagementId=${engagementId}`);
+    es.onopen = () => setLive(true);
+    es.onmessage = () => { fetchMessages(); };
+    es.onerror = () => { setLive(false); };
+
+    // polling fallback when SSE is disconnected
+    const interval = setInterval(() => {
+      if (!live) fetchMessages();
+    }, 5000);
+
+    return () => { es.close(); clearInterval(interval); };
+  }, [engagementId, fetchMessages, live]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -52,14 +53,25 @@ export function Inbox({ engagementId }: { engagementId: string }) {
     setSending(true);
     setInput("");
     await sendInboxMessage(engagementId, body);
-    const res = await fetch(`/api/messages?engagementId=${engagementId}`);
-    if (res.ok) setMessages(await res.json());
+    await fetchMessages();
     setSending(false);
   }
 
   return (
     <div className="card" style={{ display: "flex", flexDirection: "column" }}>
-      <h3>Inbox</h3>
+      <div className="row">
+        <h3>Inbox</h3>
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: live ? "var(--accent)" : "var(--text-dim)",
+            marginLeft: 6,
+          }}
+          title={live ? "Live (SSE connected)" : "Polling"}
+        />
+      </div>
 
       <div
         style={{
