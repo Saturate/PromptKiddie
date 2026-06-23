@@ -11,9 +11,12 @@ import {
   addTarget,
   closeDb,
   createEngagement,
+  deleteEngagement,
   finishAgentRun,
   getEngagement,
+  listActivity,
   listEngagements,
+  listEvidence,
   listFindings,
   listTargets,
   logActivity,
@@ -21,6 +24,8 @@ import {
   sendMessage,
   setEngagementStatus,
   startAgentRun,
+  updateFinding,
+  updateTarget,
 } from "@promptkiddie/core";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
@@ -81,6 +86,16 @@ engagement
     out(await setEngagementStatus(eid, status));
   });
 
+engagement
+  .command("delete")
+  .argument("<id>")
+  .action(async (id: string) => {
+    const row = await deleteEngagement(id);
+    if (!row) throw new Error(`No engagement with id ${id}`);
+    console.error(`Deleted engagement: ${row.name} (${id})`);
+    out(row);
+  });
+
 // --- target ----------------------------------------------------------------
 const target = program.command("target").description("Manage targets");
 
@@ -108,6 +123,23 @@ target
   .command("list")
   .option("--engagement <id>")
   .action(async (o) => out(await listTargets(await resolveEngagementId(o.engagement))));
+
+target
+  .command("update")
+  .argument("<id>")
+  .option("--in-scope", "mark as in scope")
+  .option("--no-in-scope", "mark as out of scope")
+  .option("--notes <notes>")
+  .option("--kind <kind>", "host | domain | url | app | repo")
+  .option("--identifier <identifier>")
+  .action(async (id: string, o) => {
+    const updates: Record<string, unknown> = {};
+    if (o.inScope !== undefined) updates.inScope = o.inScope;
+    if (o.notes !== undefined) updates.notes = o.notes;
+    if (o.kind !== undefined) updates.kind = o.kind;
+    if (o.identifier !== undefined) updates.identifier = o.identifier;
+    out(await updateTarget(id, updates));
+  });
 
 // --- finding ---------------------------------------------------------------
 const finding = program.command("finding").description("Manage findings");
@@ -149,11 +181,38 @@ finding
   .option("--engagement <id>")
   .action(async (o) => out(await listFindings(await resolveEngagementId(o.engagement))));
 
+finding
+  .command("update")
+  .argument("<id>")
+  .option("--title <title>")
+  .option("--severity <severity>", "critical | high | medium | low | info")
+  .option("--cvss <score>", "CVSS v3.1 base score", parseFloat)
+  .option("--status <status>", "triage | confirmed | reported | remediated")
+  .option("--owasp <refs>", "comma-separated OWASP refs")
+  .option("--attack <ids>", "comma-separated ATT&CK ids")
+  .option("--cve <ids>", "comma-separated CVE ids")
+  .option("--target <id>", "affected target id")
+  .option("--desc <description>")
+  .option("--remediation <text>")
+  .action(async (id: string, o) => {
+    const updates: Record<string, unknown> = {};
+    if (o.title !== undefined) updates.title = o.title;
+    if (o.severity !== undefined) updates.severity = o.severity;
+    if (o.cvss !== undefined) updates.cvss = o.cvss;
+    if (o.status !== undefined) updates.status = o.status;
+    if (o.owasp !== undefined) updates.owasp = list(o.owasp);
+    if (o.attack !== undefined) updates.attackTechniques = list(o.attack);
+    if (o.cve !== undefined) updates.cve = list(o.cve);
+    if (o.target !== undefined) updates.targetId = o.target;
+    if (o.desc !== undefined) updates.description = o.desc;
+    if (o.remediation !== undefined) updates.remediation = o.remediation;
+    out(await updateFinding(id, updates));
+  });
+
 // --- evidence --------------------------------------------------------------
-program
-  .command("evidence")
-  .description("Register an on-disk artifact (hashes + links it)")
-  .command("add")
+const ev = program.command("evidence").description("Manage evidence artifacts");
+
+ev.command("add")
   .requiredOption("--path <path>", "path under engagements/<slug>/")
   .requiredOption("--type <type>", "screenshot | scan | output | file")
   .option("--finding <id>", "link to a finding")
@@ -163,11 +222,14 @@ program
     out(await addEvidence({ engagementId: eid, path: o.path, type: o.type, findingId: o.finding }));
   });
 
+ev.command("list")
+  .option("--engagement <id>")
+  .action(async (o) => out(await listEvidence(await resolveEngagementId(o.engagement))));
+
 // --- activity --------------------------------------------------------------
-program
-  .command("activity")
-  .description("Append-only audit trail")
-  .command("log")
+const act = program.command("activity").description("Append-only audit trail");
+
+act.command("log")
   .requiredOption("--phase <phase>", "scoping | recon | enum | exploit | postexploit | report")
   .requiredOption("--action <action>")
   .option("--command <command>")
@@ -187,6 +249,10 @@ program
       }),
     );
   });
+
+act.command("list")
+  .option("--engagement <id>")
+  .action(async (o) => out(await listActivity(await resolveEngagementId(o.engagement))));
 
 // --- agent run bookkeeping -------------------------------------------------
 const agent = program.command("agent").description("Sub-agent run bookkeeping");

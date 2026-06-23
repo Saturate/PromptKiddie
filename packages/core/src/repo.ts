@@ -103,6 +103,15 @@ export async function listTargets(engagementId: string) {
     .orderBy(desc(targets.createdAt));
 }
 
+export async function updateTarget(
+  id: string,
+  input: { inScope?: boolean; notes?: string; kind?: "host" | "domain" | "url" | "app" | "repo"; identifier?: string },
+) {
+  const db = getDb();
+  const [row] = await db.update(targets).set(input).where(eq(targets.id, id)).returning();
+  return row;
+}
+
 export async function addFinding(input: {
   engagementId: string;
   title: string;
@@ -145,6 +154,30 @@ export async function listFindings(engagementId: string) {
     .orderBy(desc(findings.createdAt));
 }
 
+export async function updateFinding(
+  id: string,
+  input: {
+    title?: string;
+    severity?: "critical" | "high" | "medium" | "low" | "info";
+    cvss?: number;
+    status?: "triage" | "confirmed" | "reported" | "remediated";
+    owasp?: string[];
+    attackTechniques?: string[];
+    cve?: string[];
+    targetId?: string;
+    description?: string;
+    remediation?: string;
+  },
+) {
+  const db = getDb();
+  const [row] = await db
+    .update(findings)
+    .set({ ...input, updatedAt: new Date() })
+    .where(eq(findings.id, id))
+    .returning();
+  return row;
+}
+
 /** Register an on-disk artifact: hash it, capture size, and link it to the engagement. */
 export async function addEvidence(input: {
   engagementId: string;
@@ -170,6 +203,30 @@ export async function addEvidence(input: {
       meta: input.meta,
     })
     .returning();
+  return row;
+}
+
+export async function listEvidence(engagementId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(evidence)
+    .where(eq(evidence.engagementId, engagementId))
+    .orderBy(desc(evidence.capturedAt));
+}
+
+export async function listActivity(engagementId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(activityLog)
+    .where(eq(activityLog.engagementId, engagementId))
+    .orderBy(desc(activityLog.createdAt));
+}
+
+export async function deleteEngagement(id: string) {
+  const db = getDb();
+  const [row] = await db.delete(engagements).where(eq(engagements.id, id)).returning();
   return row;
 }
 
