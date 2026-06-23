@@ -3,6 +3,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { execFile } from "node:child_process";
 import { z } from "zod";
+import { parseNmapXml } from "./parsers/nmap.js";
+import { parseNucleiJsonl } from "./parsers/nuclei.js";
 
 const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
 const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
@@ -46,18 +48,21 @@ const server = new McpServer({
 
 server.tool(
   "nmap",
-  "Port and service scanner. Runs inside the tooling container.",
+  "Port and service scanner. Returns structured JSON by default (parsed from XML). Set raw=true for plain text.",
   {
     target: z.string().describe("Host, IP, or CIDR range to scan"),
     flags: z.string().optional().describe("Extra nmap flags, e.g. '-sV -sC -p 1-1000'"),
-    outputXml: z.boolean().optional().describe("Return XML output for structured parsing"),
+    raw: z.boolean().optional().describe("Return raw text output instead of parsed JSON"),
   },
-  async ({ target, flags, outputXml }) => {
+  async ({ target, flags, raw }) => {
     const args = ["nmap"];
     if (flags) args.push(...flags.split(/\s+/));
-    if (outputXml) args.push("-oX", "-");
+    if (!raw) args.push("-oX", "-");
     args.push(target);
-    return result(await dockerExec(args));
+    const r = await dockerExec(args);
+    if (raw || r.code !== 0) return result(r);
+    const parsed = parseNmapXml(r.stdout);
+    return { content: [{ type: "text" as const, text: JSON.stringify(parsed, null, 2) }] };
   },
 );
 
@@ -83,17 +88,21 @@ server.tool(
 
 server.tool(
   "nuclei",
-  "Vulnerability scanner using community templates.",
+  "Vulnerability scanner using community templates. Returns structured findings JSON (parsed from JSONL). Set raw=true for plain text.",
   {
     target: z.string().describe("Target URL or host"),
     templates: z.string().optional().describe("Template tags or paths, e.g. '-tags cve,misconfig'"),
     flags: z.string().optional().describe("Extra nuclei flags"),
+    raw: z.boolean().optional().describe("Return raw JSONL instead of parsed findings array"),
   },
-  async ({ target, templates, flags }) => {
+  async ({ target, templates, flags, raw }) => {
     const args = ["nuclei", "-u", target, "-jsonl"];
     if (templates) args.push(...templates.split(/\s+/));
     if (flags) args.push(...flags.split(/\s+/));
-    return result(await dockerExec(args));
+    const r = await dockerExec(args);
+    if (raw || r.code !== 0) return result(r);
+    const findings = parseNucleiJsonl(r.stdout);
+    return { content: [{ type: "text" as const, text: JSON.stringify(findings, null, 2) }] };
   },
 );
 
