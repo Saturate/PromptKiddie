@@ -23,14 +23,14 @@ action/finding/artifact persisted and queryable via `pk`.
 > Note: skills are the centerpiece of M1; the four sub-agents are thin, optional wrappers
 > around them (for context isolation / parallelism), not load-bearing.
 
-## 🔜 Milestone 1.5: Logging MCP server
+## ✅ Milestone 1.5: Logging MCP server
 
 Wrap `packages/core` as a local MCP server so the orchestrator can log via structured tools
 (`add_finding`, `log_activity`, `add_evidence`, …) in addition to the `pk` CLI. Same core,
 same behavior, just a tool-native interface.
 
-- [ ] MCP server exposing core logging/inbox functions as tools
-- [ ] Wire into `.mcp.json` / settings so a session picks it up automatically
+- [x] MCP server exposing core logging/inbox functions as tools (19 tools)
+- [x] Wire into `.mcp.json` so a session picks it up automatically
 
 ## 🔜 Milestone 2: Web frontend + background operation
 
