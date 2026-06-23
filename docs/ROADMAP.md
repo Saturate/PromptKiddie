@@ -32,15 +32,16 @@ same behavior, just a tool-native interface.
 - [x] MCP server exposing core logging/inbox functions as tools (19 tools)
 - [x] Wire into `.mcp.json` so a session picks it up automatically
 
-## 🔜 Milestone 2: Web frontend + background operation
+## ✅ Milestone 2: Web frontend + background operation
 
 Drive a backgrounded orchestrator from the browser.
 
-- [ ] Next.js app: engagement dashboard, findings board, activity timeline, evidence viewer
-- [ ] Chat inbox UI backed by the `messages` table (the human↔orchestrator channel)
-- [ ] Orchestrator inbox poll loop documented + hardened (`pk msg poll`)
-- [ ] Optional Postgres `LISTEN/NOTIFY` for low-latency message delivery
-- [ ] Live engagement status / phase indicator
+- [x] Next.js app: engagement dashboard, findings board, activity timeline, evidence viewer
+- [x] Create engagement from the UI (name + type, redirects to detail page)
+- [x] Chat inbox UI backed by the `messages` table (the human/orchestrator channel)
+- [x] Auto-polling inbox (3s interval) for live message updates
+- [x] Live phase indicator (derived from latest activity log entry)
+- [ ] Optional Postgres `LISTEN/NOTIFY` for lower-latency message delivery
 
 ## 🔭 Milestone 3: Kali MCP tooling layer
 
