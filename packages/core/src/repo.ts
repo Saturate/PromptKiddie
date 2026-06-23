@@ -282,6 +282,15 @@ export async function finishAgentRun(input: {
 
 // --- Inbox -----------------------------------------------------------------
 
+export async function listMessages(engagementId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(messages)
+    .where(eq(messages.engagementId, engagementId))
+    .orderBy(messages.createdAt);
+}
+
 /** Fetch new inbound messages and mark them read. The orchestrator's poll loop. */
 export async function pollInbox(engagementId?: string) {
   const db = getDb();

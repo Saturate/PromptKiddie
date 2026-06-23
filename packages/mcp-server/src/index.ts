@@ -14,6 +14,7 @@ import {
   getEngagement,
   listActivity,
   listEngagements,
+  listMessages,
   listEvidence,
   listFindings,
   listTargets,
@@ -241,6 +242,13 @@ server.tool(
 );
 
 // --- Inbox -----------------------------------------------------------------
+
+server.tool(
+  "list_messages",
+  "List all messages for an engagement (full conversation history)",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => json(await listMessages(engagementId)),
+);
 
 server.tool(
   "poll_inbox",

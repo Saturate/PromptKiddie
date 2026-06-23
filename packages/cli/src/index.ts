@@ -16,6 +16,7 @@ import {
   getEngagement,
   listActivity,
   listEngagements,
+  listMessages,
   listEvidence,
   listFindings,
   listTargets,
@@ -280,6 +281,12 @@ agent
 const msg = program.command("msg").description("Human<->orchestrator message inbox");
 
 msg
+  .command("list")
+  .description("List all messages for an engagement")
+  .option("--engagement <id>")
+  .action(async (o) => out(await listMessages(await resolveEngagementId(o.engagement))));
+
+msg
   .command("poll")
   .description("Fetch new inbound messages and mark them read")
   .option("--engagement <id>")
@@ -295,7 +302,7 @@ msg
   .option("--author <author>")
   .option("--engagement <id>")
   .action(async (o) => {
-    const engagementId = o.engagement;
+    const engagementId = await resolveEngagementId(o.engagement);
     out(await sendMessage({ body: o.body, direction: o.direction, author: o.author, engagementId }));
   });
 
