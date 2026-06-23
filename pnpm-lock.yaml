@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@promptkiddie/cli':
+        specifier: workspace:*
+        version: link:packages/cli
       commander:
         specifier: ^13.0.0
         version: 13.1.0

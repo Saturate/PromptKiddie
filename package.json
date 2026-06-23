@@ -21,6 +21,7 @@
     "typescript": "^5.7.0"
   },
   "dependencies": {
+    "@promptkiddie/cli": "workspace:*",
     "commander": "^13.0.0",
     "dotenv": "^16.4.0",
     "drizzle-orm": "^0.38.0",

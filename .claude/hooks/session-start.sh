@@ -31,7 +31,15 @@ if command -v docker >/dev/null 2>&1; then
       || echo "[promptkiddie] could not start postgres (start it with: docker compose up -d)"
   fi
 else
-  echo "[promptkiddie] docker not found — start Postgres yourself, then: pnpm db:push"
+  echo "[promptkiddie] docker not found; start Postgres yourself, then: pnpm db:push"
+fi
+
+# Build and run migrations so pk + schema are ready.
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm build --silent 2>/dev/null || true
+  pnpm db:migrate --silent 2>/dev/null \
+    && echo "[promptkiddie] migrations applied" \
+    || true
 fi
 
 echo "[promptkiddie] ready. See CLAUDE.md for orchestrator instructions."
