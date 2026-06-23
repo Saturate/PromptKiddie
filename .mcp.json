@@ -6,6 +6,13 @@
       "env": {
         "DATABASE_URL": "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie"
       }
+    },
+    "promptkiddie-tooling": {
+      "command": "node",
+      "args": ["packages/tooling-mcp/dist/index.js"],
+      "env": {
+        "PK_TOOLING_CONTAINER": "promptkiddie-tooling"
+      }
     }
   }
 }
