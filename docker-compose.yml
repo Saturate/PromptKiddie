@@ -25,7 +25,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./engagements:/workspace/engagements
-    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
 
   adminer:
     image: adminer:latest

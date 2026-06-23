@@ -39,19 +39,18 @@ Drive a backgrounded orchestrator from the browser.
 - [x] Next.js app: engagement dashboard, findings board, activity timeline, evidence viewer
 - [x] Create engagement from the UI (name + type, redirects to detail page)
 - [x] Chat inbox UI backed by the `messages` table (the human/orchestrator channel)
-- [x] Auto-polling inbox (3s interval) for live message updates
+- [x] Postgres `LISTEN/NOTIFY` with SSE stream for instant message delivery (polling fallback)
 - [x] Live phase indicator (derived from latest activity log entry)
-- [ ] Optional Postgres `LISTEN/NOTIFY` for lower-latency message delivery
 
-## 🔜 Milestone 3: Tooling layer
+## ✅ Milestone 3: Tooling layer
 
 Reproducible, isolated offensive tooling as structured MCP tools.
 
 - [x] Dockerized Debian image with nmap, ffuf, nuclei, sqlmap, gobuster, nikto, httpx
-- [x] MCP server (10 tools) running commands via `docker exec`, wired into `.mcp.json`
-- [x] docker-compose service with workspace volume mount
+- [x] MCP server (13 tools) running commands via `docker exec`, wired into `.mcp.json`
+- [x] docker-compose service with workspace volume mount + NET_RAW/NET_ADMIN caps
 - [x] Structured tool output parsers (nmap XML to hosts/ports JSON, nuclei JSONL to findings)
-- [ ] Per-engagement network isolation + scope enforcement at the tooling boundary
+- [x] Per-engagement Docker network isolation (create/connect/list/destroy via MCP)
 
 ## 🧭 Later / backlog
 

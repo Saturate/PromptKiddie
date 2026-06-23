@@ -40,6 +40,20 @@ if command -v pnpm >/dev/null 2>&1; then
   pnpm db:migrate --silent 2>/dev/null \
     && echo "[promptkiddie] migrations applied" \
     || true
+  # Apply custom migrations (LISTEN/NOTIFY triggers etc.)
+  for f in db/migrations/0001_*.sql; do
+    [ -f "$f" ] && docker exec -i promptkiddie-db psql -U "${POSTGRES_USER:-promptkiddie}" \
+      -d "${POSTGRES_DB:-promptkiddie}" < "$f" 2>/dev/null || true
+  done
+fi
+
+# Start the tooling container if not running.
+if command -v docker >/dev/null 2>&1; then
+  if ! docker ps --format '{{.Names}}' | grep -q promptkiddie-tooling; then
+    docker compose up -d tooling >/dev/null 2>&1 \
+      && echo "[promptkiddie] tooling container is up" \
+      || true
+  fi
 fi
 
 echo "[promptkiddie] ready. See CLAUDE.md for orchestrator instructions."

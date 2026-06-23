@@ -8,6 +8,20 @@ import { parseNucleiJsonl } from "./parsers/nuclei.js";
 
 const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
 const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
+const NET_PREFIX = "pk-eng-";
+
+function hostExec(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
+  return new Promise((resolve) => {
+    const proc = execFile(cmd, args, { timeout: 30000 }, (err, stdout, stderr) => {
+      resolve({
+        stdout: stdout ?? "",
+        stderr: stderr ?? "",
+        code: err && "code" in err ? (err.code as number) : err ? 1 : 0,
+      });
+    });
+    proc.on("error", (err) => resolve({ stdout: "", stderr: err.message, code: 1 }));
+  });
+}
 
 function dockerExec(cmd: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
@@ -205,6 +219,60 @@ server.tool(
     command: z.string().describe("Shell command to execute"),
   },
   async ({ command }) => result(await dockerExec(["sh", "-c", command])),
+);
+
+// --- Network isolation per engagement --------------------------------------
+
+server.tool(
+  "network_create",
+  "Create an isolated Docker network for an engagement. The tooling container is connected to it.",
+  {
+    engagementSlug: z.string().describe("Engagement slug (used as network suffix)"),
+    subnet: z.string().optional().describe("Optional subnet, e.g. '172.30.0.0/24'"),
+  },
+  async ({ engagementSlug, subnet }) => {
+    const name = `${NET_PREFIX}${engagementSlug}`;
+    const args = ["docker", "network", "create", "--driver", "bridge"];
+    if (subnet) args.push("--subnet", subnet);
+    args.push(name);
+    const create = await hostExec(args[0], args.slice(1));
+    if (create.code !== 0) return result(create);
+    const connect = await hostExec("docker", ["network", "connect", name, CONTAINER]);
+    if (connect.code !== 0) return result(connect);
+    return { content: [{ type: "text" as const, text: JSON.stringify({ network: name, connected: true }) }] };
+  },
+);
+
+server.tool(
+  "network_destroy",
+  "Disconnect the tooling container from an engagement network and remove it.",
+  {
+    engagementSlug: z.string().describe("Engagement slug"),
+  },
+  async ({ engagementSlug }) => {
+    const name = `${NET_PREFIX}${engagementSlug}`;
+    await hostExec("docker", ["network", "disconnect", name, CONTAINER]);
+    const rm = await hostExec("docker", ["network", "rm", name]);
+    return result(rm);
+  },
+);
+
+server.tool(
+  "network_list",
+  "List all PromptKiddie engagement networks.",
+  async () => {
+    const r = await hostExec("docker", [
+      "network", "ls", "--filter", `name=${NET_PREFIX}`, "--format", "{{json .}}",
+    ]);
+    if (r.code !== 0) return result(r);
+    const networks = r.stdout
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter(Boolean);
+    return { content: [{ type: "text" as const, text: JSON.stringify(networks, null, 2) }] };
+  },
 );
 
 // ---------------------------------------------------------------------------
