@@ -43,13 +43,14 @@ Drive a backgrounded orchestrator from the browser.
 - [x] Live phase indicator (derived from latest activity log entry)
 - [ ] Optional Postgres `LISTEN/NOTIFY` for lower-latency message delivery
 
-## 🔭 Milestone 3: Kali MCP tooling layer
+## 🔜 Milestone 3: Tooling layer
 
 Reproducible, isolated offensive tooling as structured MCP tools.
 
-- [ ] Dockerized Kali (or kali-headless) image
-- [ ] MCP server exposing curated tools (nmap, ffuf, nuclei, sqlmap, gobuster, …)
-- [ ] Structured tool output → auto-populated `findings` / `evidence`
+- [x] Dockerized Debian image with nmap, ffuf, nuclei, sqlmap, gobuster, nikto, httpx
+- [x] MCP server (10 tools) running commands via `docker exec`, wired into `.mcp.json`
+- [x] docker-compose service with workspace volume mount
+- [ ] Structured tool output parsers (nmap XML, nuclei JSONL) to auto-populate findings
 - [ ] Per-engagement network isolation + scope enforcement at the tooling boundary
 
 ## 🧭 Later / backlog

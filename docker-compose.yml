@@ -17,7 +17,16 @@ services:
       timeout: 5s
       retries: 10
 
-  # Lightweight DB UI at http://localhost:8080 (until the real frontend lands in M2)
+  tooling:
+    build:
+      context: packages/tooling
+      dockerfile: Dockerfile
+    container_name: promptkiddie-tooling
+    restart: unless-stopped
+    volumes:
+      - ./engagements:/workspace/engagements
+    network_mode: host
+
   adminer:
     image: adminer:latest
     container_name: promptkiddie-adminer
