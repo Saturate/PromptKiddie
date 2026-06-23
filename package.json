@@ -11,7 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "pk": "tsx packages/cli/src/index.ts"
+    "pk": "tsx packages/cli/src/index.ts",
+    "dev": "pnpm --filter @promptkiddie/web dev"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
