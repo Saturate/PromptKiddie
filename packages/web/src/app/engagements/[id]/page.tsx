@@ -10,6 +10,42 @@ import { Inbox } from "./inbox";
 
 export const dynamic = "force-dynamic";
 
+const PHASES = ["scoping", "recon", "enum", "exploit", "postexploit", "report"] as const;
+
+function PhaseIndicator({ currentPhase }: { currentPhase: string | null }) {
+  const activeIdx = currentPhase ? PHASES.indexOf(currentPhase as typeof PHASES[number]) : -1;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.8rem" }}>
+      {PHASES.map((p, i) => {
+        const done = i < activeIdx;
+        const active = i === activeIdx;
+        return (
+          <div key={p} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "2px 8px",
+                borderRadius: "var(--radius)",
+                background: active ? "var(--accent-dim)" : done ? "var(--bg-hover)" : "transparent",
+                border: `1px solid ${active ? "var(--accent)" : done ? "var(--border)" : "var(--border)"}`,
+                color: active ? "var(--accent)" : done ? "var(--text-dim)" : "var(--text-dim)",
+                fontWeight: active ? 600 : 400,
+                opacity: !done && !active ? 0.4 : 1,
+              }}
+            >
+              {p}
+            </span>
+            {i < PHASES.length - 1 && (
+              <span style={{ color: "var(--border)" }}>&rarr;</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function severityClass(s: string) {
   const map: Record<string, string> = {
     critical: "badge-critical",
@@ -37,6 +73,8 @@ export default async function EngagementPage({
     listEvidence(id),
   ]);
 
+  const currentPhase = activity.length > 0 ? activity[0].phase : null;
+
   return (
     <div className="container stack">
       <div>
@@ -44,6 +82,9 @@ export default async function EngagementPage({
           <h1>{engagement.name}</h1>
           <span className="badge badge-status">{engagement.type}</span>
           <span className="badge badge-status">{engagement.status}</span>
+        </div>
+        <div className="mt-1">
+          <PhaseIndicator currentPhase={currentPhase} />
         </div>
         {engagement.scope && (
           <p className="dim mt-1">{engagement.scope}</p>
