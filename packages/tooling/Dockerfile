@@ -18,13 +18,5 @@ RUN ARCH=$(dpkg --print-architecture) \
     && unzip /tmp/rustscan.zip -d /usr/local/bin \
     && chmod +x /usr/local/bin/rustscan && rm /tmp/rustscan.zip
 
-# rustcat (not in Kali repos)
-RUN ARCH=$(dpkg --print-architecture) \
-    && TAG=$(curl -fsSL https://api.github.com/repos/robiot/rustcat/releases/latest | jq -r .tag_name) \
-    && case "$ARCH" in amd64) RC="rustcat-${TAG}-linux-x86_64";; arm64) RC="rustcat-${TAG}-linux-aarch64";; *) RC="rustcat-${TAG}-linux-${ARCH}";; esac \
-    && curl -fsSL "https://github.com/robiot/rustcat/releases/download/${TAG}/${RC}.tar.gz" -o /tmp/rustcat.tar.gz \
-    && tar xzf /tmp/rustcat.tar.gz -C /usr/local/bin --strip-components=1 \
-    && chmod +x /usr/local/bin/rc && rm /tmp/rustcat.tar.gz
-
 WORKDIR /workspace
 ENTRYPOINT ["sleep", "infinity"]

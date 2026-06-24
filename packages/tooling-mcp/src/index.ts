@@ -199,7 +199,7 @@ server.tool(
     flags: z.string().optional().describe("Extra httpx flags, e.g. '-tech-detect -status-code -title'"),
   },
   async ({ targets, flags }) => {
-    const args = ["sh", "-c", `echo '${targets.replace(/,/g, "\n")}' | httpx -json ${flags ?? ""}`];
+    const args = ["sh", "-c", `echo '${targets.replace(/,/g, "\n")}' | httpx-toolkit -json ${flags ?? ""}`];
     return result(await dockerExec(args));
   },
 );

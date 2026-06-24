@@ -29,6 +29,21 @@ services:
       - NET_RAW
       - NET_ADMIN
 
+  # --- Test targets (optional, for local testing) --------------------------
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: promptkiddie-dvwa
+    profiles: ["targets"]
+    ports:
+      - "4280:80"
+
+  juice-shop:
+    image: bkimminich/juice-shop
+    container_name: promptkiddie-juice
+    profiles: ["targets"]
+    ports:
+      - "4300:3000"
+
   adminer:
     image: adminer:latest
     container_name: promptkiddie-adminer
