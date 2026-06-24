@@ -61,6 +61,24 @@ const server = new McpServer({
 // --- nmap ------------------------------------------------------------------
 
 server.tool(
+  "rustscan",
+  "Fast port scanner. Finds open ports quickly, then optionally pipes to nmap for service detection.",
+  {
+    target: z.string().describe("Host, IP, or comma-separated list"),
+    ports: z.string().optional().describe("Port range, e.g. '1-65535' (default: all)"),
+    flags: z.string().optional().describe("Extra rustscan flags, e.g. '--ulimit 5000 -t 2000'"),
+    nmapFlags: z.string().optional().describe("Flags to pass to nmap after port discovery, e.g. '-sV -sC'"),
+  },
+  async ({ target, ports, flags, nmapFlags }) => {
+    const args = ["rustscan", "-a", target];
+    if (ports) args.push("-p", ports);
+    if (flags) args.push(...flags.split(/\s+/));
+    if (nmapFlags) args.push("--", ...nmapFlags.split(/\s+/));
+    return result(await dockerExec(args));
+  },
+);
+
+server.tool(
   "nmap",
   "Port and service scanner. Returns structured JSON by default (parsed from XML). Set raw=true for plain text.",
   {

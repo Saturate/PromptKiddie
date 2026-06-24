@@ -42,6 +42,14 @@ RUN ARCH=$(dpkg --print-architecture) \
     && unzip /tmp/httpx.zip -d /usr/local/bin httpx \
     && chmod +x /usr/local/bin/httpx && rm /tmp/httpx.zip
 
+# rustscan (fast port scanner, pipes to nmap)
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in amd64) RA=x86_64-linux;; arm64) RA=aarch64-linux;; *) RA=$ARCH;; esac \
+    && TAG=$(curl -fsSL https://api.github.com/repos/RustScan/RustScan/releases/latest | jq -r .tag_name) \
+    && curl -fsSL "https://github.com/bee-san/RustScan/releases/download/${TAG}/${RA}-rustscan.zip" -o /tmp/rustscan.zip \
+    && unzip /tmp/rustscan.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/rustscan && rm /tmp/rustscan.zip
+
 # common wordlists
 RUN mkdir -p /usr/share/wordlists/dirb \
     && curl -fsSL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt \

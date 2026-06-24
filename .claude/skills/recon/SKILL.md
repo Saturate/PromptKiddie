@@ -19,7 +19,8 @@ engagement's RoE. Log targets, activity, and evidence with `pk`.
    - DNS & subdomains: `subfinder`, `amass`, `dnsx`, certificate transparency (crt.sh).
    - OSINT: tech stack, emails, leaked creds, public repos.
 3. **Active discovery (if RoE allows):**
-   - Host discovery + port scan: `nmap -sV -sC -oA engagements/<slug>/recon/nmap-<target> <target>`
+   - Fast port scan + service detection: `rustscan -a <target> -- -sV -sC` (rustscan finds
+     open ports in seconds, then hands them to nmap for version/script detection).
    - Web probing: `httpx`, `whatweb` to fingerprint live services.
 4. **Record results:**
    - New hosts/domains/URLs → `pk target add --kind <kind> --id <identifier> --in-scope`
