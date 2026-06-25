@@ -18,6 +18,23 @@ in `triage` status; promote them later during exploitation.
 3. Quick vuln scan: `nuclei -t <templates>`, `nikto` — triage results, don't trust blindly.
 4. Tag candidates with OWASP refs (e.g. `A03:2021`, `WSTG-INPV-*`).
 
+## Custom wordlists
+
+Standard wordlists (rockyou.txt, SecLists) won't always work. Generate target-specific
+wordlists before brute-forcing:
+
+1. **CeWL** — scrape words from the target's web pages:
+   `cewl http://TARGET -w /tmp/cewl-wordlist.txt -d 2 -m 5`
+   This catches passwords derived from the organization's own content (product names,
+   employee names, jargon, lorem ipsum text). Many CTFs use this as the intended path.
+2. **Username variants** — if you find a name like "Tyler Smith", generate:
+   `tyler, Tyler, tsmith, t.smith, tyler.smith, TSmith`
+3. **Combine** — merge CeWL output with common mutations (append numbers, capitalize):
+   `john --wordlist=/tmp/cewl-wordlist.txt --rules --stdout > /tmp/mutated.txt`
+
+Always try custom wordlists before falling back to rockyou.txt. If the engagement brief
+says "passwords are not in rockyou.txt", CeWL is almost certainly the intended approach.
+
 ## Network
 
 1. Service-specific enum: SMB/LDAP/SNMP/NFS/RPC (`enum4linux-ng`, `smbclient`, `ldapsearch`).
