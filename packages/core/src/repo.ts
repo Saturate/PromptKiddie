@@ -73,6 +73,67 @@ export async function setEngagementStatus(
   return row;
 }
 
+type Phase = "scoping" | "recon" | "enum" | "exploit" | "postexploit" | "report";
+
+const PHASE_ORDER: Phase[] = ["scoping", "recon", "enum", "exploit", "postexploit", "report"];
+
+const ALLOWED_TRANSITIONS: Record<Phase, Phase[]> = {
+  scoping:     ["recon"],
+  recon:       ["scoping", "enum"],
+  enum:        ["recon", "exploit"],
+  exploit:     ["enum", "postexploit"],
+  postexploit: ["exploit", "report"],
+  report:      ["postexploit"],
+};
+
+export interface PhaseTransitionResult {
+  engagement: Awaited<ReturnType<typeof getEngagement>>;
+  warning?: string;
+}
+
+export async function advancePhase(
+  id: string,
+  targetPhase: Phase,
+): Promise<PhaseTransitionResult> {
+  const db = getDb();
+  const eng = await getEngagement(id);
+  if (!eng) throw new Error(`No engagement with id ${id}`);
+
+  const currentPhase = (eng.phase ?? "scoping") as Phase;
+  let warning: string | undefined;
+
+  if (currentPhase === targetPhase) {
+    return { engagement: eng };
+  }
+
+  const allowed = ALLOWED_TRANSITIONS[currentPhase];
+  if (!allowed.includes(targetPhase)) {
+    const currentIdx = PHASE_ORDER.indexOf(currentPhase);
+    const targetIdx = PHASE_ORDER.indexOf(targetPhase);
+    if (targetIdx > currentIdx) {
+      const skipped = PHASE_ORDER.slice(currentIdx + 1, targetIdx);
+      warning = `Skipping phases: ${skipped.join(", ")}. Jumping from ${currentPhase} to ${targetPhase}.`;
+    } else {
+      warning = `Going back from ${currentPhase} to ${targetPhase}.`;
+    }
+  }
+
+  const [row] = await db
+    .update(engagements)
+    .set({ phase: targetPhase })
+    .where(eq(engagements.id, id))
+    .returning();
+
+  return { engagement: row, warning };
+}
+
+export async function getPhase(id: string): Promise<{ phase: Phase; index: number; total: number }> {
+  const eng = await getEngagement(id);
+  if (!eng) throw new Error(`No engagement with id ${id}`);
+  const p = (eng.phase ?? "scoping") as Phase;
+  return { phase: p, index: PHASE_ORDER.indexOf(p), total: PHASE_ORDER.length };
+}
+
 export async function addTarget(input: {
   engagementId: string;
   kind: "host" | "domain" | "url" | "app" | "repo";

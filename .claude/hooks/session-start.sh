@@ -41,7 +41,7 @@ if command -v pnpm >/dev/null 2>&1; then
     && echo "[promptkiddie] migrations applied" \
     || true
   # Apply custom migrations (LISTEN/NOTIFY triggers etc.)
-  for f in db/migrations/0001_*.sql; do
+  for f in db/migrations/0001_*.sql db/migrations/0002_*.sql; do
     [ -f "$f" ] && docker exec -i promptkiddie-db psql -U "${POSTGRES_USER:-promptkiddie}" \
       -d "${POSTGRES_DB:-promptkiddie}" < "$f" 2>/dev/null || true
   done
