@@ -40,6 +40,9 @@ Check for inbound messages with `pk msg poll` and respond if any.
 
 ## Tips
 
+- **Surgical over exhaustive.** A targeted nmap of likely ports (`-p 21,22,80,443,445,1311,3389,8080,8443`)
+  beats a full 65535-port scan that triggers IDS and gets you banned. Only do a full scan if
+  the targeted scan finds nothing interesting.
 - Tag anything notable for ATT&CK Reconnaissance (TA0043).
 - Don't scan out-of-scope hosts even if discovered — record them as out-of-scope targets.
 - Capture timestamps; recon output is the baseline for the report's timeline.

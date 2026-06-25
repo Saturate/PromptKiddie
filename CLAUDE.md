@@ -113,11 +113,13 @@ guessing.
 
 ## Command discipline
 
-- **Single-purpose commands.** Run one command per objective. Do not chain unrelated
-  operations (e.g. `cat /home/user/flag.txt | ls -la /home/`). Read a file alone, list a
-  directory alone. Each command should have one clear intent.
-- **No speculative piping.** Separate grep filters and output parsing from the base command.
-  Run the command first, read the output, then filter in a follow-up if needed.
+- **Surgical over exhaustive.** Prefer targeted, minimal-footprint approaches. Do not run
+  full port scans if you already know the services. Do not brute-force if you can research
+  the CVE. Do not enumerate everything when reading one config file answers the question.
+  Fewer requests = less chance of triggering IDS = faster results.
+- **Single-purpose commands.** One command, one objective. Do not chain unrelated operations.
+  Read a file alone, list a directory alone. Each command should have one clear intent.
+- **No speculative piping.** Run the command first, read the output, then filter separately.
 - **Use `pk exec`** for all tool commands (auto-logs to activity). Do not use raw `docker exec`.
 - **Use `pk think`** to log reasoning (shows in Agent Log tab on the frontend).
 - **Log flags properly:** save to file, `pk evidence add --type flag`, `pk finding add`,
