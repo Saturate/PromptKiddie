@@ -22,3 +22,13 @@ Your job:
 
 Return a concise summary: live hosts, open ports/services/versions, interesting endpoints,
 and recommended areas to enumerate next. Do not exploit anything.
+
+## Inbox
+
+Post status updates so the human can follow your progress:
+`pk msg send --body "<status>" --direction outbound --author agent`
+
+- When starting recon, send a message.
+- When you find something notable (open ports, interesting services), send a message.
+- When you finish, send a summary of the attack surface.
+- Check for inbound messages periodically: `pk msg poll`. If there are any, read and respond.

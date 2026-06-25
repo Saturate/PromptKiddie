@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/collapsible"
 import {
   LayoutDashboardIcon,
+  BarChart3Icon,
   Settings2Icon,
   BookOpenIcon,
   TerminalIcon,
@@ -37,12 +38,17 @@ const navMain = [
     url: "/",
     icon: <LayoutDashboardIcon />,
   },
+  {
+    title: "Stats",
+    url: "/stats",
+    icon: <BarChart3Icon />,
+  },
 ]
 
 const navSecondary = [
   {
     title: "Settings",
-    url: "#",
+    url: "/settings",
     icon: <Settings2Icon />,
   },
   {

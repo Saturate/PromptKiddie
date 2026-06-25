@@ -10,7 +10,23 @@ description: >-
 
 Produce the engagement deliverable from the database. Always the final phase.
 
-## Procedure
+## CTF mode (when engagement type is `ctf`)
+
+For CTF engagements, the report is a solve writeup, not a formal assessment.
+
+1. Query findings: `pk finding list` -- these are the captured flags.
+2. Query activity: `pk activity list` -- this is the solve timeline.
+3. Generate a writeup under `engagements/<slug>/writeup.md` with:
+   - Room name, URL (from `source_url`), difficulty
+   - Flags captured (list each with how it was found)
+   - Attack chain (step by step, derived from the activity log)
+   - Tools used
+   - Lessons learned
+4. Log: `pk activity log --phase report --action "Generated CTF writeup"`
+5. Advance phase: `pk engagement phase report`
+6. Register: `pk evidence add --path engagements/<slug>/writeup.md --type file`
+
+## Procedure (assessments)
 
 1. Pull state: `pk engagement show <id>`, `pk finding list`, and the activity/evidence index.
 2. Start from `templates/report.md`. Write output to

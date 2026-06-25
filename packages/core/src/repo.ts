@@ -389,6 +389,15 @@ export async function logActivity(input: {
   return row;
 }
 
+export async function listAgentRuns(engagementId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.engagementId, engagementId))
+    .orderBy(desc(agentRuns.startedAt));
+}
+
 export async function startAgentRun(input: {
   engagementId: string;
   agent: string;

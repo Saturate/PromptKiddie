@@ -2,6 +2,7 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import {
   getEngagement,
   listActivity,
+  listAgentRuns,
   listEvidence,
   listFindings,
   listTargets,
@@ -70,12 +71,15 @@ export default async function EngagementPage({
   const engagement = await getEngagement(id);
   if (!engagement) notFound();
 
-  const [targets, findings, activity, evidence] = await Promise.all([
+  const [targets, findings, activity, evidence, agentRuns] = await Promise.all([
     listTargets(id),
     listFindings(id),
     listActivity(id),
     listEvidence(id),
+    listAgentRuns(id),
   ]);
+
+  const hasRunningAgent = agentRuns.some((r) => r.status === "running");
 
   const currentPhase = engagement.phase ?? "scoping";
 
@@ -94,6 +98,9 @@ export default async function EngagementPage({
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold font-mono">{engagement.name}</h1>
+          {hasRunningAgent && (
+            <span className="h-2.5 w-2.5 rounded-full bg-pk-green animate-pulse" title="Agent running" />
+          )}
           <Badge variant="outline" className="font-mono text-[10px] uppercase">
             {engagement.type}
           </Badge>
@@ -344,6 +351,61 @@ export default async function EngagementPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Agent Runs */}
+      {agentRuns.length > 0 && (
+        <div id="agents">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-mono">
+                Agent Runs <span className="text-muted-foreground">({agentRuns.length})</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-mono text-[10px] uppercase">Agent</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Phase</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Status</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Started</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Ended</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Summary</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {agentRuns.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-mono text-sm">{r.agent}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-[10px] uppercase">{r.phase}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`font-mono text-[10px] ${
+                          r.status === "running" ? "bg-pk-green/20 text-pk-green border-pk-green/30 animate-pulse" :
+                          r.status === "ok" ? "bg-pk-green/20 text-pk-green border-pk-green/30" :
+                          "bg-destructive/20 text-destructive border-destructive/30"
+                        }`}>
+                          {r.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-[11px] text-muted-foreground">
+                        {new Date(r.startedAt!).toLocaleTimeString()}
+                      </TableCell>
+                      <TableCell className="font-mono text-[11px] text-muted-foreground">
+                        {r.endedAt ? new Date(r.endedAt).toLocaleTimeString() : "-"}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground max-w-[200px] truncate">
+                        {r.summary ?? "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Inbox */}
       <div id="inbox">

@@ -31,6 +31,14 @@ in `triage` status; promote them later during exploitation.
   [--owasp ...] [--cve ...] [--target <id>] --desc "<why suspected>"`.
 - `pk activity log --phase enum --action "<what>" --command "<cmd>"`.
 
+## Inbox
+
+Keep the human informed via the inbox:
+`pk msg send --body "<status>" --direction outbound --author agent`
+
+Send a message when starting, when you find something notable, and when done.
+Check for inbound messages with `pk msg poll` and respond if any.
+
 ## Tips
 
 - Prioritize by likely impact and ease of validation.
