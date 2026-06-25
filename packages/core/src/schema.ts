@@ -27,6 +27,7 @@ export const engagementType = pgEnum("engagement_type", [
 ]);
 
 export const engagementStatus = pgEnum("engagement_status", [
+  "created",
   "scoping",
   "active",
   "paused",
@@ -96,7 +97,7 @@ export const engagements = pgTable("engagements", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   type: engagementType("type").notNull(),
-  status: engagementStatus("status").notNull().default("scoping"),
+  status: engagementStatus("status").notNull().default("created"),
   /** Current methodology phase (state machine). */
   phase: phase("phase").notNull().default("scoping"),
   /** Grouping label (e.g. "HTB", "THM", "Internal"). */

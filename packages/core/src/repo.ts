@@ -74,7 +74,7 @@ export async function getEngagement(id: string) {
 
 export async function setEngagementStatus(
   id: string,
-  status: "scoping" | "active" | "paused" | "reporting" | "done",
+  status: "created" | "scoping" | "active" | "paused" | "reporting" | "done",
 ) {
   const db = getDb();
   const [row] = await db
