@@ -67,12 +67,20 @@ interface Engagement {
 const MAX_RECENTS = 5
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [engagements, setEngagements] = React.useState<Engagement[]>([])
+  const [engagements, setEngagements] = React.useState<Engagement[]>(() => {
+    if (typeof window === "undefined") return []
+    try {
+      return JSON.parse(localStorage.getItem("pk-sidebar-engagements") ?? "[]")
+    } catch { return [] }
+  })
 
   React.useEffect(() => {
     fetch("/api/engagements")
       .then((r) => r.json())
-      .then(setEngagements)
+      .then((data: Engagement[]) => {
+        setEngagements(data)
+        localStorage.setItem("pk-sidebar-engagements", JSON.stringify(data))
+      })
       .catch(() => {})
   }, [])
 
@@ -99,7 +107,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
         {/* Recents */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>Recents</SidebarGroupLabel>
+          <SidebarGroupLabel>Recent Engagements</SidebarGroupLabel>
           <SidebarMenu>
             {recents.length === 0 && (
               <SidebarMenuItem>
