@@ -323,6 +323,52 @@ msg
     out(await sendMessage({ body: o.body, direction: o.direction, author: o.author, engagementId }));
   });
 
+// --- exec (run tool in container + auto-log) -------------------------------
+const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+
+program
+  .command("exec")
+  .description("Run a command in the tooling container and auto-log it")
+  .option("--phase <phase>", "scoping | recon | enum | exploit | postexploit | report", "recon")
+  .option("--engagement <id>")
+  .argument("<command...>", "command to run")
+  .action(async (cmd: string[], o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    const cmdStr = cmd.join(" ");
+    const start = Date.now();
+
+    const { execFile: exec } = await import("node:child_process");
+    const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
+      const proc = exec(
+        "docker",
+        ["exec", CONTAINER, "sh", "-c", cmdStr],
+        { maxBuffer: 10 * 1024 * 1024, timeout: 300000 },
+        (err, stdout, stderr) => {
+          resolve({
+            stdout: stdout ?? "",
+            stderr: stderr ?? "",
+            code: err && "code" in err ? (err.code as number) : err ? 1 : 0,
+          });
+        },
+      );
+      proc.on("error", (err) => resolve({ stdout: "", stderr: err.message, code: 1 }));
+    });
+
+    const duration = Date.now() - start;
+    const toolName = cmdStr.split(/\s+/)[0];
+
+    await logActivity({
+      engagementId: eid,
+      phase: o.phase,
+      action: `${toolName} (${duration}ms, exit ${result.code})`,
+      command: cmdStr,
+    });
+
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    process.exitCode = result.code;
+  });
+
 async function main() {
   try {
     await program.parseAsync(process.argv);
