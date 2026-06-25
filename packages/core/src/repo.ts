@@ -10,6 +10,7 @@ import {
   activityLog,
   agentLog,
   agentRuns,
+  artifacts,
   engagements,
   evidence,
   findings,
@@ -294,6 +295,31 @@ export async function updateFinding(
 }
 
 /** Register an on-disk artifact: hash it, capture size, and link it to the engagement. */
+// --- Artifacts (loot, creds, documents, configs) ---------------------------
+
+export async function addArtifact(input: {
+  engagementId: string;
+  title: string;
+  type: string;
+  content?: string;
+  path?: string;
+  findingId?: string;
+  meta?: Record<string, unknown>;
+}) {
+  const db = getDb();
+  const [row] = await db.insert(artifacts).values(input).returning();
+  return row;
+}
+
+export async function listArtifacts(engagementId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(artifacts)
+    .where(eq(artifacts.engagementId, engagementId))
+    .orderBy(desc(artifacts.createdAt));
+}
+
 export async function addEvidence(input: {
   engagementId: string;
   path: string;
