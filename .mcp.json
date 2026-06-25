@@ -7,6 +7,10 @@
         "DATABASE_URL": "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie"
       }
     },
+    "next-devtools": {
+      "command": "npx",
+      "args": ["-y", "next-devtools-mcp@latest"]
+    },
     "promptkiddie-tooling": {
       "command": "node",
       "args": ["packages/tooling-mcp/dist/index.js"],
