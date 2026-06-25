@@ -3,7 +3,7 @@
 import * as React from "react"
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
-import { CreateEngagementDialog } from "@/components/create-engagement-dialog"
+
 import {
   Sidebar,
   SidebarContent,
@@ -99,10 +99,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
         {/* Recents */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel className="flex items-center justify-between pr-2">
-            <span>Recents</span>
-            <CreateEngagementDialog />
-          </SidebarGroupLabel>
+          <SidebarGroupLabel>Recents</SidebarGroupLabel>
           <SidebarMenu>
             {recents.length === 0 && (
               <SidebarMenuItem>
