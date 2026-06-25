@@ -23,6 +23,7 @@ services:
       dockerfile: Dockerfile
     container_name: promptkiddie-tooling
     restart: unless-stopped
+    network_mode: host
     volumes:
       - ./engagements:/workspace/engagements
     cap_add:

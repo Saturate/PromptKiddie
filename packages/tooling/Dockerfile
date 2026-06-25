@@ -1,7 +1,7 @@
 FROM kalilinux/kali-rolling
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    nmap ffuf nuclei gobuster nikto sqlmap httpx-toolkit \
+    nmap ncat netcat-traditional ffuf nuclei gobuster nikto sqlmap httpx-toolkit \
     seclists wordlists \
     metasploit-framework \
     enum4linux smbclient ldap-utils \
@@ -9,6 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     whatweb wafw00f \
     dnsutils whois curl wget git unzip jq \
     && rm -rf /var/lib/apt/lists/*
+
+# rustcat (build from source - no arm64 binary available)
+RUN apt-get update && apt-get install -y --no-install-recommends cargo rustc \
+    && cargo install rustcat \
+    && cp /root/.cargo/bin/rc /usr/local/bin/rc \
+    && apt-get purge -y cargo rustc && apt-get autoremove -y \
+    && rm -rf /root/.cargo /var/lib/apt/lists/*
 
 # rustscan (not in Kali repos)
 RUN ARCH=$(dpkg --print-architecture) \

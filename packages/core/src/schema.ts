@@ -240,6 +240,24 @@ export const agentRuns = pgTable(
   (t) => [index("agent_runs_engagement_idx").on(t.engagementId)],
 );
 
+/** Agent reasoning log - self-reported thinking, hypotheses, decisions. */
+export const agentLog = pgTable(
+  "agent_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    agent: text("agent").notNull(),
+    phase: phase("phase").notNull(),
+    message: text("message").notNull(),
+    /** Optional category: hypothesis, decision, observation, stuck, progress. */
+    category: text("category"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("agent_log_engagement_idx").on(t.engagementId)],
+);
+
 /** Bidirectional human<->orchestrator inbox driving background operation. */
 export const messages = pgTable(
   "messages",
