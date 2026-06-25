@@ -32,10 +32,10 @@ export async function createEngagement(input: {
   name: string;
   type: EngagementType;
   scope?: string;
+  group?: string;
 }) {
   const db = getDb();
   let slug = slugify(input.name);
-  // Ensure slug uniqueness with a short suffix if needed.
   const existing = await db
     .select({ slug: engagements.slug })
     .from(engagements)
@@ -44,7 +44,7 @@ export async function createEngagement(input: {
 
   const [row] = await db
     .insert(engagements)
-    .values({ name: input.name, slug, type: input.type, scope: input.scope })
+    .values({ name: input.name, slug, type: input.type, scope: input.scope, group: input.group })
     .returning();
   return row;
 }

@@ -6,6 +6,12 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const engagements = await listEngagements();
   return NextResponse.json(
-    engagements.map((e) => ({ id: e.id, name: e.name, phase: e.phase })),
+    engagements.map((e) => ({
+      id: e.id,
+      name: e.name,
+      phase: e.phase,
+      group: e.group,
+      status: e.status,
+    })),
   );
 }
