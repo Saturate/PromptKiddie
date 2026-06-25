@@ -297,7 +297,7 @@ export async function updateFinding(
 export async function addEvidence(input: {
   engagementId: string;
   path: string;
-  type: "screenshot" | "scan" | "output" | "file";
+  type: "flag" | "screenshot" | "scan" | "output" | "file";
   findingId?: string;
   meta?: Record<string, unknown>;
 }) {

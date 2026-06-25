@@ -111,6 +111,18 @@ When running unattended, periodically poll the inbox (default cadence
 an instruction is out of scope or ambiguous, reply asking for clarification rather than
 guessing.
 
+## Command discipline
+
+- **Single-purpose commands.** Run one command per objective. Do not chain unrelated
+  operations (e.g. `cat /home/user/flag.txt | ls -la /home/`). Read a file alone, list a
+  directory alone. Each command should have one clear intent.
+- **No speculative piping.** Separate grep filters and output parsing from the base command.
+  Run the command first, read the output, then filter in a follow-up if needed.
+- **Use `pk exec`** for all tool commands (auto-logs to activity). Do not use raw `docker exec`.
+- **Use `pk think`** to log reasoning (shows in Agent Log tab on the frontend).
+- **Log flags properly:** save to file, `pk evidence add --type flag`, `pk finding add`,
+  then post a short status to inbox. Do not just print flags to the chat.
+
 ## Style
 
 - Be concise and action-oriented. Prefer running the next concrete step over discussing it.
