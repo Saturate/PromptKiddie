@@ -7,54 +7,57 @@ import {
 } from "@promptkiddie/core";
 import { notFound } from "next/navigation";
 import { Inbox } from "./inbox";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
 const PHASES = ["scoping", "recon", "enum", "exploit", "postexploit", "report"] as const;
 
-function PhaseIndicator({ currentPhase }: { currentPhase: string | null }) {
-  const activeIdx = currentPhase ? PHASES.indexOf(currentPhase as typeof PHASES[number]) : -1;
+const severityColors: Record<string, string> = {
+  critical: "bg-severity-critical text-white",
+  high: "bg-severity-high text-black",
+  medium: "bg-severity-medium text-black",
+  low: "bg-severity-low text-white",
+  info: "bg-severity-info text-white",
+};
+
+function PhaseIndicator({ currentPhase }: { currentPhase: string }) {
+  const activeIdx = PHASES.indexOf(currentPhase as (typeof PHASES)[number]);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.8rem" }}>
+    <div className="flex items-center gap-1 flex-wrap">
       {PHASES.map((p, i) => {
         const done = i < activeIdx;
         const active = i === activeIdx;
         return (
-          <div key={p} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div key={p} className="flex items-center gap-1">
             <span
-              style={{
-                display: "inline-block",
-                padding: "2px 8px",
-                borderRadius: "var(--radius)",
-                background: active ? "var(--accent-dim)" : done ? "var(--bg-hover)" : "transparent",
-                border: `1px solid ${active ? "var(--accent)" : done ? "var(--border)" : "var(--border)"}`,
-                color: active ? "var(--accent)" : done ? "var(--text-dim)" : "var(--text-dim)",
-                fontWeight: active ? 600 : 400,
-                opacity: !done && !active ? 0.4 : 1,
-              }}
+              className={`
+                inline-block px-2.5 py-0.5 rounded text-[11px] font-mono font-medium uppercase tracking-wide
+                ${active ? "bg-pk-green text-black" : ""}
+                ${done ? "bg-muted text-muted-foreground" : ""}
+                ${!done && !active ? "text-muted-foreground/40 border border-border/40" : ""}
+              `}
             >
               {p}
             </span>
             {i < PHASES.length - 1 && (
-              <span style={{ color: "var(--border)" }}>&rarr;</span>
+              <span className="text-muted-foreground/30 text-xs">&rarr;</span>
             )}
           </div>
         );
       })}
     </div>
   );
-}
-
-function severityClass(s: string) {
-  const map: Record<string, string> = {
-    critical: "badge-critical",
-    high: "badge-high",
-    medium: "badge-medium",
-    low: "badge-low",
-    info: "badge-info",
-  };
-  return `badge ${map[s] ?? "badge-status"}`;
 }
 
 export default async function EngagementPage({
@@ -75,172 +78,275 @@ export default async function EngagementPage({
 
   const currentPhase = engagement.phase ?? "scoping";
 
+  const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  for (const f of findings) {
+    if (f.severity in severityCounts)
+      severityCounts[f.severity as keyof typeof severityCounts]++;
+  }
+
+  const inScopeCount = targets.filter((t) => t.inScope).length;
+
   return (
-    <div className="container stack">
-      <div>
-        <div className="row">
-          <h1>{engagement.name}</h1>
-          <span className="badge badge-status">{engagement.type}</span>
-          <span className="badge badge-status">{engagement.status}</span>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold font-mono">{engagement.name}</h1>
+          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+            {engagement.type}
+          </Badge>
+          <Badge variant="secondary" className="font-mono text-[10px] uppercase">
+            {engagement.status}
+          </Badge>
         </div>
-        <div className="mt-1">
-          <PhaseIndicator currentPhase={currentPhase} />
-        </div>
+        <PhaseIndicator currentPhase={currentPhase} />
         {engagement.scope && (
-          <p className="dim mt-1">{engagement.scope}</p>
+          <p className="text-sm text-muted-foreground font-mono">
+            {engagement.scope}
+          </p>
         )}
       </div>
 
-      <div className="grid-2">
-        {/* Targets */}
-        <div className="card">
-          <h3>
-            Targets{" "}
-            <span className="dim">({targets.length})</span>
-          </h3>
-          {targets.length === 0 ? (
-            <p className="dim mt-1">None</p>
-          ) : (
-            <table className="mt-1">
-              <thead>
-                <tr>
-                  <th>Kind</th>
-                  <th>Identifier</th>
-                  <th>Scope</th>
-                </tr>
-              </thead>
-              <tbody>
-                {targets.map((t) => (
-                  <tr key={t.id}>
-                    <td>{t.kind}</td>
-                    <td>
-                      <code>{t.identifier}</code>
-                    </td>
-                    <td>{t.inScope ? "in" : "out"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+      {/* Stats row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[10px] font-mono uppercase text-muted-foreground">Targets</p>
+            <p className="text-2xl font-bold font-mono">{targets.length}</p>
+            <p className="text-[10px] text-muted-foreground font-mono">{inScopeCount} in scope</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[10px] font-mono uppercase text-muted-foreground">Findings</p>
+            <p className="text-2xl font-bold font-mono">{findings.length}</p>
+          </CardContent>
+        </Card>
+        {(Object.entries(severityCounts) as [string, number][]).map(([sev, count]) => (
+          <Card key={sev}>
+            <CardContent className="p-4">
+              <p className="text-[10px] font-mono uppercase text-muted-foreground">{sev}</p>
+              <p className="text-2xl font-bold font-mono">{count}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-        {/* Findings */}
-        <div className="card">
-          <h3>
-            Findings{" "}
-            <span className="dim">({findings.length})</span>
-          </h3>
-          {findings.length === 0 ? (
-            <p className="dim mt-1">None</p>
-          ) : (
-            <table className="mt-1">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Severity</th>
-                  <th>Status</th>
-                  <th>CVSS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {findings.map((f) => (
-                  <tr key={f.id}>
-                    <td>{f.title}</td>
-                    <td>
-                      <span className={severityClass(f.severity)}>
-                        {f.severity}
+      {/* Targets */}
+      <div id="targets">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-mono">
+              Targets <span className="text-muted-foreground">({targets.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {targets.length === 0 ? (
+              <p className="text-sm text-muted-foreground font-mono">No targets added</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-mono text-[10px] uppercase">Kind</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Identifier</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Scope</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Notes</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {targets.map((t) => (
+                    <TableRow key={t.id}>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-[10px]">{t.kind}</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm text-pk-green">{t.identifier}</TableCell>
+                      <TableCell>
+                        {t.inScope ? (
+                          <Badge className="bg-pk-green/20 text-pk-green border-pk-green/30 font-mono text-[10px]">in</Badge>
+                        ) : (
+                          <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">out</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground font-mono">{t.notes ?? "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Findings - detailed */}
+      <div id="findings">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-mono">
+              Findings <span className="text-muted-foreground">({findings.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {findings.length === 0 ? (
+              <p className="text-sm text-muted-foreground font-mono">No findings</p>
+            ) : (
+              findings.map((f) => (
+                <div key={f.id} className="border border-border rounded-lg p-4 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className={`font-mono text-[10px] ${severityColors[f.severity] ?? ""}`}>
+                      {f.severity}
+                    </Badge>
+                    <Badge variant="secondary" className="font-mono text-[10px]">
+                      {f.status}
+                    </Badge>
+                    {f.cvss != null && (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        CVSS {f.cvss}
                       </span>
-                    </td>
-                    <td>
-                      <span className="badge badge-status">{f.status}</span>
-                    </td>
-                    <td className="dim">{f.cvss ?? "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                    )}
+                    <span className="flex-1" />
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {new Date(f.createdAt!).toLocaleString()}
+                    </span>
+                  </div>
+                  <h4 className="font-mono text-sm font-semibold">{f.title}</h4>
+                  {f.description && (
+                    <p className="font-mono text-xs text-muted-foreground leading-relaxed">
+                      {f.description}
+                    </p>
+                  )}
+                  <div className="flex gap-4 flex-wrap">
+                    {f.owasp && f.owasp.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="font-mono text-[10px] text-muted-foreground">OWASP:</span>
+                        {f.owasp.map((o) => (
+                          <Badge key={o} variant="outline" className="font-mono text-[10px]">{o}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {f.attackTechniques && f.attackTechniques.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="font-mono text-[10px] text-muted-foreground">ATT&CK:</span>
+                        {f.attackTechniques.map((t) => (
+                          <Badge key={t} variant="outline" className="font-mono text-[10px]">{t}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {f.cve && f.cve.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="font-mono text-[10px] text-muted-foreground">CVE:</span>
+                        {f.cve.map((c) => (
+                          <Badge key={c} variant="outline" className="font-mono text-[10px]">{c}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {f.remediation && (
+                    <div className="border-t border-border pt-2 mt-2">
+                      <span className="font-mono text-[10px] text-muted-foreground uppercase">Remediation</span>
+                      <p className="font-mono text-xs mt-1">{f.remediation}</p>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Activity Timeline */}
-      <div className="card">
-        <h3>
-          Activity{" "}
-          <span className="dim">({activity.length})</span>
-        </h3>
-        {activity.length === 0 ? (
-          <p className="dim mt-1">No activity recorded</p>
-        ) : (
-          <table className="mt-1">
-            <thead>
-              <tr>
-                <th>Phase</th>
-                <th>Action</th>
-                <th>Actor</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activity.map((a) => (
-                <tr key={a.id}>
-                  <td>
-                    <span className="badge badge-status">{a.phase}</span>
-                  </td>
-                  <td>{a.action}</td>
-                  <td className="dim">{a.actor}</td>
-                  <td className="dim">
-                    {new Date(a.createdAt!).toLocaleTimeString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      {/* Activity - commands prominent */}
+      <div id="activity">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-mono">
+              Activity Log <span className="text-muted-foreground">({activity.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activity.length === 0 ? (
+              <p className="text-sm text-muted-foreground font-mono">No activity</p>
+            ) : (
+              <div className="space-y-2">
+                {activity.map((a) => (
+                  <div key={a.id} className="border border-border rounded-lg p-3 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="font-mono text-[10px] uppercase">
+                        {a.phase}
+                      </Badge>
+                      <span className="font-mono text-xs">{a.action}</span>
+                      <span className="flex-1" />
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {a.actor}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {new Date(a.createdAt!).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    {a.command && (
+                      <div className="bg-background rounded px-3 py-2 mt-1 border border-border/50">
+                        <code className="font-mono text-xs text-pk-green break-all">
+                          $ {a.command}
+                        </code>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Evidence */}
-      <div className="card">
-        <h3>
-          Evidence{" "}
-          <span className="dim">({evidence.length})</span>
-        </h3>
-        {evidence.length === 0 ? (
-          <p className="dim mt-1">No evidence captured</p>
-        ) : (
-          <table className="mt-1">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Path</th>
-                <th>SHA256</th>
-                <th>Captured</th>
-              </tr>
-            </thead>
-            <tbody>
-              {evidence.map((e) => (
-                <tr key={e.id}>
-                  <td>
-                    <span className="badge badge-status">{e.type}</span>
-                  </td>
-                  <td>
-                    <code>{e.path}</code>
-                  </td>
-                  <td className="dim">
-                    {e.sha256 ? e.sha256.slice(0, 12) + "..." : "-"}
-                  </td>
-                  <td className="dim">
-                    {new Date(e.capturedAt!).toLocaleTimeString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <div id="evidence">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-mono">
+              Evidence <span className="text-muted-foreground">({evidence.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {evidence.length === 0 ? (
+              <p className="text-sm text-muted-foreground font-mono">No evidence captured</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-mono text-[10px] uppercase">Type</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Path</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">SHA256</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Size</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase">Captured</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {evidence.map((e) => (
+                    <TableRow key={e.id}>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-[10px]">{e.type}</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-pk-green">{e.path}</TableCell>
+                      <TableCell className="font-mono text-[11px] text-muted-foreground">
+                        {e.sha256 ? e.sha256.slice(0, 16) + "..." : "-"}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {e.sizeBytes ? `${Math.round(e.sizeBytes / 1024)}KB` : "-"}
+                      </TableCell>
+                      <TableCell className="font-mono text-[11px] text-muted-foreground">
+                        {new Date(e.capturedAt!).toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Inbox */}
-      <Inbox engagementId={id} />
+      <div id="inbox">
+        <Inbox engagementId={id} />
+      </div>
     </div>
   );
 }
