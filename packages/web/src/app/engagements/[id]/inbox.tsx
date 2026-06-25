@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { sendInboxMessage } from "./actions";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface Message {
   id: string;
@@ -23,23 +26,33 @@ export function Inbox({ engagementId }: { engagementId: string }) {
     try {
       const res = await fetch(`/api/messages?engagementId=${engagementId}`);
       if (res.ok) setMessages(await res.json());
-    } catch { /* retry next cycle */ }
+    } catch {
+      /* retry next cycle */
+    }
   }, [engagementId]);
 
   useEffect(() => {
     fetchMessages();
 
-    const es = new EventSource(`/api/messages/stream?engagementId=${engagementId}`);
+    const es = new EventSource(
+      `/api/messages/stream?engagementId=${engagementId}`,
+    );
     es.onopen = () => setLive(true);
-    es.onmessage = () => { fetchMessages(); };
-    es.onerror = () => { setLive(false); };
+    es.onmessage = () => {
+      fetchMessages();
+    };
+    es.onerror = () => {
+      setLive(false);
+    };
 
-    // polling fallback when SSE is disconnected
     const interval = setInterval(() => {
       if (!live) fetchMessages();
     }, 5000);
 
-    return () => { es.close(); clearInterval(interval); };
+    return () => {
+      es.close();
+      clearInterval(interval);
+    };
   }, [engagementId, fetchMessages, live]);
 
   useEffect(() => {
@@ -58,114 +71,63 @@ export function Inbox({ engagementId }: { engagementId: string }) {
   }
 
   return (
-    <div className="card" style={{ display: "flex", flexDirection: "column" }}>
-      <div className="row">
-        <h3>Inbox</h3>
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: live ? "var(--accent)" : "var(--text-dim)",
-            marginLeft: 6,
-          }}
-          title={live ? "Live (SSE connected)" : "Polling"}
-        />
-      </div>
-
-      <div
-        style={{
-          marginTop: 8,
-          maxHeight: 360,
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          padding: "8px 0",
-        }}
-      >
-        {messages.length === 0 && (
-          <p className="dim" style={{ fontSize: "0.8rem" }}>
-            No messages yet. Send one to the orchestrator below.
-          </p>
-        )}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: m.direction === "inbound" ? "flex-end" : "flex-start",
-            }}
-          >
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm font-mono">Inbox</CardTitle>
+          <span
+            className={`h-2 w-2 rounded-full ${live ? "bg-pk-green" : "bg-muted-foreground"}`}
+            title={live ? "Live (SSE)" : "Polling"}
+          />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="max-h-[360px] overflow-y-auto space-y-2 py-2">
+          {messages.length === 0 && (
+            <p className="text-xs text-muted-foreground font-mono">
+              No messages yet. Send one to the orchestrator.
+            </p>
+          )}
+          {messages.map((m) => (
             <div
-              style={{
-                background:
-                  m.direction === "inbound"
-                    ? "var(--accent-dim)"
-                    : "var(--bg-hover)",
-                border: `1px solid ${m.direction === "inbound" ? "var(--accent)" : "var(--border)"}`,
-                borderRadius: "var(--radius)",
-                padding: "6px 10px",
-                maxWidth: "75%",
-                fontSize: "0.9rem",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
+              key={m.id}
+              className={`flex flex-col ${m.direction === "inbound" ? "items-end" : "items-start"}`}
             >
-              {m.body}
+              <div
+                className={`
+                  max-w-[75%] rounded-lg px-3 py-2 text-sm font-mono whitespace-pre-wrap break-words
+                  ${
+                    m.direction === "inbound"
+                      ? "bg-pk-green/15 border border-pk-green/30 text-foreground"
+                      : "bg-muted border border-border text-foreground"
+                  }
+                `}
+              >
+                {m.body}
+              </div>
+              <span className="text-[10px] text-muted-foreground font-mono mt-0.5 px-1">
+                {m.author} &middot;{" "}
+                {new Date(m.createdAt).toLocaleTimeString()}
+              </span>
             </div>
-            <span
-              className="dim"
-              style={{ fontSize: "0.7rem", marginTop: 2, padding: "0 4px" }}
-            >
-              {m.author} &middot;{" "}
-              {new Date(m.createdAt).toLocaleTimeString()}
-            </span>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", gap: 8, marginTop: 8 }}
-      >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          type="text"
-          placeholder="Type a message..."
-          autoComplete="off"
-          disabled={sending}
-          style={{
-            flex: 1,
-            padding: "8px 12px",
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-            color: "var(--text)",
-            fontFamily: "var(--mono)",
-            fontSize: "0.9rem",
-          }}
-        />
-        <button
-          type="submit"
-          disabled={sending}
-          style={{
-            padding: "8px 16px",
-            background: "var(--accent-dim)",
-            color: "var(--accent)",
-            border: "1px solid var(--accent)",
-            borderRadius: "var(--radius)",
-            cursor: "pointer",
-            fontFamily: "var(--mono)",
-            fontSize: "0.9rem",
-          }}
-        >
-          {sending ? "..." : "Send"}
-        </button>
-      </form>
-    </div>
+        <form onSubmit={handleSubmit} className="flex gap-2 mt-3">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message..."
+            autoComplete="off"
+            disabled={sending}
+            className="flex-1 font-mono text-sm"
+          />
+          <Button type="submit" disabled={sending} className="font-mono text-sm">
+            {sending ? "..." : "Send"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
