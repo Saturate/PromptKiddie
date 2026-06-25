@@ -13,6 +13,7 @@ import {
   evidence,
   findings,
   messages,
+  objectives,
   targets,
 } from "./schema.js";
 
@@ -33,6 +34,7 @@ export async function createEngagement(input: {
   type: EngagementType;
   scope?: string;
   group?: string;
+  sourceUrl?: string;
 }) {
   const db = getDb();
   let slug = slugify(input.name);
@@ -44,7 +46,14 @@ export async function createEngagement(input: {
 
   const [row] = await db
     .insert(engagements)
-    .values({ name: input.name, slug, type: input.type, scope: input.scope, group: input.group })
+    .values({
+      name: input.name,
+      slug,
+      type: input.type,
+      scope: input.scope,
+      group: input.group,
+      sourceUrl: input.sourceUrl,
+    })
     .returning();
   return row;
 }
@@ -170,6 +179,48 @@ export async function updateTarget(
 ) {
   const db = getDb();
   const [row] = await db.update(targets).set(input).where(eq(targets.id, id)).returning();
+  return row;
+}
+
+// --- Objectives (CTF tasks / flags) ----------------------------------------
+
+export async function addObjective(input: {
+  engagementId: string;
+  taskNumber: number;
+  title: string;
+  description?: string;
+  flagFormat?: string;
+}) {
+  const db = getDb();
+  const [row] = await db.insert(objectives).values(input).returning();
+  return row;
+}
+
+export async function listObjectives(engagementId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(objectives)
+    .where(eq(objectives.engagementId, engagementId))
+    .orderBy(objectives.taskNumber);
+}
+
+export async function captureFlag(id: string, flag: string) {
+  const db = getDb();
+  const [row] = await db
+    .update(objectives)
+    .set({ flag, completed: true })
+    .where(eq(objectives.id, id))
+    .returning();
+  return row;
+}
+
+export async function updateObjective(
+  id: string,
+  input: { title?: string; description?: string; flagFormat?: string; flag?: string; completed?: boolean },
+) {
+  const db = getDb();
+  const [row] = await db.update(objectives).set(input).where(eq(objectives.id, id)).returning();
   return row;
 }
 
