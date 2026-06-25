@@ -5,7 +5,7 @@ import {
   listTargets,
 } from "@promptkiddie/core";
 import Link from "next/link";
-import { createEngagementAction } from "./actions";
+import { CreateEngagementDialog } from "@/components/create-engagement-dialog";
 import {
   Card,
   CardAction,
@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   ShieldAlertIcon,
   TargetIcon,
@@ -216,44 +215,14 @@ export default async function Home() {
         </Card>
       </div>
 
-      {/* Create engagement */}
-      <div className="px-4 lg:px-6">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-mono">New Engagement</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form action={createEngagementAction} className="flex gap-2 items-center">
-              <Input
-                name="name"
-                placeholder="Name..."
-                required
-                autoComplete="off"
-                className="flex-1 font-mono text-sm"
-              />
-              <select
-                name="type"
-                required
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm font-mono"
-              >
-                <option value="ctf">CTF</option>
-                <option value="whitebox">Whitebox</option>
-                <option value="blackbox">Blackbox</option>
-                <option value="bugbounty">Bug Bounty</option>
-              </select>
-              <Button type="submit" className="font-mono text-sm">
-                Create
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Row 3 - Engagements table */}
       <div className="px-4 lg:px-6">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-mono">All Engagements</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-mono">All Engagements</CardTitle>
+              <CreateEngagementDialog />
+            </div>
           </CardHeader>
           <CardContent>
             {engagements.length === 0 ? (

@@ -99,6 +99,8 @@ export const engagements = pgTable("engagements", {
   status: engagementStatus("status").notNull().default("scoping"),
   /** Current methodology phase (state machine). */
   phase: phase("phase").notNull().default("scoping"),
+  /** Grouping label (e.g. "HTB", "THM", "Internal"). */
+  group: text("group"),
   /** Free-form scope summary; structured targets live in `targets`. */
   scope: text("scope"),
   /** Rules of Engagement: authorization, allowed/disallowed actions, windows. */
