@@ -212,6 +212,27 @@ export const evidence = pgTable(
   (t) => [index("evidence_engagement_idx").on(t.engagementId)],
 );
 
+/** Things found during an engagement: loot, credentials, documents, configs, interesting files. */
+export const artifacts = pgTable(
+  "artifacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    findingId: uuid("finding_id").references(() => findings.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    type: text("type").notNull(),
+    content: text("content"),
+    /** Path on disk if saved to a file. */
+    path: text("path"),
+    sha256: text("sha256"),
+    meta: jsonb("meta").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("artifacts_engagement_idx").on(t.engagementId)],
+);
+
 /** Append-only audit trail: every notable command/action the orchestrator takes. */
 export const activityLog = pgTable(
   "activity_log",
