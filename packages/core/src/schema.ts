@@ -101,6 +101,8 @@ export const engagements = pgTable("engagements", {
   phase: phase("phase").notNull().default("scoping"),
   /** Grouping label (e.g. "HTB", "THM", "Internal"). */
   group: text("group"),
+  /** Link to source room/box (e.g. "https://tryhackme.com/room/neighbour"). */
+  sourceUrl: text("source_url"),
   /** Free-form scope summary; structured targets live in `targets`. */
   scope: text("scope"),
   /** Rules of Engagement: authorization, allowed/disallowed actions, windows. */
@@ -109,6 +111,27 @@ export const engagements = pgTable("engagements", {
   endedAt: timestamp("ended_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** CTF tasks / room objectives. Each has a description and an expected flag to capture. */
+export const objectives = pgTable(
+  "objectives",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    taskNumber: integer("task_number").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    /** Hint about the flag format, e.g. "THM{...}" or "a single word". */
+    flagFormat: text("flag_format"),
+    /** The captured flag/answer once solved. */
+    flag: text("flag"),
+    completed: boolean("completed").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("objectives_engagement_idx").on(t.engagementId)],
+);
 
 /** Hosts/domains/URLs/apps/repos within an engagement, with in-scope flag. */
 export const targets = pgTable(

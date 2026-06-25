@@ -16,22 +16,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CirclePlusIcon } from "lucide-react";
 
-export function CreateEngagementDialog({
-  trigger,
-}: {
-  trigger?: React.ReactNode;
-}) {
+export function CreateEngagementDialog() {
   const [open, setOpen] = useState(false);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button className="font-mono text-sm gap-1.5">
-            <CirclePlusIcon className="h-4 w-4" />
-            New Engagement
-          </Button>
-        )}
+      <DialogTrigger render={<Button className="font-mono text-sm gap-1.5" />}>
+        <CirclePlusIcon className="h-4 w-4" />
+        New Engagement
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

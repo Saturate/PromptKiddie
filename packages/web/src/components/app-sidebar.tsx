@@ -107,14 +107,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel className="flex items-center justify-between pr-2">
             <span>Engagements</span>
-            <CreateEngagementDialog
-              trigger={
-                <Button variant="ghost" size="icon" className="h-5 w-5">
-                  <CirclePlusIcon className="h-3.5 w-3.5" />
-                  <span className="sr-only">New Engagement</span>
-                </Button>
-              }
-            />
+            <CreateEngagementDialog />
           </SidebarGroupLabel>
           <SidebarMenu>
             {grouped.length === 0 && (
@@ -138,13 +131,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               ) : (
                 <Collapsible key={groupName} defaultOpen className="group/collapsible">
                   <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton className="font-medium">
-                        <ChevronRightIcon className="transition-transform group-data-[state=open]/collapsible:rotate-90" />
-                        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                          {groupName}
-                        </span>
-                      </SidebarMenuButton>
+                    <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
+                      <ChevronRightIcon className="size-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        {groupName}
+                      </span>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenu className="pl-4">
