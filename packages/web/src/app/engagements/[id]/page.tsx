@@ -1,3 +1,4 @@
+import { AutoRefresh } from "@/components/auto-refresh";
 import {
   getEngagement,
   listActivity,
@@ -88,6 +89,7 @@ export default async function EngagementPage({
 
   return (
     <div className="flex flex-col gap-4 py-4 px-4 md:gap-6 md:py-6 lg:px-6">
+      <AutoRefresh interval={5000} />
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">

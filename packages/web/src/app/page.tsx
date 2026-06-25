@@ -1,3 +1,4 @@
+import { AutoRefresh } from "@/components/auto-refresh";
 import {
   listEngagements,
   listFindings,
@@ -97,6 +98,7 @@ export default async function Home() {
 
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+      <AutoRefresh interval={10000} />
       {/* Row 1 - Key metrics */}
       <div className="grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
         <Card className="@container/card">
