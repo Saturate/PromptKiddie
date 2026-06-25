@@ -344,26 +344,33 @@ program
     }));
   });
 
-// --- exec (run tool in container + auto-log) -------------------------------
+// --- exec (run command + auto-log) -----------------------------------------
 const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+const USE_DOCKER = process.env.PK_EXEC_MODE !== "local";
 
 program
   .command("exec")
-  .description("Run a command in the tooling container and auto-log it")
+  .description("Run a command and auto-log it. Uses Docker container by default, --local for host.")
   .option("--phase <phase>", "scoping | recon | enum | exploit | postexploit | report", "recon")
   .option("--agent <name>", "agent name for attribution", "agent")
+  .option("--host", "run on the host instead of in the Docker container (for VPN targets)")
   .option("--engagement <id>")
   .argument("<command...>", "command to run")
   .action(async (cmd: string[], o) => {
     const eid = await resolveEngagementId(o.engagement);
     const cmdStr = cmd.join(" ");
     const start = Date.now();
+    const local = o.host || !USE_DOCKER;
 
     const { execFile: exec } = await import("node:child_process");
+    const execArgs: [string, string[]] = local
+      ? ["sh", ["-c", cmdStr]]
+      : ["docker", ["exec", CONTAINER, "sh", "-c", cmdStr]];
+
     const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
       const proc = exec(
-        "docker",
-        ["exec", CONTAINER, "sh", "-c", cmdStr],
+        execArgs[0],
+        execArgs[1],
         { maxBuffer: 10 * 1024 * 1024, timeout: 300000 },
         (err, stdout, stderr) => {
           resolve({
