@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # rustcat (build from source - no arm64 binary available)
 RUN apt-get update && apt-get install -y --no-install-recommends cargo rustc \
     && cargo install rustcat \
-    && cp /root/.cargo/bin/rc /usr/local/bin/rc \
+    && cp /root/.cargo/bin/rcat /usr/local/bin/rcat \
     && apt-get purge -y cargo rustc && apt-get autoremove -y \
     && rm -rf /root/.cargo /var/lib/apt/lists/*
 
