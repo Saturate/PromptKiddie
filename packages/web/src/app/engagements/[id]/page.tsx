@@ -87,7 +87,7 @@ export default async function EngagementPage({
   const inScopeCount = targets.filter((t) => t.inScope).length;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex flex-col gap-4 py-4 px-4 md:gap-6 md:py-6 lg:px-6">
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
