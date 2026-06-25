@@ -2,6 +2,7 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import {
   getEngagement,
   listActivity,
+  listAgentLog,
   listAgentRuns,
   listEvidence,
   listFindings,
@@ -72,13 +73,14 @@ export default async function EngagementPage({
   const engagement = await getEngagement(id);
   if (!engagement) notFound();
 
-  const [targets, findings, activity, evidence, agentRuns, objectives] = await Promise.all([
+  const [targets, findings, activity, evidence, agentRuns, objectives, agentLogEntries] = await Promise.all([
     listTargets(id),
     listFindings(id),
     listActivity(id),
     listEvidence(id),
     listAgentRuns(id),
     listObjectives(id),
+    listAgentLog(id),
   ]);
 
   const hasRunningAgent = agentRuns.some((r) => r.status === "running");
@@ -371,6 +373,64 @@ export default async function EngagementPage({
                   </div>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Agent Log */}
+      <div id="agent-log">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-mono">
+              Agent Log <span className="text-muted-foreground">({agentLogEntries.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {agentLogEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground font-mono">No agent reasoning logged</p>
+            ) : (
+              agentLogEntries.map((entry) => {
+                const catColors: Record<string, string> = {
+                  hypothesis: "border-l-purple-500",
+                  decision: "border-l-blue-500",
+                  observation: "border-l-gray-500",
+                  stuck: "border-l-red-500",
+                  progress: "border-l-green-500",
+                };
+                const catBadgeColors: Record<string, string> = {
+                  hypothesis: "bg-purple-500/20 text-purple-400",
+                  decision: "bg-blue-500/20 text-blue-400",
+                  observation: "bg-gray-500/20 text-gray-400",
+                  stuck: "bg-red-500/20 text-red-400",
+                  progress: "bg-green-500/20 text-green-400",
+                };
+                const borderClass = entry.category ? catColors[entry.category] ?? "border-l-gray-500" : "border-l-gray-500";
+                return (
+                  <div
+                    key={entry.id}
+                    className={`border-l-2 ${borderClass} bg-muted/30 rounded-r-lg p-3 space-y-1`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="font-mono text-[10px]">
+                        {entry.agent}
+                      </Badge>
+                      <Badge variant="secondary" className="font-mono text-[10px]">
+                        {entry.phase}
+                      </Badge>
+                      {entry.category && (
+                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${catBadgeColors[entry.category] ?? ""}`}>
+                          {entry.category}
+                        </span>
+                      )}
+                      <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                        {new Date(entry.createdAt!).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="text-sm font-mono whitespace-pre-wrap">{entry.message}</p>
+                  </div>
+                );
+              })
             )}
           </CardContent>
         </Card>

@@ -74,7 +74,7 @@ export function Inbox({ engagementId }: { engagementId: string }) {
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-sm font-mono">Inbox</CardTitle>
+          <CardTitle className="text-sm font-mono">Chat</CardTitle>
           <span
             className={`h-2 w-2 rounded-full ${live ? "bg-pk-green" : "bg-muted-foreground"}`}
             title={live ? "Live (SSE)" : "Polling"}
