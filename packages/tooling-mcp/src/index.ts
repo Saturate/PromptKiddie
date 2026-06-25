@@ -2,6 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { execFile } from "node:child_process";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { z } from "zod";
 import { parseNmapXml } from "./parsers/nmap.js";
 import { parseNucleiJsonl } from "./parsers/nuclei.js";
@@ -9,6 +10,20 @@ import { parseNucleiJsonl } from "./parsers/nuclei.js";
 const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
 const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
+const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
+
+try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
+
+function logToolCall(tool: string, args: Record<string, unknown>, exitCode: number, durationMs: number) {
+  const entry = {
+    ts: new Date().toISOString(),
+    tool,
+    args,
+    exitCode,
+    durationMs,
+  };
+  try { appendFileSync(`${LOG_DIR}/tool-calls.jsonl`, JSON.stringify(entry) + "\n"); } catch {}
+}
 
 function hostExec(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
@@ -23,21 +38,25 @@ function hostExec(cmd: string, args: string[]): Promise<{ stdout: string; stderr
   });
 }
 
-function dockerExec(cmd: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
+function dockerExec(cmd: string[], toolName?: string): Promise<{ stdout: string; stderr: string; code: number }> {
+  const start = Date.now();
   return new Promise((resolve) => {
     const proc = execFile(
       "docker",
       ["exec", CONTAINER, ...cmd],
       { maxBuffer: 10 * 1024 * 1024, timeout: TIMEOUT },
       (err, stdout, stderr) => {
-        resolve({
+        const r = {
           stdout: stdout ?? "",
           stderr: stderr ?? "",
           code: err && "code" in err ? (err.code as number) : err ? 1 : 0,
-        });
+        };
+        if (toolName) logToolCall(toolName, { cmd }, r.code, Date.now() - start);
+        resolve(r);
       },
     );
     proc.on("error", (err) => {
+      if (toolName) logToolCall(toolName, { cmd }, 1, Date.now() - start);
       resolve({ stdout: "", stderr: err.message, code: 1 });
     });
   });
@@ -74,7 +93,7 @@ server.tool(
     if (ports) args.push("-p", ports);
     if (flags) args.push(...flags.split(/\s+/));
     if (nmapFlags) args.push("--", ...nmapFlags.split(/\s+/));
-    return result(await dockerExec(args));
+    return result(await dockerExec(args, "rustscan"));
   },
 );
 
@@ -91,7 +110,7 @@ server.tool(
     if (flags) args.push(...flags.split(/\s+/));
     if (!raw) args.push("-oX", "-");
     args.push(target);
-    const r = await dockerExec(args);
+    const r = await dockerExec(args, "nmap");
     if (raw || r.code !== 0) return result(r);
     const parsed = parseNmapXml(r.stdout);
     return { content: [{ type: "text" as const, text: JSON.stringify(parsed, null, 2) }] };
@@ -112,7 +131,7 @@ server.tool(
     const wl = wordlist ?? "/usr/share/wordlists/dirb/common.txt";
     const args = ["ffuf", "-u", url, "-w", wl, "-o", "/dev/stdout", "-of", "json"];
     if (flags) args.push(...flags.split(/\s+/));
-    return result(await dockerExec(args));
+    return result(await dockerExec(args, "ffuf"));
   },
 );
 
@@ -131,7 +150,7 @@ server.tool(
     const args = ["nuclei", "-u", target, "-jsonl"];
     if (templates) args.push(...templates.split(/\s+/));
     if (flags) args.push(...flags.split(/\s+/));
-    const r = await dockerExec(args);
+    const r = await dockerExec(args, "nuclei");
     if (raw || r.code !== 0) return result(r);
     const findings = parseNucleiJsonl(r.stdout);
     return { content: [{ type: "text" as const, text: JSON.stringify(findings, null, 2) }] };
@@ -153,7 +172,7 @@ server.tool(
     const wl = wordlist ?? "/usr/share/wordlists/dirb/common.txt";
     const args = ["gobuster", mode, "-u", target, "-w", wl];
     if (flags) args.push(...flags.split(/\s+/));
-    return result(await dockerExec(args));
+    return result(await dockerExec(args, "gobuster"));
   },
 );
 
@@ -169,7 +188,7 @@ server.tool(
   async ({ target, flags }) => {
     const args = ["nikto", "-h", target, "-Format", "json", "-output", "/dev/stdout"];
     if (flags) args.push(...flags.split(/\s+/));
-    return result(await dockerExec(args));
+    return result(await dockerExec(args, "nikto"));
   },
 );
 
@@ -185,7 +204,7 @@ server.tool(
   async ({ url, flags }) => {
     const args = ["sqlmap", "-u", url, "--batch"];
     if (flags) args.push(...flags.split(/\s+/));
-    return result(await dockerExec(args));
+    return result(await dockerExec(args, "sqlmap"));
   },
 );
 
@@ -200,7 +219,7 @@ server.tool(
   },
   async ({ targets, flags }) => {
     const args = ["sh", "-c", `echo '${targets.replace(/,/g, "\n")}' | httpx-toolkit -json ${flags ?? ""}`];
-    return result(await dockerExec(args));
+    return result(await dockerExec(args, "httpx"));
   },
 );
 
@@ -219,7 +238,7 @@ server.tool(
     if (flags) args.push(...flags.split(/\s+/));
     if (type) args.push(domain, type);
     else args.push(domain);
-    return result(await dockerExec(args));
+    return result(await dockerExec(args, "dig"));
   },
 );
 
@@ -227,7 +246,7 @@ server.tool(
   "whois",
   "WHOIS domain/IP lookup.",
   { target: z.string().describe("Domain or IP") },
-  async ({ target }) => result(await dockerExec(["whois", target])),
+  async ({ target }) => result(await dockerExec(["whois", target], "whois")),
 );
 
 server.tool(
@@ -236,7 +255,7 @@ server.tool(
   {
     command: z.string().describe("Shell command to execute"),
   },
-  async ({ command }) => result(await dockerExec(["sh", "-c", command])),
+  async ({ command }) => result(await dockerExec(["sh", "-c", command], "tooling_exec")),
 );
 
 // --- Network isolation per engagement --------------------------------------

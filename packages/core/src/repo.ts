@@ -8,6 +8,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "./db.js";
 import {
   activityLog,
+  agentLog,
   agentRuns,
   engagements,
   evidence,
@@ -340,6 +341,29 @@ export async function deleteEngagement(id: string) {
   const db = getDb();
   const [row] = await db.delete(engagements).where(eq(engagements.id, id)).returning();
   return row;
+}
+
+// --- Agent reasoning log ---------------------------------------------------
+
+export async function addAgentLog(input: {
+  engagementId: string;
+  agent: string;
+  phase: "scoping" | "recon" | "enum" | "exploit" | "postexploit" | "report";
+  message: string;
+  category?: string;
+}) {
+  const db = getDb();
+  const [row] = await db.insert(agentLog).values(input).returning();
+  return row;
+}
+
+export async function listAgentLog(engagementId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(agentLog)
+    .where(eq(agentLog.engagementId, engagementId))
+    .orderBy(desc(agentLog.createdAt));
 }
 
 export async function logActivity(input: {
