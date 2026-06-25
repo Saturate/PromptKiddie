@@ -97,6 +97,8 @@ export const engagements = pgTable("engagements", {
   slug: text("slug").notNull().unique(),
   type: engagementType("type").notNull(),
   status: engagementStatus("status").notNull().default("scoping"),
+  /** Current methodology phase (state machine). */
+  phase: phase("phase").notNull().default("scoping"),
   /** Free-form scope summary; structured targets live in `targets`. */
   scope: text("scope"),
   /** Rules of Engagement: authorization, allowed/disallowed actions, windows. */

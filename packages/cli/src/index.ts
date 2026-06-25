@@ -9,11 +9,13 @@ import {
   addEvidence,
   addFinding,
   addTarget,
+  advancePhase,
   closeDb,
   createEngagement,
   deleteEngagement,
   finishAgentRun,
   getEngagement,
+  getPhase,
   listActivity,
   listEngagements,
   listMessages,
@@ -95,6 +97,21 @@ engagement
     if (!row) throw new Error(`No engagement with id ${id}`);
     console.error(`Deleted engagement: ${row.name} (${id})`);
     out(row);
+  });
+
+engagement
+  .command("phase")
+  .argument("[target-phase]", "scoping | recon | enum | exploit | postexploit | report")
+  .option("--engagement <id>")
+  .action(async (targetPhase: string | undefined, o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    if (!targetPhase) {
+      out(await getPhase(eid));
+      return;
+    }
+    const result = await advancePhase(eid, targetPhase as Parameters<typeof advancePhase>[1]);
+    if (result.warning) console.error(`Warning: ${result.warning}`);
+    out({ phase: result.engagement?.phase, warning: result.warning });
   });
 
 // --- target ----------------------------------------------------------------

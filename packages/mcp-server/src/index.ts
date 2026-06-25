@@ -7,9 +7,11 @@ import {
   addEvidence,
   addFinding,
   addTarget,
+  advancePhase,
   closeDb,
   createEngagement,
   deleteEngagement,
+  getPhase,
   finishAgentRun,
   getEngagement,
   listActivity,
@@ -68,6 +70,23 @@ server.tool(
       findings: await listFindings(id),
     });
   },
+);
+
+server.tool(
+  "advance_phase",
+  "Move the engagement to a methodology phase. Warns if skipping phases but allows it.",
+  {
+    id: z.string().uuid(),
+    phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]),
+  },
+  async ({ id, phase }) => json(await advancePhase(id, phase)),
+);
+
+server.tool(
+  "get_phase",
+  "Get the current methodology phase for an engagement",
+  { id: z.string().uuid() },
+  async ({ id }) => json(await getPhase(id)),
 );
 
 server.tool(

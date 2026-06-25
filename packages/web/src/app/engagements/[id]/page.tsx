@@ -73,7 +73,7 @@ export default async function EngagementPage({
     listEvidence(id),
   ]);
 
-  const currentPhase = activity.length > 0 ? activity[0].phase : null;
+  const currentPhase = engagement.phase ?? "scoping";
 
   return (
     <div className="container stack">
