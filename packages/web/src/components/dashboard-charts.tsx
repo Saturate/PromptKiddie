@@ -29,6 +29,15 @@ const PHASE_COLORS: Record<string, string> = {
   report: "#22c55e",
 };
 
+const tooltipStyle = {
+  background: "#1a1a1a",
+  border: "1px solid #333",
+  borderRadius: "6px",
+  fontFamily: "monospace",
+  fontSize: "12px",
+  color: "#e5e5e5",
+};
+
 interface SeverityData {
   name: string;
   value: number;
@@ -60,7 +69,7 @@ export function SeverityPieChart({ data }: { data: SeverityData[] }) {
           innerRadius={50}
           outerRadius={80}
           strokeWidth={2}
-          stroke="hsl(var(--background))"
+          stroke="#0a0a0a"
         >
           {filtered.map((entry) => (
             <Cell
@@ -69,16 +78,7 @@ export function SeverityPieChart({ data }: { data: SeverityData[] }) {
             />
           ))}
         </Pie>
-        <Tooltip
-          contentStyle={{
-            background: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "6px",
-            fontFamily: "var(--font-mono)",
-            fontSize: "12px",
-          }}
-          itemStyle={{ color: "hsl(var(--foreground))" }}
-        />
+        <Tooltip contentStyle={tooltipStyle} />
       </PieChart>
     </ResponsiveContainer>
   );
@@ -97,33 +97,20 @@ export function PhaseBarChart({ data }: { data: PhaseData[] }) {
       <BarChart data={data} barCategoryGap="20%">
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 10, fontFamily: "var(--font-mono)", fill: "hsl(var(--muted-foreground))" }}
+          tick={{ fontSize: 10, fontFamily: "monospace", fill: "#999" }}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
-          tick={{ fontSize: 10, fontFamily: "var(--font-mono)", fill: "hsl(var(--muted-foreground))" }}
+          tick={{ fontSize: 10, fontFamily: "monospace", fill: "#999" }}
           axisLine={false}
           tickLine={false}
           allowDecimals={false}
         />
-        <Tooltip
-          contentStyle={{
-            background: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "6px",
-            fontFamily: "var(--font-mono)",
-            fontSize: "12px",
-          }}
-          itemStyle={{ color: "hsl(var(--foreground))" }}
-          cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
-        />
+        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#222", opacity: 0.5 }} />
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
           {data.map((entry) => (
-            <Cell
-              key={entry.name}
-              fill={PHASE_COLORS[entry.name] ?? "#6b7280"}
-            />
+            <Cell key={entry.name} fill={PHASE_COLORS[entry.name] ?? "#6b7280"} />
           ))}
         </Bar>
       </BarChart>

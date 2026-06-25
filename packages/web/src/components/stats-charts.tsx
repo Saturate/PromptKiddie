@@ -26,11 +26,12 @@ interface ChartItem {
 }
 
 const tooltipStyle = {
-  background: "hsl(var(--card))",
-  border: "1px solid hsl(var(--border))",
+  background: "#1a1a1a",
+  border: "1px solid #333",
   borderRadius: "6px",
-  fontFamily: "var(--font-mono)",
+  fontFamily: "monospace",
   fontSize: "12px",
+  color: "#e5e5e5",
 };
 
 export function ToolFrequencyChart({ data }: { data: ChartItem[] }) {
@@ -46,7 +47,7 @@ export function ToolFrequencyChart({ data }: { data: ChartItem[] }) {
       <BarChart data={data} layout="vertical" barCategoryGap="15%">
         <XAxis
           type="number"
-          tick={{ fontSize: 10, fontFamily: "var(--font-mono)", fill: "hsl(var(--muted-foreground))" }}
+          tick={{ fontSize: 10, fontFamily: "monospace", fill: "#999" }}
           axisLine={false}
           tickLine={false}
           allowDecimals={false}
@@ -54,17 +55,13 @@ export function ToolFrequencyChart({ data }: { data: ChartItem[] }) {
         <YAxis
           type="category"
           dataKey="name"
-          tick={{ fontSize: 11, fontFamily: "var(--font-mono)", fill: "hsl(var(--foreground))" }}
+          tick={{ fontSize: 11, fontFamily: "monospace", fill: "#ccc" }}
           axisLine={false}
           tickLine={false}
           width={90}
         />
-        <Tooltip
-          contentStyle={tooltipStyle}
-          itemStyle={{ color: "hsl(var(--foreground))" }}
-          cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
-        />
-        <Bar dataKey="value" radius={[0, 4, 4, 0]} fill="#22c55e">
+        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#222", opacity: 0.5 }} />
+        <Bar dataKey="value" radius={[0, 4, 4, 0]}>
           {data.map((entry) => (
             <Cell key={entry.name} fill={entry.color ?? "#22c55e"} />
           ))}
@@ -87,21 +84,17 @@ export function PhaseDistributionChart({ data }: { data: ChartItem[] }) {
       <BarChart data={data} barCategoryGap="20%">
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 10, fontFamily: "var(--font-mono)", fill: "hsl(var(--muted-foreground))" }}
+          tick={{ fontSize: 10, fontFamily: "monospace", fill: "#999" }}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
-          tick={{ fontSize: 10, fontFamily: "var(--font-mono)", fill: "hsl(var(--muted-foreground))" }}
+          tick={{ fontSize: 10, fontFamily: "monospace", fill: "#999" }}
           axisLine={false}
           tickLine={false}
           allowDecimals={false}
         />
-        <Tooltip
-          contentStyle={tooltipStyle}
-          itemStyle={{ color: "hsl(var(--foreground))" }}
-          cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
-        />
+        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#222", opacity: 0.5 }} />
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
           {data.map((entry) => (
             <Cell key={entry.name} fill={PHASE_COLORS[entry.name] ?? "#6b7280"} />
