@@ -6,6 +6,7 @@
 import "dotenv/config";
 import { Command } from "commander";
 import {
+  addAgentLog,
   addEvidence,
   addFinding,
   addTarget,
@@ -323,6 +324,26 @@ msg
     out(await sendMessage({ body: o.body, direction: o.direction, author: o.author, engagementId }));
   });
 
+// --- think (agent reasoning log) -------------------------------------------
+program
+  .command("think")
+  .description("Log agent reasoning/thinking to the agent log")
+  .argument("<message>", "what you're thinking, observing, or deciding")
+  .option("--phase <phase>", "current phase", "recon")
+  .option("--agent <name>", "agent name", "agent")
+  .option("--category <cat>", "hypothesis | decision | observation | stuck | progress")
+  .option("--engagement <id>")
+  .action(async (message: string, o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await addAgentLog({
+      engagementId: eid,
+      agent: o.agent,
+      phase: o.phase,
+      message,
+      category: o.category,
+    }));
+  });
+
 // --- exec (run tool in container + auto-log) -------------------------------
 const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
 
@@ -330,6 +351,7 @@ program
   .command("exec")
   .description("Run a command in the tooling container and auto-log it")
   .option("--phase <phase>", "scoping | recon | enum | exploit | postexploit | report", "recon")
+  .option("--agent <name>", "agent name for attribution", "agent")
   .option("--engagement <id>")
   .argument("<command...>", "command to run")
   .action(async (cmd: string[], o) => {
@@ -360,8 +382,9 @@ program
     await logActivity({
       engagementId: eid,
       phase: o.phase,
-      action: `${toolName} (${duration}ms, exit ${result.code})`,
+      action: `[${o.agent}] ${toolName} (${duration}ms, exit ${result.code})`,
       command: cmdStr,
+      actor: "agent",
     });
 
     if (result.stdout) process.stdout.write(result.stdout);
