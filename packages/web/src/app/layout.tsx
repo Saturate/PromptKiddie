@@ -4,6 +4,7 @@ import { JetBrains_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "next-themes";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 
@@ -22,8 +23,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={cn("dark", mono.variable)} suppressHydrationWarning>
+    <html lang="en" className={mono.variable} suppressHydrationWarning>
       <body className="font-mono antialiased">
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
         <TooltipProvider>
           <SidebarProvider
             style={
@@ -44,6 +46,7 @@ export default async function RootLayout({
             </SidebarInset>
           </SidebarProvider>
         </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
