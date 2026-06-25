@@ -16,27 +16,25 @@ import {
   SidebarGroupLabel,
 } from "@/components/ui/sidebar"
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import {
   LayoutDashboardIcon,
+  FolderOpenIcon,
   BarChart3Icon,
   Settings2Icon,
   BookOpenIcon,
   TerminalIcon,
   TargetIcon,
-  ChevronRightIcon,
-  CirclePlusIcon,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
 
 const navMain = [
   {
     title: "Dashboard",
     url: "/",
     icon: <LayoutDashboardIcon />,
+  },
+  {
+    title: "Engagements",
+    url: "/engagements",
+    icon: <FolderOpenIcon />,
   },
   {
     title: "Stats",
@@ -66,6 +64,8 @@ interface Engagement {
   status: string
 }
 
+const MAX_RECENTS = 5
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [engagements, setEngagements] = React.useState<Engagement[]>([])
 
@@ -76,20 +76,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       .catch(() => {})
   }, [])
 
-  const grouped = React.useMemo(() => {
-    const groups: Record<string, Engagement[]> = {}
-    for (const e of engagements) {
-      const key = e.group || "Other"
-      if (!groups[key]) groups[key] = []
-      groups[key].push(e)
-    }
-    const sorted = Object.entries(groups).sort(([a], [b]) => {
-      if (a === "Other") return 1
-      if (b === "Other") return -1
-      return a.localeCompare(b)
-    })
-    return sorted
-  }, [engagements])
+  const recents = engagements.slice(0, MAX_RECENTS)
+  const hasMore = engagements.length > MAX_RECENTS
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -109,55 +97,37 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         <NavMain items={navMain} />
 
-        {/* Engagements grouped */}
+        {/* Recents */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel className="flex items-center justify-between pr-2">
-            <span>Engagements</span>
+            <span>Recents</span>
             <CreateEngagementDialog />
           </SidebarGroupLabel>
           <SidebarMenu>
-            {grouped.length === 0 && (
+            {recents.length === 0 && (
               <SidebarMenuItem>
                 <SidebarMenuButton className="text-sidebar-foreground/50" disabled>
                   <span>No engagements</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
-            {grouped.map(([groupName, items]) =>
-              grouped.length === 1 && groupName === "Other" ? (
-                // No grouping needed if everything is ungrouped
-                items.map((e) => (
-                  <SidebarMenuItem key={e.id}>
-                    <SidebarMenuButton render={<a href={`/engagements/${e.id}`} />}>
-                      <TargetIcon />
-                      <span>{e.name}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))
-              ) : (
-                <Collapsible key={groupName} defaultOpen className="group/collapsible">
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
-                      <ChevronRightIcon className="size-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
-                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                        {groupName}
-                      </span>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenu className="pl-4">
-                        {items.map((e) => (
-                          <SidebarMenuItem key={e.id}>
-                            <SidebarMenuButton render={<a href={`/engagements/${e.id}`} />}>
-                              <TargetIcon />
-                              <span>{e.name}</span>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        ))}
-                      </SidebarMenu>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
-              ),
+            {recents.map((e) => (
+              <SidebarMenuItem key={e.id}>
+                <SidebarMenuButton render={<a href={`/engagements/${e.id}`} />}>
+                  <TargetIcon />
+                  <span>{e.name}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+            {hasMore && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  render={<a href="/engagements" />}
+                  className="text-muted-foreground text-xs"
+                >
+                  <span>View all ({engagements.length})</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             )}
           </SidebarMenu>
         </SidebarGroup>
