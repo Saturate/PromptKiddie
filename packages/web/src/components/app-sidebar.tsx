@@ -1,145 +1,95 @@
-"use client";
+"use client"
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import * as React from "react"
+import { NavMain } from "@/components/nav-main"
+import { NavDocuments } from "@/components/nav-documents"
+import { NavSecondary } from "@/components/nav-secondary"
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
+  SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuItem,
   SidebarMenuButton,
-  SidebarFooter,
-  SidebarRail,
-} from "@/components/ui/sidebar";
+  SidebarMenuItem,
+} from "@/components/ui/sidebar"
 import {
   LayoutDashboardIcon,
-  CrosshairIcon,
-  ShieldAlertIcon,
-  ActivityIcon,
-  FileTextIcon,
-  MessageSquareIcon,
   TargetIcon,
-} from "lucide-react";
+  Settings2Icon,
+  BookOpenIcon,
+  TerminalIcon,
+} from "lucide-react"
 
-interface Engagement {
-  id: string;
-  name: string;
-  type: string;
-  status: string;
-  phase: string | null;
-}
+const navMain = [
+  {
+    title: "Dashboard",
+    url: "/",
+    icon: <LayoutDashboardIcon />,
+  },
+  {
+    title: "Targets",
+    url: "#",
+    icon: <TargetIcon />,
+  },
+]
 
-const engagementSections = [
-  { label: "Overview", hash: "", icon: LayoutDashboardIcon },
-  { label: "Targets", hash: "#targets", icon: CrosshairIcon },
-  { label: "Findings", hash: "#findings", icon: ShieldAlertIcon },
-  { label: "Activity", hash: "#activity", icon: ActivityIcon },
-  { label: "Evidence", hash: "#evidence", icon: FileTextIcon },
-  { label: "Inbox", hash: "#inbox", icon: MessageSquareIcon },
-];
+const navSecondary = [
+  {
+    title: "Settings",
+    url: "#",
+    icon: <Settings2Icon />,
+  },
+  {
+    title: "Docs",
+    url: "#",
+    icon: <BookOpenIcon />,
+  },
+]
 
-export function AppSidebar({ engagements }: { engagements: Engagement[] }) {
-  const pathname = usePathname();
-  const activeEngId = pathname.startsWith("/engagements/")
-    ? pathname.split("/")[2]
-    : null;
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [engagements, setEngagements] = React.useState<
+    { id: string; name: string; phase: string | null }[]
+  >([])
+
+  React.useEffect(() => {
+    fetch("/api/engagements")
+      .then((r) => r.json())
+      .then(setEngagements)
+      .catch(() => {})
+  }, [])
+
+  const engagementDocs = engagements.map((e) => ({
+    name: e.name,
+    url: `/engagements/${e.id}`,
+    icon: <TargetIcon />,
+  }))
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="px-4 py-4">
-        <Link href="/" className="flex items-center gap-2 no-underline">
-          <TargetIcon className="h-5 w-5 text-pk-green" />
-          <span className="text-sm font-bold text-pk-green font-mono tracking-tight group-data-[collapsible=icon]:hidden">
-            PromptKiddie
-          </span>
-        </Link>
+    <Sidebar collapsible="offcanvas" {...props}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              className="data-[slot=sidebar-menu-button]:p-1.5!"
+              render={<a href="/" />}
+            >
+              <TerminalIcon className="size-5!" />
+              <span className="text-base font-semibold">PromptKiddie</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
-
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  render={<Link href="/" />}
-                  isActive={pathname === "/"}
-                  className="font-mono text-xs"
-                >
-                  <LayoutDashboardIcon className="h-4 w-4" />
-                  <span>Dashboard</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="font-mono text-[10px] uppercase tracking-widest">
-            Engagements
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {engagements.length === 0 && (
-                <SidebarMenuItem>
-                  <span className="px-2 py-1 text-[11px] text-muted-foreground font-mono">
-                    No engagements
-                  </span>
-                </SidebarMenuItem>
-              )}
-              {engagements.map((e) => (
-                <SidebarMenuItem key={e.id}>
-                  <SidebarMenuButton
-                    render={<Link href={`/engagements/${e.id}`} />}
-                    isActive={activeEngId === e.id}
-                    className="font-mono text-xs"
-                  >
-                    <CrosshairIcon className="h-4 w-4" />
-                    <span className="truncate">{e.name}</span>
-                  </SidebarMenuButton>
-                  <SidebarMenuBadge className="font-mono text-[9px] uppercase">
-                    {e.phase ?? e.status}
-                  </SidebarMenuBadge>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {activeEngId && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="font-mono text-[10px] uppercase tracking-widest">
-              Sections
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {engagementSections.map((s) => (
-                  <SidebarMenuItem key={s.label}>
-                    <SidebarMenuButton
-                      render={<Link href={`/engagements/${activeEngId}${s.hash}`} />}
-                      className="font-mono text-xs"
-                    >
-                      <s.icon className="h-4 w-4" />
-                      <span>{s.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        <NavMain items={navMain} />
+        <NavDocuments items={engagementDocs} />
+        <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
-
-      <SidebarFooter className="px-4 py-2">
-        <p className="text-[10px] text-muted-foreground font-mono group-data-[collapsible=icon]:hidden">
+      <SidebarFooter>
+        <div className="px-2 py-1 text-xs text-muted-foreground font-mono">
           promptkiddie v0.1.0
-        </p>
+        </div>
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
-  );
+  )
 }
