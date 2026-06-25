@@ -119,7 +119,9 @@ guessing.
   Fewer requests = less chance of triggering IDS = faster results.
 - **Single-purpose commands.** One command, one objective. Do not chain unrelated operations.
   Read a file alone, list a directory alone. Each command should have one clear intent.
-- **No speculative piping.** Run the command first, read the output, then filter separately.
+- **Intentional piping only.** Piping to filter large output is good (`grep open` on nmap
+  results). Piping unrelated commands together is bad (`cat flag.txt | ls`). Each step in a
+  pipe should serve the same objective.
 - **Use `pk exec`** for all tool commands (auto-logs to activity). Do not use raw `docker exec`.
 - **Use `pk think`** to log reasoning (shows in Agent Log tab on the frontend).
 - **Log flags properly:** save to file, `pk evidence add --type flag`, `pk finding add`,
