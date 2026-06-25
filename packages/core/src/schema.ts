@@ -70,6 +70,7 @@ export const phase = pgEnum("phase", [
 export const actor = pgEnum("actor", ["orchestrator", "agent", "human"]);
 
 export const evidenceType = pgEnum("evidence_type", [
+  "flag",
   "screenshot",
   "scan",
   "output",

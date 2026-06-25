@@ -233,7 +233,7 @@ const ev = program.command("evidence").description("Manage evidence artifacts");
 
 ev.command("add")
   .requiredOption("--path <path>", "path under engagements/<slug>/")
-  .requiredOption("--type <type>", "screenshot | scan | output | file")
+  .requiredOption("--type <type>", "flag | screenshot | scan | output | file")
   .option("--finding <id>", "link to a finding")
   .option("--engagement <id>")
   .action(async (o) => {
