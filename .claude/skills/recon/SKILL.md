@@ -30,6 +30,14 @@ engagement's RoE. Log targets, activity, and evidence with `pk`.
 5. **Summarize** the surface (open ports, services, versions, interesting endpoints) and
    hand off candidate areas to enumeration.
 
+## Inbox
+
+Keep the human informed via the inbox:
+`pk msg send --body "<status>" --direction outbound --author agent`
+
+Send a message when starting, when you find something notable, and when done.
+Check for inbound messages with `pk msg poll` and respond if any.
+
 ## Tips
 
 - Tag anything notable for ATT&CK Reconnaissance (TA0043).
