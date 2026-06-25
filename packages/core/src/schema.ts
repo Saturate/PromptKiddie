@@ -103,6 +103,8 @@ export const engagements = pgTable("engagements", {
   group: text("group"),
   /** Link to source room/box (e.g. "https://tryhackme.com/room/neighbour"). */
   sourceUrl: text("source_url"),
+  /** Room brief / task description for CTFs. */
+  brief: text("brief"),
   /** Free-form scope summary; structured targets live in `targets`. */
   scope: text("scope"),
   /** Rules of Engagement: authorization, allowed/disallowed actions, windows. */

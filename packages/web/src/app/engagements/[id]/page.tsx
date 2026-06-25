@@ -5,6 +5,7 @@ import {
   listAgentRuns,
   listEvidence,
   listFindings,
+  listObjectives,
   listTargets,
 } from "@promptkiddie/core";
 import { notFound } from "next/navigation";
@@ -71,12 +72,13 @@ export default async function EngagementPage({
   const engagement = await getEngagement(id);
   if (!engagement) notFound();
 
-  const [targets, findings, activity, evidence, agentRuns] = await Promise.all([
+  const [targets, findings, activity, evidence, agentRuns, objectives] = await Promise.all([
     listTargets(id),
     listFindings(id),
     listActivity(id),
     listEvidence(id),
     listAgentRuns(id),
+    listObjectives(id),
   ]);
 
   const hasRunningAgent = agentRuns.some((r) => r.status === "running");
@@ -109,12 +111,81 @@ export default async function EngagementPage({
           </Badge>
         </div>
         <PhaseIndicator currentPhase={currentPhase} />
+        {engagement.sourceUrl && (
+          <a
+            href={engagement.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-mono text-pk-green hover:underline"
+          >
+            {engagement.sourceUrl} <span className="text-muted-foreground">&#8599;</span>
+          </a>
+        )}
         {engagement.scope && (
           <p className="text-sm text-muted-foreground font-mono">
             {engagement.scope}
           </p>
         )}
       </div>
+
+      {/* Brief */}
+      {engagement.brief && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-mono">Brief</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="font-mono text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">
+              {engagement.brief}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Objectives / CTF Tasks */}
+      {objectives.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-mono">
+              Objectives <span className="text-muted-foreground">({objectives.filter(o => o.completed).length}/{objectives.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {objectives.map((o) => (
+                <div key={o.id} className="flex items-start gap-3 border border-border rounded-lg p-3">
+                  <div className="mt-0.5 text-lg">
+                    {o.completed ? (
+                      <span className="text-pk-green">&#10003;</span>
+                    ) : (
+                      <span className="text-muted-foreground/40">&#9675;</span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="font-mono text-[10px]">Task {o.taskNumber}</Badge>
+                      <span className="font-mono text-sm font-medium">{o.title}</span>
+                    </div>
+                    {o.description && (
+                      <p className="font-mono text-xs text-muted-foreground line-clamp-2">{o.description}</p>
+                    )}
+                    {o.flagFormat && (
+                      <p className="font-mono text-[10px] text-muted-foreground">Format: {o.flagFormat}</p>
+                    )}
+                    <div className="font-mono text-xs">
+                      {o.flag ? (
+                        <span className="text-pk-green font-semibold">{o.flag}</span>
+                      ) : (
+                        <span className="text-muted-foreground/50">---</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">

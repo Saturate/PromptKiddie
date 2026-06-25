@@ -24,6 +24,13 @@ export default async function RootLayout({
 }) {
   return (
     <html lang="en" className={mono.variable} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"){document.documentElement.classList.add(t)}else if(!t||t==="system"){if(window.matchMedia("(prefers-color-scheme:dark)").matches){document.documentElement.classList.add("dark")}}}catch(e){}})()`,
+          }}
+        />
+      </head>
       <body className="font-mono antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
         <TooltipProvider>

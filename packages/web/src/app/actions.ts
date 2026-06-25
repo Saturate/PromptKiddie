@@ -8,6 +8,8 @@ export async function createEngagementAction(formData: FormData) {
   const type = formData.get("type") as string;
   const group = formData.get("group") as string;
   const scope = formData.get("scope") as string;
+  const sourceUrl = formData.get("sourceUrl") as string;
+  const brief = formData.get("brief") as string;
   if (!name?.trim() || !type) return;
 
   const row = await createEngagement({
@@ -15,6 +17,8 @@ export async function createEngagementAction(formData: FormData) {
     type: type as "ctf" | "whitebox" | "blackbox" | "bugbounty",
     group: group?.trim() || undefined,
     scope: scope?.trim() || undefined,
+    sourceUrl: sourceUrl?.trim() || undefined,
+    brief: brief?.trim() || undefined,
   });
 
   redirect(`/engagements/${row.id}`);

@@ -36,6 +36,7 @@ export async function createEngagement(input: {
   scope?: string;
   group?: string;
   sourceUrl?: string;
+  brief?: string;
 }) {
   const db = getDb();
   let slug = slugify(input.name);
@@ -54,6 +55,7 @@ export async function createEngagement(input: {
       scope: input.scope,
       group: input.group,
       sourceUrl: input.sourceUrl,
+      brief: input.brief,
     })
     .returning();
   return row;
