@@ -200,7 +200,7 @@ server.tool(
   {
     engagementId: z.string().uuid(),
     path: z.string(),
-    type: z.enum(["screenshot", "scan", "output", "file"]),
+    type: z.enum(["flag", "screenshot", "scan", "output", "file"]),
     findingId: z.string().uuid().optional(),
   },
   async (input) => json(await addEvidence(input)),
