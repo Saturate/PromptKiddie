@@ -344,6 +344,68 @@ program
     }));
   });
 
+// --- vpn (manage VPN in tooling container) ---------------------------------
+const vpn = program.command("vpn").description("Manage VPN in the tooling container");
+
+vpn
+  .command("up")
+  .description("Start OpenVPN in the tooling container")
+  .option("--config <path>", "config file path inside container", "/vpn/config.ovpn")
+  .action(async (o) => {
+    const { execFile: exec } = await import("node:child_process");
+    const container = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+
+    const run = (args: string[]) => new Promise<string>((resolve, reject) => {
+      exec("docker", ["exec", container, ...args], { timeout: 30000 }, (err, stdout) => {
+        if (err) reject(err);
+        else resolve(stdout);
+      });
+    });
+
+    console.error("[vpn] Starting OpenVPN...");
+    await run(["openvpn", "--config", o.config, "--daemon", "--log", "/var/log/openvpn.log"]);
+
+    for (let i = 0; i < 30; i++) {
+      try {
+        const out = await run(["ip", "-4", "addr", "show", "tun0"]);
+        const match = out.match(/inet ([\d.]+)/);
+        if (match) {
+          console.error(`[vpn] Connected: tun0 = ${match[1]}`);
+          return;
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    console.error("[vpn] WARNING: tun0 not up after 30s. Check: docker exec " + container + " cat /var/log/openvpn.log");
+  });
+
+vpn
+  .command("down")
+  .description("Stop OpenVPN in the tooling container")
+  .action(async () => {
+    const { execFile: exec } = await import("node:child_process");
+    const container = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+    exec("docker", ["exec", container, "killall", "openvpn"], (err) => {
+      if (err) console.error("[vpn] OpenVPN not running or kill failed");
+      else console.error("[vpn] Stopped");
+    });
+  });
+
+vpn
+  .command("status")
+  .description("Check VPN status in the tooling container")
+  .action(async () => {
+    const { execFile: exec } = await import("node:child_process");
+    const container = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+    exec("docker", ["exec", container, "ip", "-4", "addr", "show", "tun0"], (err, stdout) => {
+      if (err || !stdout) console.log("VPN: disconnected");
+      else {
+        const match = stdout.match(/inet ([\d.]+)/);
+        console.log(match ? `VPN: connected (${match[1]})` : "VPN: disconnected");
+      }
+    });
+  });
+
 // --- exec (run command + auto-log) -----------------------------------------
 const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
 const USE_DOCKER = process.env.PK_EXEC_MODE !== "local";

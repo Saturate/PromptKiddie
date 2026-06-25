@@ -23,12 +23,16 @@ services:
       dockerfile: Dockerfile
     container_name: promptkiddie-tooling
     restart: unless-stopped
-    network_mode: host
     volumes:
       - ./engagements:/workspace/engagements
+      - ${PK_VPN_CONFIG:-./vpn}:/vpn:ro
     cap_add:
       - NET_RAW
       - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
 
   # --- Test targets (optional, for local testing) --------------------------
   dvwa:

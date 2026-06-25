@@ -28,5 +28,8 @@ pgdata/
 .DS_Store
 scratch/
 
+# VPN configs (contains credentials)
+vpn/
+
 # Local CLI state (active engagement pointer)
 .pk/

@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     john hashcat \
     whatweb wafw00f \
     dnsutils whois curl wget git unzip jq \
+    openvpn iproute2 iputils-ping \
     && rm -rf /var/lib/apt/lists/*
 
 # rustcat (build from source - no arm64 binary available)
@@ -25,5 +26,9 @@ RUN ARCH=$(dpkg --print-architecture) \
     && unzip /tmp/rustscan.zip -d /usr/local/bin \
     && chmod +x /usr/local/bin/rustscan && rm /tmp/rustscan.zip
 
+# Entrypoint: start OpenVPN if config is mounted, then sleep
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 WORKDIR /workspace
-ENTRYPOINT ["sleep", "infinity"]
+ENTRYPOINT ["/entrypoint.sh"]
