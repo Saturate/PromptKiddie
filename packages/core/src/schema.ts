@@ -137,6 +137,11 @@ export const objectives = pgTable(
   (t) => [index("objectives_engagement_idx").on(t.engagementId)],
 );
 
+export const targetStatus = pgEnum("target_status", [
+  "active",
+  "expired",
+]);
+
 /** Hosts/domains/URLs/apps/repos within an engagement, with in-scope flag. */
 export const targets = pgTable(
   "targets",
@@ -148,6 +153,8 @@ export const targets = pgTable(
     kind: targetKind("kind").notNull(),
     identifier: text("identifier").notNull(),
     inScope: boolean("in_scope").notNull().default(false),
+    /** Whether this target is still reachable. Expired = IP changed or machine stopped. */
+    status: targetStatus("status").notNull().default("active"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
