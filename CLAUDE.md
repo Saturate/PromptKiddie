@@ -42,6 +42,21 @@ run the owning skill: directly, or via its sub-agent when you need context isola
 brief (to yourself or a sub-agent) must include: the engagement id, the in-scope targets,
 the RoE constraints, and what to produce.
 
+**Auto-progress between phases.** When a phase completes and the next phase has clear work
+to do, start it immediately. Do not pause to ask permission between phases. Report results
+as you go, but keep moving. Only stop if you hit an ambiguity, a scope question, or need
+human input (credentials, VPN, etc.).
+
+**Phase advancement is the orchestrator's job.** Sub-agents do not call `pk engagement
+phase` or `pk engagement status`. They report findings and evidence, then the orchestrator
+decides when to advance. Specifically:
+
+1. Before spawning an agent for a phase, run `pk engagement phase <phase>` yourself.
+2. When the agent returns, review its results, log any follow-up, then advance.
+3. Do not include phase-advancement instructions in agent briefs.
+4. If running agents in the background, use the Monitor tool or periodic checks to
+   track progress and advance phases as work completes.
+
 Always finish an engagement with the **reporting** phase.
 
 ## Logging: the database is the engagement's memory
@@ -50,10 +65,12 @@ Use the `pk` CLI for all state. Everything you do must be reconstructable from t
 
 ```bash
 # Engagements
-pk engagement new --name "<name>" --type <ctf|whitebox|blackbox|bugbounty>
+pk engagement new --name "<name>" --type <ctf|whitebox|blackbox|bugbounty> \
+  [--scope "..."] [--brief "..."] [--source-url "..."] [--group THM]
 pk engagement list
 pk engagement use <id>            # set the active engagement for this shell
-pk engagement show [id]
+pk engagement show [id]           # returns everything: targets, findings, objectives, evidence, artifacts, activity
+pk engagement update <id> [--brief "..."] [--source-url "..."] [--group "..."] [--scope "..."]
 pk engagement status <scoping|active|paused|reporting|done>
 pk engagement delete <id>
 
@@ -69,6 +86,15 @@ pk finding add --title "<t>" --severity <critical|high|medium|low|info> \
 pk finding list
 pk finding update <id> [--status confirmed] [--cvss 8.0] [--severity high] [...]
 
+# Objectives (CTF tasks / flags)
+pk objective add --task-number 1 --title "What is flag 1?" [--flag-format "THM{...}"]
+pk objective list
+pk objective capture <id> --flag "THM{...}"
+
+# Artifacts (loot, creds, documents)
+pk artifact add --title "DB creds" --type credential [--content "user:pass"]
+pk artifact list
+
 # Evidence (hashes the file and links it)
 pk evidence add --path engagements/<slug>/<file> --type <screenshot|scan|output|file> \
   [--finding <id>]
@@ -82,6 +108,11 @@ pk activity list
 # Sub-agent run bookkeeping
 pk agent start --agent <name> --phase <phase>     # prints a run id
 pk agent finish <runId> --status <ok|failed> --summary "..."
+
+# Exec (run tool commands with auto-logging and output truncation)
+pk exec -- nmap -Pn -sT 10.0.0.1  # auto-logs, truncates output >4KB, stores full output
+pk exec --reason "checking for open web ports" -- nmap -p 80,443 10.0.0.1
+pk search "flag"                   # grep stored exec outputs
 
 # Inbox
 pk msg send --body "<reply>"
@@ -126,6 +157,22 @@ guessing.
 - **Use `pk think`** to log reasoning (shows in Agent Log tab on the frontend).
 - **Log flags properly:** save to file, `pk evidence add --type flag`, `pk finding add`,
   then post a short status to inbox. Do not just print flags to the chat.
+
+## VPN
+
+For engagements behind a VPN (THM, HTB, etc.), the tooling container runs OpenVPN:
+
+```bash
+pk vpn up                         # start OpenVPN (config at /vpn/config.ovpn)
+pk vpn down                       # stop OpenVPN
+pk vpn status                     # check connection status + tun0 IP
+```
+
+Place your `.ovpn` config in the `vpn/` directory (mounted read-only to the container at
+`/vpn`). Override the mount path with `PK_VPN_CONFIG` in `.env`.
+
+Before running recon/enum/exploit on external targets, verify the VPN is connected. If
+scanning returns all-filtered or times out, check `pk vpn status` first.
 
 ## Style
 

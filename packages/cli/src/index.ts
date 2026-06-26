@@ -7,10 +7,13 @@ import "dotenv/config";
 import { Command } from "commander";
 import {
   addAgentLog,
+  addArtifact,
   addEvidence,
   addFinding,
+  addObjective,
   addTarget,
   advancePhase,
+  captureFlag,
   closeDb,
   createEngagement,
   deleteEngagement,
@@ -19,16 +22,20 @@ import {
   getEngagement,
   getPhase,
   listActivity,
+  listAgentRuns,
+  listArtifacts,
   listEngagements,
-  listMessages,
   listEvidence,
   listFindings,
+  listMessages,
+  listObjectives,
   listTargets,
   logActivity,
   pollInbox,
   sendMessage,
   setEngagementStatus,
   startAgentRun,
+  updateEngagement,
   updateFinding,
   updateTarget,
 } from "@promptkiddie/core";
@@ -51,8 +58,11 @@ engagement
   .requiredOption("--name <name>")
   .requiredOption("--type <type>", "ctf | whitebox | blackbox | bugbounty")
   .option("--scope <scope>", "free-form scope summary")
+  .option("--brief <brief>", "engagement brief / description")
+  .option("--source-url <url>", "source URL (e.g. THM room, HTB machine)")
+  .option("--group <group>", "engagement group (e.g. THM, HTB)")
   .action(async (o) => {
-    const row = await createEngagement({ name: o.name, type: o.type, scope: o.scope });
+    const row = await createEngagement({ name: o.name, type: o.type, scope: o.scope, brief: o.brief, sourceUrl: o.sourceUrl, group: o.group });
     await setActiveEngagement(row.id);
     console.error(`Created engagement and set it active: ${row.id}`);
     out(row);
@@ -79,7 +89,17 @@ engagement
     const eid = await resolveEngagementId(id);
     const eng = await getEngagement(eid);
     if (!eng) throw new Error(`No engagement with id ${eid}`);
-    out({ engagement: eng, targets: await listTargets(eid), findings: await listFindings(eid) });
+    const activity = await listActivity(eid);
+    out({
+      engagement: eng,
+      targets: await listTargets(eid),
+      findings: await listFindings(eid),
+      objectives: await listObjectives(eid),
+      evidence: await listEvidence(eid),
+      artifacts: await listArtifacts(eid),
+      agentRuns: await listAgentRuns(eid),
+      activity: activity.slice(0, 50),
+    });
   });
 
 engagement
@@ -99,6 +119,24 @@ engagement
     if (!row) throw new Error(`No engagement with id ${id}`);
     console.error(`Deleted engagement: ${row.name} (${id})`);
     out(row);
+  });
+
+engagement
+  .command("update")
+  .argument("<id>")
+  .option("--name <name>")
+  .option("--brief <brief>")
+  .option("--source-url <url>")
+  .option("--group <group>")
+  .option("--scope <scope>")
+  .action(async (id: string, o) => {
+    const updates: Record<string, unknown> = {};
+    if (o.name !== undefined) updates.name = o.name;
+    if (o.brief !== undefined) updates.brief = o.brief;
+    if (o.sourceUrl !== undefined) updates.sourceUrl = o.sourceUrl;
+    if (o.group !== undefined) updates.group = o.group;
+    if (o.scope !== undefined) updates.scope = o.scope;
+    out(await updateEngagement(id, updates));
   });
 
 engagement
@@ -245,6 +283,53 @@ ev.command("add")
 ev.command("list")
   .option("--engagement <id>")
   .action(async (o) => out(await listEvidence(await resolveEngagementId(o.engagement))));
+
+// --- objective -------------------------------------------------------------
+const objective = program.command("objective").description("Manage CTF objectives / tasks");
+
+objective
+  .command("add")
+  .requiredOption("--task-number <n>", "task number", parseInt)
+  .requiredOption("--title <title>")
+  .option("--description <desc>")
+  .option("--flag-format <format>", "expected flag format, e.g. THM{...}")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await addObjective({ engagementId: eid, taskNumber: o.taskNumber, title: o.title, description: o.description, flagFormat: o.flagFormat }));
+  });
+
+objective
+  .command("list")
+  .option("--engagement <id>")
+  .action(async (o) => out(await listObjectives(await resolveEngagementId(o.engagement))));
+
+objective
+  .command("capture")
+  .argument("<id>", "objective id")
+  .requiredOption("--flag <flag>", "captured flag value")
+  .action(async (id: string, o) => out(await captureFlag(id, o.flag)));
+
+// --- artifact --------------------------------------------------------------
+const artifact = program.command("artifact").description("Manage artifacts (loot, creds, docs)");
+
+artifact
+  .command("add")
+  .requiredOption("--title <title>")
+  .requiredOption("--type <type>", "credential | loot | document | config | other")
+  .option("--content <content>", "inline content")
+  .option("--path <path>", "path to artifact file")
+  .option("--finding <id>", "link to a finding")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await addArtifact({ engagementId: eid, title: o.title, type: o.type, content: o.content, path: o.path, findingId: o.finding }));
+  });
+
+artifact
+  .command("list")
+  .option("--engagement <id>")
+  .action(async (o) => out(await listArtifacts(await resolveEngagementId(o.engagement))));
 
 // --- activity --------------------------------------------------------------
 const act = program.command("activity").description("Append-only audit trail");
@@ -417,6 +502,8 @@ program
   .option("--phase <phase>", "scoping | recon | enum | exploit | postexploit | report", "recon")
   .option("--agent <name>", "agent name for attribution", "agent")
   .option("--host", "run on the host instead of in the Docker container (for VPN targets)")
+  .option("--reason <reason>", "why this command is being run (logged to activity)")
+  .option("--max-output <bytes>", "max bytes returned to caller (full output saved to file)", parseInt, 4096)
   .option("--engagement <id>")
   .argument("<command...>", "command to run")
   .action(async (cmd: string[], o) => {
@@ -448,18 +535,63 @@ program
 
     const duration = Date.now() - start;
     const toolName = cmdStr.split(/\s+/)[0];
+    const reasonSuffix = o.reason ? ` | ${o.reason}` : "";
 
     await logActivity({
       engagementId: eid,
       phase: o.phase,
-      action: `[${o.agent}] ${toolName} (${duration}ms, exit ${result.code})`,
+      action: `[${o.agent}] ${toolName} (${duration}ms, exit ${result.code})${reasonSuffix}`,
       command: cmdStr,
       actor: "agent",
     });
 
-    if (result.stdout) process.stdout.write(result.stdout);
-    if (result.stderr) process.stderr.write(result.stderr);
+    const fullOutput = result.stdout + result.stderr;
+    const maxBytes = o.maxOutput;
+
+    if (fullOutput.length > maxBytes) {
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      const eng = await getEngagement(eid);
+      const slug = eng?.slug ?? eid;
+      const dir = `engagements/${slug}/exec`;
+      mkdirSync(dir, { recursive: true });
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      const outPath = `${dir}/${toolName}-${ts}.txt`;
+      writeFileSync(outPath, fullOutput);
+      await addEvidence({ engagementId: eid, path: outPath, type: "output" });
+
+      process.stdout.write(fullOutput.slice(0, maxBytes));
+      process.stderr.write(`\n[truncated: ${fullOutput.length} bytes total, full output at ${outPath}]\n`);
+    } else {
+      if (result.stdout) process.stdout.write(result.stdout);
+      if (result.stderr) process.stderr.write(result.stderr);
+    }
     process.exitCode = result.code;
+  });
+
+// --- search (grep stored exec outputs) -------------------------------------
+program
+  .command("search")
+  .description("Search stored exec outputs for a term")
+  .argument("<term>", "search term")
+  .option("--engagement <id>")
+  .action(async (term: string, o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    const eng = await getEngagement(eid);
+    const slug = eng?.slug ?? eid;
+    const dir = `engagements/${slug}`;
+    const { execSync } = await import("node:child_process");
+    try {
+      const result = execSync(`grep -rn "${term.replace(/"/g, '\\"')}" "${dir}"`, {
+        encoding: "utf-8",
+        maxBuffer: 1024 * 1024,
+        timeout: 30000,
+      });
+      process.stdout.write(result);
+    } catch (err: unknown) {
+      const e = err as { stdout?: string; status?: number };
+      if (e.stdout) process.stdout.write(e.stdout);
+      else console.error("No matches found.");
+    }
   });
 
 // --- report ----------------------------------------------------------------

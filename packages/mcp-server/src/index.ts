@@ -4,10 +4,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
+  addArtifact,
   addEvidence,
   addFinding,
+  addObjective,
   addTarget,
   advancePhase,
+  captureFlag,
   closeDb,
   createEngagement,
   deleteEngagement,
@@ -15,17 +18,22 @@ import {
   finishAgentRun,
   getEngagement,
   listActivity,
+  listAgentRuns,
+  listArtifacts,
   listEngagements,
   listMessages,
   listEvidence,
   listFindings,
+  listObjectives,
   listTargets,
   logActivity,
   pollInbox,
   sendMessage,
   setEngagementStatus,
   startAgentRun,
+  updateEngagement,
   updateFinding,
+  updateObjective,
   updateTarget,
 } from "@promptkiddie/core";
 
@@ -59,15 +67,21 @@ server.tool(
 
 server.tool(
   "get_engagement",
-  "Get engagement details including targets and findings",
+  "Get engagement details including targets, findings, objectives, evidence, recent activity, artifacts, and agent runs",
   { id: z.string().uuid() },
   async ({ id }) => {
     const eng = await getEngagement(id);
     if (!eng) return json({ error: `No engagement with id ${id}` });
+    const activity = await listActivity(id);
     return json({
       engagement: eng,
       targets: await listTargets(id),
       findings: await listFindings(id),
+      objectives: await listObjectives(id),
+      evidence: await listEvidence(id),
+      activity: activity.slice(0, 50),
+      artifacts: await listArtifacts(id),
+      agentRuns: await listAgentRuns(id),
     });
   },
 );
@@ -108,6 +122,100 @@ server.tool(
     if (!row) return json({ error: `No engagement with id ${id}` });
     return json(row);
   },
+);
+
+// --- Objectives ------------------------------------------------------------
+
+server.tool(
+  "add_objective",
+  "Add an objective (task/challenge) to an engagement",
+  {
+    engagementId: z.string().uuid(),
+    taskNumber: z.number(),
+    title: z.string(),
+    description: z.string().optional(),
+    flagFormat: z.string().optional(),
+  },
+  async (input) => json(await addObjective(input)),
+);
+
+server.tool(
+  "list_objectives",
+  "List objectives for an engagement",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => json(await listObjectives(engagementId)),
+);
+
+server.tool(
+  "capture_flag",
+  "Mark an objective as captured with the flag value",
+  {
+    id: z.string().uuid(),
+    flag: z.string(),
+  },
+  async ({ id, flag }) => json(await captureFlag(id, flag)),
+);
+
+server.tool(
+  "update_objective",
+  "Update an objective (title, description, flagFormat, flag, completed)",
+  {
+    id: z.string().uuid(),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    flagFormat: z.string().optional(),
+    flag: z.string().optional(),
+    completed: z.boolean().optional(),
+  },
+  async ({ id, ...rest }) => json(await updateObjective(id, rest)),
+);
+
+// --- Artifacts -------------------------------------------------------------
+
+server.tool(
+  "add_artifact",
+  "Add an artifact (loot, creds, docs) to an engagement",
+  {
+    engagementId: z.string().uuid(),
+    title: z.string(),
+    type: z.string(),
+    content: z.string().optional(),
+    path: z.string().optional(),
+    findingId: z.string().uuid().optional(),
+  },
+  async (input) => json(await addArtifact(input)),
+);
+
+server.tool(
+  "list_artifacts",
+  "List artifacts for an engagement",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => json(await listArtifacts(engagementId)),
+);
+
+// --- Engagement updates ----------------------------------------------------
+
+server.tool(
+  "update_engagement",
+  "Update engagement metadata (name, brief, sourceUrl, group, scope)",
+  {
+    id: z.string().uuid(),
+    name: z.string().optional(),
+    brief: z.string().optional(),
+    sourceUrl: z.string().optional(),
+    group: z.string().optional(),
+    scope: z.string().optional(),
+  },
+  async ({ id, ...rest }) => json(await updateEngagement(id, rest)),
+);
+
+// --- Agent runs (list) -----------------------------------------------------
+
+server.tool(
+  "list_agent_runs",
+  "List agent runs for an engagement",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => json(await listAgentRuns(engagementId)),
 );
 
 // --- Targets ---------------------------------------------------------------

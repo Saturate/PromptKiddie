@@ -73,6 +73,15 @@ export async function getEngagement(id: string) {
   return row;
 }
 
+export async function updateEngagement(
+  id: string,
+  input: { name?: string; brief?: string; sourceUrl?: string; group?: string; scope?: string },
+) {
+  const db = getDb();
+  const [row] = await db.update(engagements).set(input).where(eq(engagements.id, id)).returning();
+  return row;
+}
+
 export async function setEngagementStatus(
   id: string,
   status: "created" | "scoping" | "active" | "paused" | "reporting" | "done",

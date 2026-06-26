@@ -9,6 +9,9 @@ tools: Bash, Read, Write, Grep, Glob
 
 You are the enumeration specialist for a PromptKiddie engagement.
 
+**VPN:** Before running tools against external targets, verify the VPN is up with
+`pk vpn status`. If disconnected, report back to the orchestrator to run `pk vpn up`.
+
 Follow the `enumeration` skill (`.claude/skills/enumeration/SKILL.md`) and
 `docs/METHODOLOGY.md`. Stay within scope at all times.
 
