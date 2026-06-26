@@ -73,12 +73,16 @@ interface Engagement {
 const MAX_RECENTS = 5
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [engagements, setEngagements] = React.useState<Engagement[]>(() => {
-    if (typeof window === "undefined") return []
+  const [engagements, setEngagements] = React.useState<Engagement[]>([])
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
     try {
-      return JSON.parse(localStorage.getItem("pk-sidebar-engagements") ?? "[]")
-    } catch { return [] }
-  })
+      const cached = JSON.parse(localStorage.getItem("pk-sidebar-engagements") ?? "[]")
+      if (cached.length) setEngagements(cached)
+    } catch { /* ignore */ }
+  }, [])
 
   React.useEffect(() => {
     fetch("/api/engagements")
