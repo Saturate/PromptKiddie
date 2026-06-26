@@ -74,7 +74,7 @@ function ToggleGroup({
 // --- Chat / AI configuration -----------------------------------------------
 
 type Provider = "anthropic" | "openai" | "google" | "custom";
-type ChatMode = "floating" | "harness" | "disabled";
+type ChatMode = "floating" | "harness";
 
 const PROVIDER_DEFAULTS: Record<Provider, { orchestrator: string; subagent: string }> = {
   anthropic: { orchestrator: "claude-opus-4-8", subagent: "claude-sonnet-4-6" },
@@ -219,14 +219,27 @@ export default function SettingsPage() {
                   options={[
                     { label: "Integrated", value: "floating" },
                     { label: "External Harness", value: "harness" },
-                    { label: "Disabled", value: "disabled" },
                   ]}
                   value={chat.mode}
                   onChange={(v) => updateChat({ mode: v as ChatMode })}
                 />
                 <p className="text-[11px] text-muted-foreground font-mono">
-                  Integrated: built-in chat widget on every page. External Harness: Claude Code, OpenCode, or Pi controls via inbox. Disabled: no AI chat.
+                  Integrated: built-in chat widget on every page. External Harness: Claude Code, OpenCode, or Pi controls via inbox.
                 </p>
+
+              {chat.mode === "harness" && (
+                <div className="bg-muted rounded-lg p-4 space-y-2">
+                  <p className="text-xs font-mono font-semibold">External Harness Setup</p>
+                  <p className="text-[11px] text-muted-foreground font-mono">
+                    Run <code className="bg-background px-1.5 py-0.5 rounded text-pk-green">pk init --harness claude-code</code> in your project directory to scaffold agent definitions and skills. The harness communicates with PK via the inbox:
+                  </p>
+                  <pre className="text-[11px] font-mono bg-background rounded p-2 text-muted-foreground">
+{`pk msg poll          # read new messages
+pk msg send --body "..." # send replies
+pk engagement show   # get full context`}
+                  </pre>
+                </div>
+              )}
               </div>
 
               {/* Provider */}

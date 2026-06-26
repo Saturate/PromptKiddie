@@ -22,7 +22,7 @@ function ChatWidgetInner() {
       .catch(() => setMode("floating"));
   }, []);
 
-  if (mode === "loading" || mode === "disabled" || mode === "harness") return null;
+  if (mode === "loading" || mode === "harness") return null;
 
   const { messages, sendMessage, isLoading, error } = useChat({ transport });
 
