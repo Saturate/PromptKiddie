@@ -10,8 +10,19 @@ const transport = new DefaultChatTransport({ api: "/api/chat" });
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [showTools, setShowTools] = useState(false);
+  const [mode, setMode] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.ok ? r.json() : {})
+      .then((s) => setMode((s["chat.mode"] as string) ?? "floating"))
+      .catch(() => setMode("floating"));
+  }, []);
+
+  if (mode === null || mode === "disabled") return null;
+  if (mode === "harness") return null;
 
   const { messages, sendMessage, isLoading, error } = useChat({ transport });
 

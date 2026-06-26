@@ -45,28 +45,32 @@ async function getModelConfig() {
   const provider = ((await getSetting("chat.provider")) ?? "anthropic") as string;
   const orchestratorModel = ((await getSetting("chat.orchestrator_model")) ?? null) as string | null;
   const subagentModel = ((await getSetting("chat.subagent_model")) ?? null) as string | null;
-  const maxSteps = ((await getSetting("chat.max_steps")) ?? 20) as number;
+  const baseUrl = ((await getSetting("chat.base_url")) ?? null) as string | null;
 
   const defaults: Record<string, { orchestrator: string; subagent: string }> = {
     anthropic: { orchestrator: "claude-opus-4-8", subagent: "claude-sonnet-4-6" },
     openai: { orchestrator: "gpt-4o", subagent: "gpt-4o-mini" },
     google: { orchestrator: "gemini-2.0-flash", subagent: "gemini-2.0-flash" },
-    ollama: { orchestrator: "llama3", subagent: "llama3" },
+    custom: { orchestrator: "gpt-4o", subagent: "gpt-4o-mini" },
   };
+
+  const maxSteps = ((await getSetting("chat.max_steps")) ?? 0) as number;
 
   const d = defaults[provider] ?? defaults.anthropic;
   return {
     provider,
     orchestratorModel: orchestratorModel || d.orchestrator,
     subagentModel: subagentModel || d.subagent,
-    maxSteps,
+    baseUrl,
+    maxSteps: maxSteps || undefined,
   };
 }
 
-function getModel(provider: string, modelId: string) {
+function getModel(provider: string, modelId: string, baseUrl?: string | null) {
   switch (provider) {
     case "openai": return openai(modelId);
     case "google": return google(modelId);
+    case "custom": return openai(modelId, { baseURL: baseUrl || undefined });
     default: return anthropic(modelId);
   }
 }
@@ -321,8 +325,8 @@ const REPORT_SYSTEM = `You are a reporting specialist. Generate findings summari
 export async function POST(req: Request) {
   const { messages } = await req.json();
   const config = await getModelConfig();
-  const orchestratorModel = getModel(config.provider, config.orchestratorModel);
-  const subagentModel = getModel(config.provider, config.subagentModel);
+  const orchestratorModel = getModel(config.provider, config.orchestratorModel, config.baseUrl);
+  const subagentModel = getModel(config.provider, config.subagentModel, config.baseUrl);
 
   const subAgentTools = {
     reconAgent: buildSubAgentTool("recon", "Delegate reconnaissance work to the recon sub-agent", RECON_SYSTEM, subagentModel),

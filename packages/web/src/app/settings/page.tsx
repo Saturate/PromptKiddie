@@ -73,19 +73,22 @@ function ToggleGroup({
 
 // --- Chat / AI configuration -----------------------------------------------
 
-type Provider = "anthropic" | "openai" | "google" | "ollama";
+type Provider = "anthropic" | "openai" | "google" | "custom";
+type ChatMode = "floating" | "harness" | "disabled";
 
 const PROVIDER_DEFAULTS: Record<Provider, { orchestrator: string; subagent: string }> = {
   anthropic: { orchestrator: "claude-opus-4-8", subagent: "claude-sonnet-4-6" },
   openai:    { orchestrator: "gpt-4o",          subagent: "gpt-4o-mini" },
   google:    { orchestrator: "gemini-2.0-flash", subagent: "gemini-2.0-flash" },
-  ollama:    { orchestrator: "llama3",           subagent: "llama3" },
+  custom:    { orchestrator: "",                 subagent: "" },
 };
 
 interface ChatSettings {
   provider: Provider;
   orchestratorModel: string;
   subagentModel: string;
+  baseUrl: string;
+  mode: ChatMode;
   maxSteps: number;
 }
 
@@ -93,7 +96,9 @@ const CHAT_DEFAULTS: ChatSettings = {
   provider: "anthropic",
   orchestratorModel: "",
   subagentModel: "",
-  maxSteps: 20,
+  baseUrl: "",
+  mode: "floating",
+  maxSteps: 0,
 };
 
 function parseChatSettings(raw: Record<string, unknown>): ChatSettings {
@@ -101,7 +106,9 @@ function parseChatSettings(raw: Record<string, unknown>): ChatSettings {
     provider: (raw["chat.provider"] as Provider) ?? CHAT_DEFAULTS.provider,
     orchestratorModel: (raw["chat.orchestrator_model"] as string) ?? "",
     subagentModel: (raw["chat.subagent_model"] as string) ?? "",
-    maxSteps: typeof raw["chat.max_steps"] === "number" ? raw["chat.max_steps"] : CHAT_DEFAULTS.maxSteps,
+    baseUrl: (raw["chat.base_url"] as string) ?? "",
+    mode: (raw["chat.mode"] as ChatMode) ?? "floating",
+    maxSteps: typeof raw["chat.max_steps"] === "number" ? raw["chat.max_steps"] : 0,
   };
 }
 
@@ -110,6 +117,8 @@ function chatSettingsToPayload(s: ChatSettings): Record<string, unknown> {
     "chat.provider": s.provider,
     "chat.orchestrator_model": s.orchestratorModel,
     "chat.subagent_model": s.subagentModel,
+    "chat.base_url": s.baseUrl,
+    "chat.mode": s.mode,
     "chat.max_steps": s.maxSteps,
   };
 }
@@ -203,7 +212,26 @@ export default function SettingsPage() {
             <div className="text-xs text-muted-foreground font-mono py-4">Loading settings...</div>
           ) : (
             <>
+              {/* Chat Mode */}
+              <div className="space-y-2">
+                <Label className="font-mono text-xs uppercase tracking-wider">Chat Mode</Label>
+                <ToggleGroup
+                  options={[
+                    { label: "Floating", value: "floating" },
+                    { label: "Harness", value: "harness" },
+                    { label: "Disabled", value: "disabled" },
+                  ]}
+                  value={chat.mode}
+                  onChange={(v) => updateChat({ mode: v as ChatMode })}
+                />
+                <p className="text-[11px] text-muted-foreground font-mono">
+                  Floating: built-in chat widget. Harness: external tool (Claude Code, OpenCode) controls via inbox polling. Disabled: no chat.
+                </p>
+              </div>
+
               {/* Provider */}
+              {chat.mode === "floating" && (
+              <>
               <div className="space-y-2">
                 <Label className="font-mono text-xs uppercase tracking-wider">Provider</Label>
                 <Select
@@ -217,10 +245,26 @@ export default function SettingsPage() {
                     <SelectItem value="anthropic">Anthropic</SelectItem>
                     <SelectItem value="openai">OpenAI</SelectItem>
                     <SelectItem value="google">Google</SelectItem>
-                    <SelectItem value="ollama">Ollama</SelectItem>
+                    <SelectItem value="custom">Custom (OpenAI-compatible)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Base URL (custom provider) */}
+              {chat.provider === "custom" && (
+                <div className="space-y-2">
+                  <Label className="font-mono text-xs uppercase tracking-wider">Base URL</Label>
+                  <Input
+                    value={chat.baseUrl}
+                    onChange={(e) => updateChat({ baseUrl: e.target.value })}
+                    placeholder="http://localhost:11434/v1"
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground font-mono">
+                    Any OpenAI-compatible API endpoint (Ollama, LM Studio, vLLM, etc).
+                  </p>
+                </div>
+              )}
 
               {/* Orchestrator Model */}
               <div className="space-y-2">
@@ -228,7 +272,7 @@ export default function SettingsPage() {
                 <Input
                   value={chat.orchestratorModel}
                   onChange={(e) => updateChat({ orchestratorModel: e.target.value })}
-                  placeholder={placeholders.orchestrator}
+                  placeholder={placeholders.orchestrator || "model-name"}
                   className="font-mono text-sm"
                 />
                 <p className="text-[11px] text-muted-foreground font-mono">
@@ -242,29 +286,34 @@ export default function SettingsPage() {
                 <Input
                   value={chat.subagentModel}
                   onChange={(e) => updateChat({ subagentModel: e.target.value })}
-                  placeholder={placeholders.subagent}
+                  placeholder={placeholders.subagent || "model-name"}
                   className="font-mono text-sm"
                 />
                 <p className="text-[11px] text-muted-foreground font-mono">
                   Model used by spawned sub-agents (recon, enum, exploit). Leave blank for the default.
                 </p>
               </div>
-
               {/* Max Steps */}
               <div className="space-y-2">
                 <Label className="font-mono text-xs uppercase tracking-wider">Max Steps</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={chat.maxSteps}
-                  onChange={(e) => updateChat({ maxSteps: Number(e.target.value) || 20 })}
-                  className="font-mono text-sm w-24"
-                />
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="number"
+                    min={0}
+                    value={chat.maxSteps}
+                    onChange={(e) => updateChat({ maxSteps: Number(e.target.value) })}
+                    className="font-mono text-sm w-24"
+                  />
+                  <span className="text-[11px] text-muted-foreground font-mono">
+                    {chat.maxSteps === 0 ? "Unlimited" : `${chat.maxSteps} steps`}
+                  </span>
+                </div>
                 <p className="text-[11px] text-muted-foreground font-mono">
-                  Maximum tool-call steps per agent invocation (1-100).
+                  Max tool-call steps per invocation. 0 = unlimited.
                 </p>
               </div>
+              </>
+              )}
 
               {/* Save */}
               <div className="pt-2">
