@@ -35,6 +35,48 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
 
+  # --- App services (optional, for hosted deployment) ----------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    container_name: promptkiddie-web
+    restart: unless-stopped
+    profiles: ["hosted"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3100:3100"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@postgres:5432/${POSTGRES_DB:-promptkiddie}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+      PORT: "3100"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: promptkiddie-api
+    restart: unless-stopped
+    profiles: ["hosted"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3200:3200"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@postgres:5432/${POSTGRES_DB:-promptkiddie}
+      PK_API_SECRET: ${PK_API_SECRET:-}
+      PK_API_PORT: "3200"
+
   # --- Test targets (optional, for local testing) --------------------------
   dvwa:
     image: vulnerables/web-dvwa
