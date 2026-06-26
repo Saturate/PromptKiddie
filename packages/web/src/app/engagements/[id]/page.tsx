@@ -153,6 +153,21 @@ export default async function EngagementPage({
         </Card>
       )}
 
+      {/* Flag progress - CTF only */}
+      {engagement.type === "ctf" && objectives.length > 0 && (
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-pk-green transition-all"
+              style={{ width: `${(objectives.filter(o => o.completed).length / objectives.length) * 100}%` }}
+            />
+          </div>
+          <span className="font-mono text-sm font-bold text-pk-green">
+            {objectives.filter(o => o.completed).length}/{objectives.length} flags
+          </span>
+        </div>
+      )}
+
       {/* Objectives / CTF Tasks */}
       {objectives.length > 0 && (
         <Card>
@@ -222,6 +237,51 @@ export default async function EngagementPage({
           </Card>
         ))}
       </div>
+
+      {/* Severity Distribution - pentest types only */}
+      {engagement.type !== "ctf" && findings.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-mono">Severity Distribution</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex h-4 rounded-full overflow-hidden">
+              {(["critical", "high", "medium", "low", "info"] as const).map(sev => {
+                const count = severityCounts[sev];
+                if (count === 0) return null;
+                const pct = (count / findings.length) * 100;
+                const colors: Record<string, string> = {
+                  critical: "bg-red-600", high: "bg-orange-500", medium: "bg-yellow-500",
+                  low: "bg-blue-500", info: "bg-gray-500"
+                };
+                return (
+                  <div
+                    key={sev}
+                    className={`${colors[sev]} transition-all`}
+                    style={{ width: `${pct}%` }}
+                    title={`${sev}: ${count} (${Math.round(pct)}%)`}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex gap-4 mt-2 flex-wrap">
+              {(["critical", "high", "medium", "low", "info"] as const).map(sev => {
+                if (severityCounts[sev] === 0) return null;
+                const dotColors: Record<string, string> = {
+                  critical: "bg-red-600", high: "bg-orange-500", medium: "bg-yellow-500",
+                  low: "bg-blue-500", info: "bg-gray-500"
+                };
+                return (
+                  <span key={sev} className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                    <span className={`w-2 h-2 rounded-full ${dotColors[sev]}`} />
+                    {sev} ({severityCounts[sev]})
+                  </span>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Targets */}
       <div id="targets">
@@ -331,10 +391,14 @@ export default async function EngagementPage({
                       </div>
                     )}
                   </div>
-                  {f.remediation && (
+                  {f.remediation ? (
                     <div className="border-t border-border pt-2 mt-2">
                       <span className="font-mono text-[10px] text-muted-foreground uppercase">Remediation</span>
                       <p className="font-mono text-xs mt-1">{f.remediation}</p>
+                    </div>
+                  ) : engagement.type !== "ctf" && (
+                    <div className="border-t border-border pt-2 mt-2">
+                      <span className="font-mono text-[10px] text-muted-foreground/50 uppercase">No remediation noted</span>
                     </div>
                   )}
                 </div>
