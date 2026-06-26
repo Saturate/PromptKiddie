@@ -33,24 +33,42 @@ export function Inbox({ engagementId }: { engagementId: string }) {
 
   useEffect(() => {
     fetchMessages();
+    const ctrl = new AbortController();
 
-    const es = new EventSource(
-      `/api/messages/stream?engagementId=${engagementId}`,
-    );
-    es.onopen = () => setLive(true);
-    es.onmessage = () => {
-      fetchMessages();
-    };
-    es.onerror = () => {
-      setLive(false);
-    };
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/messages/stream?engagementId=${engagementId}`,
+          { signal: ctrl.signal },
+        );
+        if (!res.body) return;
+        setLive(true);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (line.trim()) fetchMessages();
+          }
+        }
+      } catch {
+        // aborted or network error
+      } finally {
+        setLive(false);
+      }
+    })();
 
     const interval = setInterval(() => {
       if (!live) fetchMessages();
     }, 5000);
 
     return () => {
-      es.close();
+      ctrl.abort();
       clearInterval(interval);
     };
   }, [engagementId, fetchMessages, live]);
@@ -77,7 +95,7 @@ export function Inbox({ engagementId }: { engagementId: string }) {
           <CardTitle className="text-sm font-mono">Chat</CardTitle>
           <span
             className={`h-2 w-2 rounded-full ${live ? "bg-pk-green" : "bg-muted-foreground"}`}
-            title={live ? "Live (SSE)" : "Polling"}
+            title={live ? "Live (streaming)" : "Polling"}
           />
         </div>
       </CardHeader>
