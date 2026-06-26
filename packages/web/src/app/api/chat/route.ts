@@ -2,6 +2,7 @@ import { ToolLoopAgent, streamText, tool } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
+import { LangfuseExporter } from "langfuse-vercel";
 import { z } from "zod";
 import {
   createEngagement,
@@ -34,6 +35,11 @@ import {
 } from "@promptkiddie/core";
 
 export const maxDuration = 300;
+
+const langfuseEnabled = !!process.env.LANGFUSE_PUBLIC_KEY;
+const telemetryConfig = langfuseEnabled
+  ? { isEnabled: true, tracer: new LangfuseExporter() }
+  : undefined;
 
 async function getModelConfig() {
   const provider = ((await getSetting("chat.provider")) ?? "anthropic") as string;
@@ -280,7 +286,7 @@ function buildSubAgentTool(
       await startAgentRun({ engagementId, agent: name, phase: name as "recon" });
 
       try {
-        const result = await agent.generate({ prompt: context, abortSignal });
+        const result = await agent.generate({ prompt: context, abortSignal, experimental_telemetry: telemetryConfig });
         return { summary: result.text, steps: result.steps.length };
       } catch (err) {
         return { error: (err as Error).message };
@@ -331,6 +337,7 @@ export async function POST(req: Request) {
     messages,
     maxSteps: config.maxSteps,
     tools: { ...pkTools, ...subAgentTools },
+    experimental_telemetry: telemetryConfig,
   });
 
   return result.toDataStreamResponse();
