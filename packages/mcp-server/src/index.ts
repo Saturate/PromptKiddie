@@ -3,39 +3,9 @@ import "dotenv/config";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import {
-  addArtifact,
-  addEvidence,
-  addFinding,
-  addObjective,
-  addTarget,
-  advancePhase,
-  captureFlag,
-  closeDb,
-  createEngagement,
-  deleteEngagement,
-  getPhase,
-  finishAgentRun,
-  getEngagement,
-  listActivity,
-  listAgentRuns,
-  listArtifacts,
-  listEngagements,
-  listMessages,
-  listEvidence,
-  listFindings,
-  listObjectives,
-  listTargets,
-  logActivity,
-  pollInbox,
-  sendMessage,
-  setEngagementStatus,
-  startAgentRun,
-  updateEngagement,
-  updateFinding,
-  updateObjective,
-  updateTarget,
-} from "@promptkiddie/core";
+import { closeDb, getRepo } from "@promptkiddie/core";
+
+const repo = getRepo();
 
 const server = new McpServer({
   name: "promptkiddie",
@@ -56,13 +26,13 @@ server.tool(
     type: z.enum(["ctf", "whitebox", "blackbox", "bugbounty"]),
     scope: z.string().optional(),
   },
-  async ({ name, type, scope }) => json(await createEngagement({ name, type, scope })),
+  async ({ name, type, scope }) => json(await repo.createEngagement({ name, type, scope })),
 );
 
 server.tool(
   "list_engagements",
   "List all engagements",
-  async () => json(await listEngagements()),
+  async () => json(await repo.listEngagements()),
 );
 
 server.tool(
@@ -70,18 +40,18 @@ server.tool(
   "Get engagement details including targets, findings, objectives, evidence, recent activity, artifacts, and agent runs",
   { id: z.string().uuid() },
   async ({ id }) => {
-    const eng = await getEngagement(id);
+    const eng = await repo.getEngagement(id);
     if (!eng) return json({ error: `No engagement with id ${id}` });
-    const activity = await listActivity(id);
+    const activity = await repo.listActivity(id);
     return json({
       engagement: eng,
-      targets: await listTargets(id),
-      findings: await listFindings(id),
-      objectives: await listObjectives(id),
-      evidence: await listEvidence(id),
+      targets: await repo.listTargets(id),
+      findings: await repo.listFindings(id),
+      objectives: await repo.listObjectives(id),
+      evidence: await repo.listEvidence(id),
       activity: activity.slice(0, 50),
-      artifacts: await listArtifacts(id),
-      agentRuns: await listAgentRuns(id),
+      artifacts: await repo.listArtifacts(id),
+      agentRuns: await repo.listAgentRuns(id),
     });
   },
 );
@@ -93,14 +63,14 @@ server.tool(
     id: z.string().uuid(),
     phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]),
   },
-  async ({ id, phase }) => json(await advancePhase(id, phase)),
+  async ({ id, phase }) => json(await repo.advancePhase(id, phase)),
 );
 
 server.tool(
   "get_phase",
   "Get the current methodology phase for an engagement",
   { id: z.string().uuid() },
-  async ({ id }) => json(await getPhase(id)),
+  async ({ id }) => json(await repo.getPhase(id)),
 );
 
 server.tool(
@@ -110,7 +80,7 @@ server.tool(
     id: z.string().uuid(),
     status: z.enum(["scoping", "active", "paused", "reporting", "done"]),
   },
-  async ({ id, status }) => json(await setEngagementStatus(id, status)),
+  async ({ id, status }) => json(await repo.setEngagementStatus(id, status)),
 );
 
 server.tool(
@@ -118,7 +88,7 @@ server.tool(
   "Delete an engagement and all its data (cascades)",
   { id: z.string().uuid() },
   async ({ id }) => {
-    const row = await deleteEngagement(id);
+    const row = await repo.deleteEngagement(id);
     if (!row) return json({ error: `No engagement with id ${id}` });
     return json(row);
   },
@@ -136,14 +106,14 @@ server.tool(
     description: z.string().optional(),
     flagFormat: z.string().optional(),
   },
-  async (input) => json(await addObjective(input)),
+  async (input) => json(await repo.addObjective(input)),
 );
 
 server.tool(
   "list_objectives",
   "List objectives for an engagement",
   { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await listObjectives(engagementId)),
+  async ({ engagementId }) => json(await repo.listObjectives(engagementId)),
 );
 
 server.tool(
@@ -153,7 +123,7 @@ server.tool(
     id: z.string().uuid(),
     flag: z.string(),
   },
-  async ({ id, flag }) => json(await captureFlag(id, flag)),
+  async ({ id, flag }) => json(await repo.captureFlag(id, flag)),
 );
 
 server.tool(
@@ -167,7 +137,7 @@ server.tool(
     flag: z.string().optional(),
     completed: z.boolean().optional(),
   },
-  async ({ id, ...rest }) => json(await updateObjective(id, rest)),
+  async ({ id, ...rest }) => json(await repo.updateObjective(id, rest)),
 );
 
 // --- Artifacts -------------------------------------------------------------
@@ -183,14 +153,14 @@ server.tool(
     path: z.string().optional(),
     findingId: z.string().uuid().optional(),
   },
-  async (input) => json(await addArtifact(input)),
+  async (input) => json(await repo.addArtifact(input)),
 );
 
 server.tool(
   "list_artifacts",
   "List artifacts for an engagement",
   { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await listArtifacts(engagementId)),
+  async ({ engagementId }) => json(await repo.listArtifacts(engagementId)),
 );
 
 // --- Engagement updates ----------------------------------------------------
@@ -206,7 +176,7 @@ server.tool(
     group: z.string().optional(),
     scope: z.string().optional(),
   },
-  async ({ id, ...rest }) => json(await updateEngagement(id, rest)),
+  async ({ id, ...rest }) => json(await repo.updateEngagement(id, rest)),
 );
 
 // --- Agent runs (list) -----------------------------------------------------
@@ -215,7 +185,7 @@ server.tool(
   "list_agent_runs",
   "List agent runs for an engagement",
   { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await listAgentRuns(engagementId)),
+  async ({ engagementId }) => json(await repo.listAgentRuns(engagementId)),
 );
 
 // --- Targets ---------------------------------------------------------------
@@ -230,14 +200,14 @@ server.tool(
     inScope: z.boolean().optional(),
     notes: z.string().optional(),
   },
-  async (input) => json(await addTarget(input)),
+  async (input) => json(await repo.addTarget(input)),
 );
 
 server.tool(
   "list_targets",
   "List targets for an engagement",
   { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await listTargets(engagementId)),
+  async ({ engagementId }) => json(await repo.listTargets(engagementId)),
 );
 
 server.tool(
@@ -250,7 +220,7 @@ server.tool(
     kind: z.enum(["host", "domain", "url", "app", "repo"]).optional(),
     identifier: z.string().optional(),
   },
-  async ({ id, ...rest }) => json(await updateTarget(id, rest)),
+  async ({ id, ...rest }) => json(await repo.updateTarget(id, rest)),
 );
 
 // --- Findings --------------------------------------------------------------
@@ -271,14 +241,14 @@ server.tool(
     description: z.string().optional(),
     remediation: z.string().optional(),
   },
-  async (input) => json(await addFinding(input)),
+  async (input) => json(await repo.addFinding(input)),
 );
 
 server.tool(
   "list_findings",
   "List findings for an engagement",
   { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await listFindings(engagementId)),
+  async ({ engagementId }) => json(await repo.listFindings(engagementId)),
 );
 
 server.tool(
@@ -297,7 +267,7 @@ server.tool(
     description: z.string().optional(),
     remediation: z.string().optional(),
   },
-  async ({ id, ...rest }) => json(await updateFinding(id, rest)),
+  async ({ id, ...rest }) => json(await repo.updateFinding(id, rest)),
 );
 
 // --- Evidence --------------------------------------------------------------
@@ -311,14 +281,14 @@ server.tool(
     type: z.enum(["flag", "screenshot", "scan", "output", "file"]),
     findingId: z.string().uuid().optional(),
   },
-  async (input) => json(await addEvidence(input)),
+  async (input) => json(await repo.addEvidence(input)),
 );
 
 server.tool(
   "list_evidence",
   "List evidence for an engagement",
   { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await listEvidence(engagementId)),
+  async ({ engagementId }) => json(await repo.listEvidence(engagementId)),
 );
 
 // --- Activity log ----------------------------------------------------------
@@ -334,14 +304,14 @@ server.tool(
     actor: z.enum(["orchestrator", "agent", "human"]).optional(),
     resultEvidenceId: z.string().uuid().optional(),
   },
-  async (input) => json(await logActivity(input)),
+  async (input) => json(await repo.logActivity(input)),
 );
 
 server.tool(
   "list_activity",
   "List the activity log for an engagement",
   { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await listActivity(engagementId)),
+  async ({ engagementId }) => json(await repo.listActivity(engagementId)),
 );
 
 // --- Agent runs ------------------------------------------------------------
@@ -354,7 +324,7 @@ server.tool(
     agent: z.string(),
     phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]),
   },
-  async (input) => json(await startAgentRun(input)),
+  async (input) => json(await repo.startAgentRun(input)),
 );
 
 server.tool(
@@ -365,7 +335,7 @@ server.tool(
     status: z.enum(["ok", "failed"]),
     summary: z.string().optional(),
   },
-  async (input) => json(await finishAgentRun(input)),
+  async (input) => json(await repo.finishAgentRun(input)),
 );
 
 // --- Inbox -----------------------------------------------------------------
@@ -374,14 +344,14 @@ server.tool(
   "list_messages",
   "List all messages for an engagement (full conversation history)",
   { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await listMessages(engagementId)),
+  async ({ engagementId }) => json(await repo.listMessages(engagementId)),
 );
 
 server.tool(
   "poll_inbox",
   "Fetch new inbound messages and mark them read",
   { engagementId: z.string().uuid().optional() },
-  async ({ engagementId }) => json(await pollInbox(engagementId)),
+  async ({ engagementId }) => json(await repo.pollInbox(engagementId)),
 );
 
 server.tool(
@@ -393,7 +363,7 @@ server.tool(
     direction: z.enum(["inbound", "outbound"]).optional(),
     author: z.string().optional(),
   },
-  async (input) => json(await sendMessage(input)),
+  async (input) => json(await repo.sendMessage(input)),
 );
 
 // ---------------------------------------------------------------------------

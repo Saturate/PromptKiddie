@@ -43,6 +43,21 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/api:
+    dependencies:
+      '@hono/node-server':
+        specifier: ^1
+        version: 1.19.14(hono@4.12.27)
+      '@promptkiddie/core':
+        specifier: workspace:*
+        version: link:../core
+      dotenv:
+        specifier: ^16
+        version: 16.6.1
+      hono:
+        specifier: ^4
+        version: 4.12.27
+
   packages/cli:
     dependencies:
       '@promptkiddie/core':
