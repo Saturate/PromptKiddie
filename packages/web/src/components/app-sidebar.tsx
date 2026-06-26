@@ -23,6 +23,7 @@ import {
   BookOpenIcon,
   TerminalIcon,
   TargetIcon,
+  MessageSquareIcon,
 } from "lucide-react"
 
 const navMain = [
@@ -35,6 +36,11 @@ const navMain = [
     title: "Engagements",
     url: "/engagements",
     icon: <FolderOpenIcon />,
+  },
+  {
+    title: "Chat",
+    url: "/chat",
+    icon: <MessageSquareIcon />,
   },
   {
     title: "Stats",
