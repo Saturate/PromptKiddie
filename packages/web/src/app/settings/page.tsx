@@ -217,15 +217,15 @@ export default function SettingsPage() {
                 <Label className="font-mono text-xs uppercase tracking-wider">Chat Mode</Label>
                 <ToggleGroup
                   options={[
-                    { label: "Floating", value: "floating" },
-                    { label: "Harness", value: "harness" },
+                    { label: "Integrated", value: "floating" },
+                    { label: "External Harness", value: "harness" },
                     { label: "Disabled", value: "disabled" },
                   ]}
                   value={chat.mode}
                   onChange={(v) => updateChat({ mode: v as ChatMode })}
                 />
                 <p className="text-[11px] text-muted-foreground font-mono">
-                  Floating: built-in chat widget. Harness: external tool (Claude Code, OpenCode) controls via inbox polling. Disabled: no chat.
+                  Integrated: built-in chat widget on every page. External Harness: Claude Code, OpenCode, or Pi controls via inbox. Disabled: no AI chat.
                 </p>
               </div>
 
