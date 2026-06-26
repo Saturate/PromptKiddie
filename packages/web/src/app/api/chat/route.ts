@@ -1,5 +1,7 @@
 import { ToolLoopAgent, streamText, tool } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import {
   createEngagement,
@@ -56,8 +58,11 @@ async function getModelConfig() {
 }
 
 function getModel(provider: string, modelId: string) {
-  // For now, only Anthropic is wired. Others can be added with their provider packages.
-  return anthropic(modelId);
+  switch (provider) {
+    case "openai": return openai(modelId);
+    case "google": return google(modelId);
+    default: return anthropic(modelId);
+  }
 }
 
 const pkTools = {
@@ -200,6 +205,52 @@ const pkTools = {
     description: "Send a message to the engagement inbox",
     parameters: z.object({ body: z.string(), engagementId: z.string().uuid().optional() }),
     execute: async (params) => sendMessage(params),
+  }),
+  exec: tool({
+    description: "Run a command on the attackbox (Docker container with security tools: nmap, nikto, gobuster, sqlmap, etc). Use for recon, scanning, and exploitation.",
+    parameters: z.object({
+      engagementId: z.string().uuid(),
+      command: z.string().describe("Shell command to run"),
+      phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]).optional(),
+      reason: z.string().optional().describe("Why this command is being run"),
+    }),
+    execute: async ({ engagementId, command, phase, reason }) => {
+      const { execFile } = await import("node:child_process");
+      const { loadConfig } = await import("@promptkiddie/core");
+      const config = loadConfig();
+      const container = config.attackbox.container;
+
+      const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
+        const proc = execFile(
+          "docker", ["exec", container, "sh", "-c", command],
+          { maxBuffer: 10 * 1024 * 1024, timeout: config.attackbox.timeout },
+          (err, stdout, stderr) => {
+            resolve({
+              stdout: stdout ?? "",
+              stderr: stderr ?? "",
+              code: err && "code" in err ? (err.code as number) : err ? 1 : 0,
+            });
+          },
+        );
+        proc.on("error", (err) => resolve({ stdout: "", stderr: err.message, code: 1 }));
+      });
+
+      const reasonSuffix = reason ? ` | ${reason}` : "";
+      await logActivity({
+        engagementId,
+        phase: phase ?? "recon",
+        action: `[chat] ${command.split(/\s+/)[0]} (exit ${result.code})${reasonSuffix}`,
+        command,
+        actor: "agent",
+      });
+
+      const output = result.stdout + result.stderr;
+      const maxLen = 8192;
+      if (output.length > maxLen) {
+        return { output: output.slice(0, maxLen), truncated: true, totalBytes: output.length, exitCode: result.code };
+      }
+      return { output, exitCode: result.code };
+    },
   }),
 };
 
