@@ -14,6 +14,7 @@ function ChatWidgetInner() {
   const [mode, setMode] = useState<string>("loading");
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
+  const { messages, sendMessage, isLoading, error } = useChat({ transport });
 
   useEffect(() => {
     fetch("/api/settings")
@@ -22,13 +23,11 @@ function ChatWidgetInner() {
       .catch(() => setMode("floating"));
   }, []);
 
-  if (mode === "loading" || mode === "harness") return null;
-
-  const { messages, sendMessage, isLoading, error } = useChat({ transport });
-
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open]);
+
+  if (mode === "loading" || mode === "harness") return null;
 
   if (!open) {
     return (
