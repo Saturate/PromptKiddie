@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useState, useRef, useEffect } from "react";
@@ -7,10 +8,10 @@ import { MessageSquare, X, ChevronDown } from "lucide-react";
 
 const transport = new DefaultChatTransport({ api: "/api/chat" });
 
-export function ChatWidget() {
+function ChatWidgetInner() {
   const [open, setOpen] = useState(false);
   const [showTools, setShowTools] = useState(false);
-  const [mode, setMode] = useState<string | null>(null);
+  const [mode, setMode] = useState<string>("loading");
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
 
@@ -21,8 +22,7 @@ export function ChatWidget() {
       .catch(() => setMode("floating"));
   }, []);
 
-  if (mode === null || mode === "disabled") return null;
-  if (mode === "harness") return null;
+  if (mode === "loading" || mode === "disabled" || mode === "harness") return null;
 
   const { messages, sendMessage, isLoading, error } = useChat({ transport });
 
@@ -168,3 +168,5 @@ export function ChatWidget() {
     </div>
   );
 }
+
+export const ChatWidget = dynamic(() => Promise.resolve(ChatWidgetInner), { ssr: false });
