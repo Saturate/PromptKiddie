@@ -48,7 +48,7 @@ async function getModelConfig() {
   const baseUrl = ((await getSetting("chat.base_url")) ?? null) as string | null;
 
   const defaults: Record<string, { orchestrator: string; subagent: string }> = {
-    anthropic: { orchestrator: "claude-opus-4-8", subagent: "claude-sonnet-4-6" },
+    anthropic: { orchestrator: "claude-opus-4-8", subagent: "claude-opus-4-8" },
     openai: { orchestrator: "gpt-4o", subagent: "gpt-4o-mini" },
     google: { orchestrator: "gemini-2.0-flash", subagent: "gemini-2.0-flash" },
     custom: { orchestrator: "gpt-4o", subagent: "gpt-4o-mini" },

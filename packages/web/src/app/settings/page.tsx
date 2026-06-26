@@ -77,7 +77,7 @@ type Provider = "anthropic" | "openai" | "google" | "custom";
 type ChatMode = "floating" | "harness";
 
 const PROVIDER_DEFAULTS: Record<Provider, { orchestrator: string; subagent: string }> = {
-  anthropic: { orchestrator: "claude-opus-4-8", subagent: "claude-sonnet-4-6" },
+  anthropic: { orchestrator: "claude-opus-4-8", subagent: "claude-opus-4-8" },
   openai:    { orchestrator: "gpt-4o",          subagent: "gpt-4o-mini" },
   google:    { orchestrator: "gemini-2.0-flash", subagent: "gemini-2.0-flash" },
   custom:    { orchestrator: "",                 subagent: "" },
@@ -133,6 +133,8 @@ export default function SettingsPage() {
   // Chat / AI state
   const [chat, setChat] = useState<ChatSettings>(CHAT_DEFAULTS);
   const [saving, setSaving] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchSettings = useCallback(async () => {
@@ -147,6 +149,20 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const fetchModels = useCallback(async (provider: string, baseUrl?: string) => {
+    setLoadingModels(true);
+    try {
+      const params = new URLSearchParams({ provider });
+      if (baseUrl) params.set("baseUrl", baseUrl);
+      const res = await fetch(`/api/models?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableModels(data.models ?? []);
+      }
+    } catch { /* ignore */ }
+    finally { setLoadingModels(false); }
   }, []);
 
   useEffect(() => {
@@ -164,14 +180,20 @@ export default function SettingsPage() {
   function updateChat(patch: Partial<ChatSettings>) {
     setChat((prev) => {
       const next = { ...prev, ...patch };
-      // When provider changes, clear model fields so placeholders show defaults
       if (patch.provider && patch.provider !== prev.provider) {
         next.orchestratorModel = "";
         next.subagentModel = "";
+        fetchModels(patch.provider, next.baseUrl);
       }
       return next;
     });
   }
+
+  useEffect(() => {
+    if (mounted && chat.provider && chat.mode === "floating") {
+      fetchModels(chat.provider, chat.baseUrl);
+    }
+  }, [mounted, chat.provider, chat.mode, chat.baseUrl, fetchModels]);
 
   async function saveChat() {
     setSaving(true);
@@ -282,28 +304,60 @@ pk engagement show   # get full context`}
               {/* Orchestrator Model */}
               <div className="space-y-2">
                 <Label className="font-mono text-xs uppercase tracking-wider">Orchestrator Model</Label>
-                <Input
-                  value={chat.orchestratorModel}
-                  onChange={(e) => updateChat({ orchestratorModel: e.target.value })}
-                  placeholder={placeholders.orchestrator || "model-name"}
-                  className="font-mono text-sm"
-                />
+                {availableModels.length > 0 ? (
+                  <Select
+                    value={chat.orchestratorModel || placeholders.orchestrator}
+                    onValueChange={(v) => updateChat({ orchestratorModel: v })}
+                  >
+                    <SelectTrigger className="w-full font-mono text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.map((m) => (
+                        <SelectItem key={m} value={m} className="font-mono text-sm">{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={chat.orchestratorModel}
+                    onChange={(e) => updateChat({ orchestratorModel: e.target.value })}
+                    placeholder={placeholders.orchestrator || "model-name"}
+                    className="font-mono text-sm"
+                  />
+                )}
                 <p className="text-[11px] text-muted-foreground font-mono">
-                  Primary model for planning and coordination. Leave blank for the default.
+                  Primary model for planning and coordination.{loadingModels ? " Loading models..." : ""}
                 </p>
               </div>
 
               {/* Sub-agent Model */}
               <div className="space-y-2">
                 <Label className="font-mono text-xs uppercase tracking-wider">Sub-agent Model</Label>
-                <Input
-                  value={chat.subagentModel}
-                  onChange={(e) => updateChat({ subagentModel: e.target.value })}
-                  placeholder={placeholders.subagent || "model-name"}
-                  className="font-mono text-sm"
-                />
+                {availableModels.length > 0 ? (
+                  <Select
+                    value={chat.subagentModel || placeholders.subagent}
+                    onValueChange={(v) => updateChat({ subagentModel: v })}
+                  >
+                    <SelectTrigger className="w-full font-mono text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.map((m) => (
+                        <SelectItem key={m} value={m} className="font-mono text-sm">{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={chat.subagentModel}
+                    onChange={(e) => updateChat({ subagentModel: e.target.value })}
+                    placeholder={placeholders.subagent || "model-name"}
+                    className="font-mono text-sm"
+                  />
+                )}
                 <p className="text-[11px] text-muted-foreground font-mono">
-                  Model used by spawned sub-agents (recon, enum, exploit). Leave blank for the default.
+                  Model used by spawned sub-agents (recon, enum, exploit).
                 </p>
               </div>
               {/* Max Steps */}
