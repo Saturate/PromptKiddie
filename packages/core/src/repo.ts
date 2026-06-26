@@ -16,6 +16,7 @@ import {
   findings,
   messages,
   objectives,
+  settings,
   targets,
 } from "./schema.js";
 
@@ -536,4 +537,42 @@ export async function sendMessage(input: {
     })
     .returning();
   return row;
+}
+
+// --- Settings ----------------------------------------------------------------
+
+export async function getSetting(key: string) {
+  const db = getDb();
+  const [row] = await db.select().from(settings).where(eq(settings.key, key));
+  return row?.value ?? null;
+}
+
+export async function setSetting(key: string, value: unknown) {
+  const db = getDb();
+  const [row] = await db
+    .insert(settings)
+    .values({ key, value, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: new Date() } })
+    .returning();
+  return row;
+}
+
+export async function getAllSettings() {
+  const db = getDb();
+  return db.select().from(settings);
+}
+
+export async function seedDefaultSettings() {
+  const defaults: Record<string, unknown> = {
+    "chat.provider": "anthropic",
+    "chat.orchestrator_model": "claude-opus-4-8",
+    "chat.subagent_model": "claude-sonnet-4-6",
+    "chat.max_steps": 20,
+  };
+  for (const [key, value] of Object.entries(defaults)) {
+    const existing = await getSetting(key);
+    if (existing === null) {
+      await setSetting(key, value);
+    }
+  }
 }

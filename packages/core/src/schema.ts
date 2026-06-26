@@ -290,6 +290,13 @@ export const agentLog = pgTable(
   (t) => [index("agent_log_engagement_idx").on(t.engagementId)],
 );
 
+/** Key-value store for model/provider configuration and other settings. */
+export const settings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 /** Bidirectional human<->orchestrator inbox driving background operation. */
 export const messages = pgTable(
   "messages",
