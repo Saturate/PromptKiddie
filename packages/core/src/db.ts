@@ -5,16 +5,19 @@ import * as schema from "./schema.js";
 
 let pool: pg.Pool | undefined;
 
-/** Resolve the Postgres connection string from the environment. */
+/** Resolve the Postgres connection string from config or environment. */
 export function databaseUrl(): string {
   const url = process.env.DATABASE_URL;
-  if (!url) {
+  if (url) return url;
+  try {
+    const { loadConfig } = require("./config.js") as typeof import("./config.js");
+    return loadConfig().database.url;
+  } catch {
     throw new Error(
       "DATABASE_URL is not set. Copy .env.example to .env (or export DATABASE_URL) " +
         "and ensure Postgres is running (docker compose up -d).",
     );
   }
-  return url;
 }
 
 /** Lazily-created singleton Drizzle client backed by a pg Pool. */
