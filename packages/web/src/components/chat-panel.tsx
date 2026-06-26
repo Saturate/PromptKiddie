@@ -3,10 +3,128 @@
 import dynamic from "next/dynamic";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { MessageSquare, PanelRightClose, PanelRightOpen, Settings2 } from "lucide-react";
 
 const transport = new DefaultChatTransport({ api: "/api/chat" });
+
+interface InboxMsg {
+  id: string;
+  direction: "inbound" | "outbound";
+  author: string;
+  body: string;
+  createdAt: string;
+}
+
+function HarnessInbox({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
+  const [msgs, setMsgs] = useState<InboxMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const fetchMsgs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/messages?engagementId=all");
+      if (res.ok) setMsgs(await res.json());
+    } catch { /* retry */ }
+  }, []);
+
+  useEffect(() => {
+    fetchMsgs();
+    const interval = setInterval(fetchMsgs, 3000);
+    return () => clearInterval(interval);
+  }, [fetchMsgs]);
+
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs, open]);
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const body = input.trim();
+    if (!body) return;
+    setSending(true);
+    setInput("");
+    await fetch("/api/settings").then(r => r.json()).catch(() => ({}));
+    await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body, direction: "inbound", author: "human" }),
+    }).catch(() => {});
+    await fetchMsgs();
+    setSending(false);
+  }
+
+  return (
+    <>
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-muted border border-r-0 border-border rounded-l-lg p-2 hover:bg-muted/80 transition-colors"
+          title="Open inbox"
+        >
+          <PanelRightOpen className="size-4 text-muted-foreground" />
+        </button>
+      )}
+      <div className={`shrink-0 border-l border-border bg-background flex flex-col transition-all duration-200 ${open ? "w-[380px]" : "w-0 overflow-hidden"}`}>
+        <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="size-3.5 text-pk-green" />
+            <span className="font-mono text-xs font-semibold">Inbox</span>
+            <span className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">External Harness</span>
+          </div>
+          <button onClick={() => setOpen(false)} className="p-1 hover:bg-muted rounded">
+            <PanelRightClose className="size-3.5 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+          {msgs.length === 0 && (
+            <div className="text-center text-muted-foreground mt-8 space-y-1">
+              <MessageSquare className="size-8 mx-auto text-muted-foreground/30" />
+              <p className="text-xs font-mono">No messages yet.</p>
+              <p className="text-[10px] text-muted-foreground/60">Send a message to the orchestrator below, or wait for the harness to respond.</p>
+            </div>
+          )}
+          {msgs.map((m) => (
+            <div key={m.id} className={`flex ${m.direction === "inbound" ? "justify-end" : "justify-start"}`}>
+              <div className="max-w-[90%]">
+                <div className={`rounded-lg px-2.5 py-1 text-xs font-mono whitespace-pre-wrap ${
+                  m.direction === "inbound"
+                    ? "bg-pk-green/15 border border-pk-green/30"
+                    : "bg-muted"
+                }`}>
+                  {m.body}
+                </div>
+                <span className="text-[9px] text-muted-foreground font-mono px-1">
+                  {m.author} &middot; {new Date(m.createdAt).toLocaleTimeString()}
+                </span>
+              </div>
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+
+        <form onSubmit={handleSend} className="border-t px-2 py-1.5 flex gap-1.5 shrink-0">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Message the orchestrator..."
+            className="flex-1 bg-muted rounded px-2.5 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+            disabled={sending}
+          />
+          <button
+            type="submit"
+            disabled={sending || !input.trim()}
+            className="bg-pk-green text-black rounded px-3 py-1 text-xs font-mono font-medium disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
+      </div>
+    </>
+  );
+}
 
 function ChatPanelInner() {
   const [open, setOpen] = useState(() => {
@@ -37,42 +155,7 @@ function ChatPanelInner() {
   if (mode === "loading") return null;
 
   if (mode === "harness") {
-    return (
-      <>
-        {!open && (
-          <button
-            onClick={() => setOpen(true)}
-            className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-muted border border-r-0 border-border rounded-l-lg p-2 hover:bg-muted/80 transition-colors"
-            title="Open inbox"
-          >
-            <PanelRightOpen className="size-4 text-muted-foreground" />
-          </button>
-        )}
-        <div className={`shrink-0 border-l border-border bg-background flex flex-col transition-all duration-200 ${open ? "w-[380px]" : "w-0 overflow-hidden"}`}>
-          <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="size-3.5 text-pk-green" />
-              <span className="font-mono text-xs font-semibold">Inbox</span>
-              <span className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">External Harness</span>
-            </div>
-            <button onClick={() => setOpen(false)} className="p-1 hover:bg-muted rounded">
-              <PanelRightClose className="size-3.5 text-muted-foreground" />
-            </button>
-          </div>
-          <div className="flex-1 flex flex-col items-center justify-center px-4 text-center">
-            <MessageSquare className="size-10 text-muted-foreground/20 mb-3" />
-            <p className="text-xs font-mono text-muted-foreground mb-2">Monitoring inbox for messages</p>
-            <p className="text-[10px] font-mono text-muted-foreground/60 mb-4">
-              An external harness (Claude Code, OpenCode, Pi) controls this workspace via the inbox. Messages appear here in real time.
-            </p>
-            <div className="bg-muted rounded-lg p-3 w-full text-left space-y-1">
-              <p className="text-[10px] font-mono text-muted-foreground/80">Send a message from your harness:</p>
-              <code className="text-[10px] font-mono text-pk-green block">pk msg send --body &quot;hello&quot;</code>
-            </div>
-          </div>
-        </div>
-      </>
-    );
+    return <HarnessInbox open={open} setOpen={setOpen} />;
   }
 
   return (
