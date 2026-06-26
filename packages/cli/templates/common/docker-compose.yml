@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: promptkiddie-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-promptkiddie}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_local_only}
+      POSTGRES_DB: ${POSTGRES_DB:-promptkiddie}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-promptkiddie}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  attackbox:
+    image: ghcr.io/saturate/promptkiddie-attackbox:latest
+    build:
+      context: packages/tooling
+      dockerfile: Dockerfile
+    container_name: promptkiddie-attackbox
+    restart: unless-stopped
+    volumes:
+      - ./engagements:/workspace/engagements
+      - ${PK_VPN_CONFIG:-./vpn}:/vpn:ro
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+
+  # --- Test targets (optional, for local testing) --------------------------
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: promptkiddie-dvwa
+    profiles: ["targets"]
+    ports:
+      - "4280:80"
+
+  juice-shop:
+    image: bkimminich/juice-shop
+    container_name: promptkiddie-juice
+    profiles: ["targets"]
+    ports:
+      - "4300:3000"
+
+  adminer:
+    image: adminer:latest
+    container_name: promptkiddie-adminer
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
