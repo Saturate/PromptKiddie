@@ -20,3 +20,8 @@ config_path = "./vpn"                 # mounted to /vpn in the attackbox
 
 [inbox]
 poll_seconds = 15
+
+[api]
+# url = "http://localhost:3200"      # API server URL (when set, CLI/MCP use HTTP instead of direct DB)
+# secret = "your-secret-here"        # bearer token for API auth
+port = 3200                           # port for the API server to listen on

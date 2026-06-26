@@ -32,6 +32,11 @@ export interface PkConfig {
   inbox: {
     poll_seconds: number;
   };
+  api: {
+    url: string | null;
+    secret: string | null;
+    port: number;
+  };
 }
 
 const DEFAULTS: PkConfig = {
@@ -53,6 +58,11 @@ const DEFAULTS: PkConfig = {
   },
   inbox: {
     poll_seconds: 15,
+  },
+  api: {
+    url: null,
+    secret: null,
+    port: 3200,
   },
 };
 
@@ -92,6 +102,9 @@ function applyEnvOverrides(config: PkConfig): PkConfig {
   if (process.env.PK_TOOL_LOG_DIR) config.workspace.tool_log_dir = process.env.PK_TOOL_LOG_DIR;
   if (process.env.PK_VPN_CONFIG) config.vpn.config_path = process.env.PK_VPN_CONFIG;
   if (process.env.PK_INBOX_POLL_SECONDS) config.inbox.poll_seconds = Number(process.env.PK_INBOX_POLL_SECONDS);
+  if (process.env.PK_API_URL) config.api.url = process.env.PK_API_URL;
+  if (process.env.PK_API_SECRET) config.api.secret = process.env.PK_API_SECRET;
+  if (process.env.PK_API_PORT) config.api.port = Number(process.env.PK_API_PORT);
   return config;
 }
 

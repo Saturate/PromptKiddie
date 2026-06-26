@@ -334,12 +334,18 @@ export async function addEvidence(input: {
   path: string;
   type: "flag" | "screenshot" | "scan" | "output" | "file";
   findingId?: string;
+  sha256?: string;
+  sizeBytes?: number;
   meta?: Record<string, unknown>;
 }) {
   const db = getDb();
-  const buf = await readFile(input.path);
-  const sha256 = createHash("sha256").update(buf).digest("hex");
-  const { size } = await stat(input.path);
+  let hash = input.sha256;
+  let size = input.sizeBytes;
+  if (!hash || size === undefined) {
+    const buf = await readFile(input.path);
+    hash = createHash("sha256").update(buf).digest("hex");
+    size = (await stat(input.path)).size;
+  }
 
   const [row] = await db
     .insert(evidence)
@@ -348,7 +354,7 @@ export async function addEvidence(input: {
       findingId: input.findingId,
       type: input.type,
       path: input.path,
-      sha256,
+      sha256: hash,
       sizeBytes: size,
       meta: input.meta,
     })

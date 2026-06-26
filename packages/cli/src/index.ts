@@ -6,43 +6,17 @@
 import "dotenv/config";
 import { Command } from "commander";
 import {
-  addAgentLog,
-  addArtifact,
   addEvidence,
-  addFinding,
-  addObjective,
-  addTarget,
-  advancePhase,
-  captureFlag,
   closeDb,
-  createEngagement,
-  deleteEngagement,
-  finishAgentRun,
   generateReport,
   getEngagement,
-  getPhase,
-  listActivity,
-  listAgentRuns,
-  listArtifacts,
-  listEngagements,
-  listEvidence,
-  listFindings,
-  listMessages,
-  listObjectives,
-  listTargets,
-  logActivity,
-  pollInbox,
-  sendMessage,
-  setEngagementStatus,
-  startAgentRun,
-  updateEngagement,
-  updateFinding,
-  updateTarget,
+  getRepo,
+  loadConfig,
 } from "@promptkiddie/core";
-import { loadConfig } from "@promptkiddie/core";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
 const config = loadConfig();
+const repo = getRepo();
 
 const program = new Command();
 program
@@ -65,7 +39,7 @@ engagement
   .option("--source-url <url>", "source URL (e.g. THM room, HTB machine)")
   .option("--group <group>", "engagement group (e.g. THM, HTB)")
   .action(async (o) => {
-    const row = await createEngagement({ name: o.name, type: o.type, scope: o.scope, brief: o.brief, sourceUrl: o.sourceUrl, group: o.group });
+    const row = await repo.createEngagement({ name: o.name, type: o.type, scope: o.scope, brief: o.brief, sourceUrl: o.sourceUrl, group: o.group }) as { id: string };
     await setActiveEngagement(row.id);
     console.error(`Created engagement and set it active: ${row.id}`);
     out(row);
@@ -73,7 +47,7 @@ engagement
 
 engagement
   .command("list")
-  .action(async () => out(await listEngagements()));
+  .action(async () => out(await repo.listEngagements()));
 
 engagement
   .command("use")
@@ -90,17 +64,17 @@ engagement
   .argument("[id]")
   .action(async (id?: string) => {
     const eid = await resolveEngagementId(id);
-    const eng = await getEngagement(eid);
+    const eng = await repo.getEngagement(eid);
     if (!eng) throw new Error(`No engagement with id ${eid}`);
-    const activity = await listActivity(eid);
+    const activity = await repo.listActivity(eid);
     out({
       engagement: eng,
-      targets: await listTargets(eid),
-      findings: await listFindings(eid),
-      objectives: await listObjectives(eid),
-      evidence: await listEvidence(eid),
-      artifacts: await listArtifacts(eid),
-      agentRuns: await listAgentRuns(eid),
+      targets: await repo.listTargets(eid),
+      findings: await repo.listFindings(eid),
+      objectives: await repo.listObjectives(eid),
+      evidence: await repo.listEvidence(eid),
+      artifacts: await repo.listArtifacts(eid),
+      agentRuns: await repo.listAgentRuns(eid),
       activity: activity.slice(0, 50),
     });
   });
@@ -111,16 +85,16 @@ engagement
   .option("--engagement <id>")
   .action(async (status, o) => {
     const eid = await resolveEngagementId(o.engagement);
-    out(await setEngagementStatus(eid, status));
+    out(await repo.setEngagementStatus(eid, status));
   });
 
 engagement
   .command("delete")
   .argument("<id>")
   .action(async (id: string) => {
-    const row = await deleteEngagement(id);
+    const row = await repo.deleteEngagement(id);
     if (!row) throw new Error(`No engagement with id ${id}`);
-    console.error(`Deleted engagement: ${row.name} (${id})`);
+    console.error(`Deleted engagement: ${(row as { name: string }).name} (${id})`);
     out(row);
   });
 
@@ -139,7 +113,7 @@ engagement
     if (o.sourceUrl !== undefined) updates.sourceUrl = o.sourceUrl;
     if (o.group !== undefined) updates.group = o.group;
     if (o.scope !== undefined) updates.scope = o.scope;
-    out(await updateEngagement(id, updates));
+    out(await repo.updateEngagement(id, updates));
   });
 
 engagement
@@ -149,10 +123,10 @@ engagement
   .action(async (targetPhase: string | undefined, o) => {
     const eid = await resolveEngagementId(o.engagement);
     if (!targetPhase) {
-      out(await getPhase(eid));
+      out(await repo.getPhase(eid));
       return;
     }
-    const result = await advancePhase(eid, targetPhase as Parameters<typeof advancePhase>[1]);
+    const result = await repo.advancePhase(eid, targetPhase) as { warning?: string; engagement?: { phase: string } };
     if (result.warning) console.error(`Warning: ${result.warning}`);
     out({ phase: result.engagement?.phase, warning: result.warning });
   });
@@ -170,7 +144,7 @@ target
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
     out(
-      await addTarget({
+      await repo.addTarget({
         engagementId: eid,
         kind: o.kind,
         identifier: o.id,
@@ -183,7 +157,7 @@ target
 target
   .command("list")
   .option("--engagement <id>")
-  .action(async (o) => out(await listTargets(await resolveEngagementId(o.engagement))));
+  .action(async (o) => out(await repo.listTargets(await resolveEngagementId(o.engagement))));
 
 target
   .command("update")
@@ -199,7 +173,7 @@ target
     if (o.notes !== undefined) updates.notes = o.notes;
     if (o.kind !== undefined) updates.kind = o.kind;
     if (o.identifier !== undefined) updates.identifier = o.identifier;
-    out(await updateTarget(id, updates));
+    out(await repo.updateTarget(id, updates));
   });
 
 // --- finding ---------------------------------------------------------------
@@ -221,7 +195,7 @@ finding
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
     out(
-      await addFinding({
+      await repo.addFinding({
         engagementId: eid,
         title: o.title,
         severity: o.severity,
@@ -240,7 +214,7 @@ finding
 finding
   .command("list")
   .option("--engagement <id>")
-  .action(async (o) => out(await listFindings(await resolveEngagementId(o.engagement))));
+  .action(async (o) => out(await repo.listFindings(await resolveEngagementId(o.engagement))));
 
 finding
   .command("update")
@@ -267,7 +241,7 @@ finding
     if (o.target !== undefined) updates.targetId = o.target;
     if (o.desc !== undefined) updates.description = o.desc;
     if (o.remediation !== undefined) updates.remediation = o.remediation;
-    out(await updateFinding(id, updates));
+    out(await repo.updateFinding(id, updates));
   });
 
 // --- evidence --------------------------------------------------------------
@@ -285,7 +259,7 @@ ev.command("add")
 
 ev.command("list")
   .option("--engagement <id>")
-  .action(async (o) => out(await listEvidence(await resolveEngagementId(o.engagement))));
+  .action(async (o) => out(await repo.listEvidence(await resolveEngagementId(o.engagement))));
 
 // --- objective -------------------------------------------------------------
 const objective = program.command("objective").description("Manage CTF objectives / tasks");
@@ -299,19 +273,19 @@ objective
   .option("--engagement <id>")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
-    out(await addObjective({ engagementId: eid, taskNumber: o.taskNumber, title: o.title, description: o.description, flagFormat: o.flagFormat }));
+    out(await repo.addObjective({ engagementId: eid, taskNumber: o.taskNumber, title: o.title, description: o.description, flagFormat: o.flagFormat }));
   });
 
 objective
   .command("list")
   .option("--engagement <id>")
-  .action(async (o) => out(await listObjectives(await resolveEngagementId(o.engagement))));
+  .action(async (o) => out(await repo.listObjectives(await resolveEngagementId(o.engagement))));
 
 objective
   .command("capture")
   .argument("<id>", "objective id")
   .requiredOption("--flag <flag>", "captured flag value")
-  .action(async (id: string, o) => out(await captureFlag(id, o.flag)));
+  .action(async (id: string, o) => out(await repo.captureFlag(id, o.flag)));
 
 // --- artifact --------------------------------------------------------------
 const artifact = program.command("artifact").description("Manage artifacts (loot, creds, docs)");
@@ -326,13 +300,13 @@ artifact
   .option("--engagement <id>")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
-    out(await addArtifact({ engagementId: eid, title: o.title, type: o.type, content: o.content, path: o.path, findingId: o.finding }));
+    out(await repo.addArtifact({ engagementId: eid, title: o.title, type: o.type, content: o.content, path: o.path, findingId: o.finding }));
   });
 
 artifact
   .command("list")
   .option("--engagement <id>")
-  .action(async (o) => out(await listArtifacts(await resolveEngagementId(o.engagement))));
+  .action(async (o) => out(await repo.listArtifacts(await resolveEngagementId(o.engagement))));
 
 // --- activity --------------------------------------------------------------
 const act = program.command("activity").description("Append-only audit trail");
@@ -347,7 +321,7 @@ act.command("log")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
     out(
-      await logActivity({
+      await repo.logActivity({
         engagementId: eid,
         phase: o.phase,
         action: o.action,
@@ -360,7 +334,7 @@ act.command("log")
 
 act.command("list")
   .option("--engagement <id>")
-  .action(async (o) => out(await listActivity(await resolveEngagementId(o.engagement))));
+  .action(async (o) => out(await repo.listActivity(await resolveEngagementId(o.engagement))));
 
 // --- agent run bookkeeping -------------------------------------------------
 const agent = program.command("agent").description("Sub-agent run bookkeeping");
@@ -372,7 +346,7 @@ agent
   .option("--engagement <id>")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
-    out(await startAgentRun({ engagementId: eid, agent: o.agent, phase: o.phase }));
+    out(await repo.startAgentRun({ engagementId: eid, agent: o.agent, phase: o.phase }));
   });
 
 agent
@@ -381,7 +355,7 @@ agent
   .requiredOption("--status <status>", "ok | failed")
   .option("--summary <text>")
   .action(async (runId, o) =>
-    out(await finishAgentRun({ runId, status: o.status, summary: o.summary })),
+    out(await repo.finishAgentRun({ runId, status: o.status, summary: o.summary })),
   );
 
 // --- inbox (msg) -----------------------------------------------------------
@@ -391,7 +365,7 @@ msg
   .command("list")
   .description("List all messages for an engagement")
   .option("--engagement <id>")
-  .action(async (o) => out(await listMessages(await resolveEngagementId(o.engagement))));
+  .action(async (o) => out(await repo.listMessages(await resolveEngagementId(o.engagement))));
 
 msg
   .command("poll")
@@ -399,7 +373,7 @@ msg
   .option("--engagement <id>")
   .action(async (o) => {
     // Inbox messages may be engagement-scoped or global; only filter if asked.
-    out(await pollInbox(o.engagement));
+    out(await repo.pollInbox(o.engagement));
   });
 
 msg
@@ -410,7 +384,7 @@ msg
   .option("--engagement <id>")
   .action(async (o) => {
     const engagementId = await resolveEngagementId(o.engagement);
-    out(await sendMessage({ body: o.body, direction: o.direction, author: o.author, engagementId }));
+    out(await repo.sendMessage({ body: o.body, direction: o.direction, author: o.author, engagementId }));
   });
 
 // --- think (agent reasoning log) -------------------------------------------
@@ -424,7 +398,7 @@ program
   .option("--engagement <id>")
   .action(async (message: string, o) => {
     const eid = await resolveEngagementId(o.engagement);
-    out(await addAgentLog({
+    out(await repo.addAgentLog({
       engagementId: eid,
       agent: o.agent,
       phase: o.phase,
@@ -540,7 +514,7 @@ program
     const toolName = cmdStr.split(/\s+/)[0];
     const reasonSuffix = o.reason ? ` | ${o.reason}` : "";
 
-    await logActivity({
+    await repo.logActivity({
       engagementId: eid,
       phase: o.phase,
       action: `[${o.agent}] ${toolName} (${duration}ms, exit ${result.code})${reasonSuffix}`,
