@@ -97,7 +97,7 @@ const CHAT_DEFAULTS: ChatSettings = {
   orchestratorModel: "",
   subagentModel: "",
   baseUrl: "",
-  mode: "floating",
+  mode: "harness",
   maxSteps: 0,
 };
 

@@ -34,7 +34,46 @@ function ChatPanelInner() {
     localStorage.setItem("pk-chat-open", String(open));
   }, [open]);
 
-  if (mode === "loading" || mode === "harness") return null;
+  if (mode === "loading") return null;
+
+  if (mode === "harness") {
+    return (
+      <>
+        {!open && (
+          <button
+            onClick={() => setOpen(true)}
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-muted border border-r-0 border-border rounded-l-lg p-2 hover:bg-muted/80 transition-colors"
+            title="Open inbox"
+          >
+            <PanelRightOpen className="size-4 text-muted-foreground" />
+          </button>
+        )}
+        <div className={`shrink-0 border-l border-border bg-background flex flex-col transition-all duration-200 ${open ? "w-[380px]" : "w-0 overflow-hidden"}`}>
+          <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="size-3.5 text-pk-green" />
+              <span className="font-mono text-xs font-semibold">Inbox</span>
+              <span className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">External Harness</span>
+            </div>
+            <button onClick={() => setOpen(false)} className="p-1 hover:bg-muted rounded">
+              <PanelRightClose className="size-3.5 text-muted-foreground" />
+            </button>
+          </div>
+          <div className="flex-1 flex flex-col items-center justify-center px-4 text-center">
+            <MessageSquare className="size-10 text-muted-foreground/20 mb-3" />
+            <p className="text-xs font-mono text-muted-foreground mb-2">Monitoring inbox for messages</p>
+            <p className="text-[10px] font-mono text-muted-foreground/60 mb-4">
+              An external harness (Claude Code, OpenCode, Pi) controls this workspace via the inbox. Messages appear here in real time.
+            </p>
+            <div className="bg-muted rounded-lg p-3 w-full text-left space-y-1">
+              <p className="text-[10px] font-mono text-muted-foreground/80">Send a message from your harness:</p>
+              <code className="text-[10px] font-mono text-pk-green block">pk msg send --body &quot;hello&quot;</code>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

@@ -564,10 +564,11 @@ export async function getAllSettings() {
 
 export async function seedDefaultSettings() {
   const defaults: Record<string, unknown> = {
+    "chat.mode": "harness",
     "chat.provider": "anthropic",
     "chat.orchestrator_model": "claude-opus-4-8",
-    "chat.subagent_model": "claude-sonnet-4-6",
-    "chat.max_steps": 20,
+    "chat.subagent_model": "claude-opus-4-8",
+    "chat.max_steps": 0,
   };
   for (const [key, value] of Object.entries(defaults)) {
     const existing = await getSetting(key);
