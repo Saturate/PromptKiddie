@@ -1,0 +1,22 @@
+# PromptKiddie workspace configuration
+# Copy to .pk/config.toml and adjust. Values here override ~/.pk/config.toml.
+# Environment variables (DATABASE_URL, PK_*) override both.
+
+[database]
+url = "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie"
+
+[attackbox]
+container = "promptkiddie-attackbox"  # Docker container name
+# host = "ssh://user@remote"         # remote attackbox (future)
+timeout = 300000                      # command timeout in ms
+exec_mode = "docker"                  # "docker" or "local"
+
+[workspace]
+evidence_root = "./engagements"
+tool_log_dir = "./engagements/.tool-log"
+
+[vpn]
+config_path = "./vpn"                 # mounted to /vpn in the attackbox
+
+[inbox]
+poll_seconds = 15

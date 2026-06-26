@@ -7,7 +7,7 @@ import { z } from "zod";
 import { parseNmapXml } from "./parsers/nmap.js";
 import { parseNucleiJsonl } from "./parsers/nuclei.js";
 
-const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-attackbox";
 const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
 const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";

@@ -17,11 +17,12 @@ services:
       timeout: 5s
       retries: 10
 
-  tooling:
+  attackbox:
+    image: ghcr.io/saturate/promptkiddie-attackbox:latest
     build:
       context: packages/tooling
       dockerfile: Dockerfile
-    container_name: promptkiddie-tooling
+    container_name: promptkiddie-attackbox
     restart: unless-stopped
     volumes:
       - ./engagements:/workspace/engagements

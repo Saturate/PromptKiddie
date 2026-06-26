@@ -39,7 +39,10 @@ import {
   updateFinding,
   updateTarget,
 } from "@promptkiddie/core";
+import { loadConfig } from "@promptkiddie/core";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
+
+const config = loadConfig();
 
 const program = new Command();
 program
@@ -439,7 +442,7 @@ vpn
   .option("--config <path>", "config file path inside container", "/vpn/config.ovpn")
   .action(async (o) => {
     const { execFile: exec } = await import("node:child_process");
-    const container = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+    const container = config.attackbox.container;
 
     const run = (args: string[]) => new Promise<string>((resolve, reject) => {
       exec("docker", ["exec", container, ...args], { timeout: 30000 }, (err, stdout) => {
@@ -470,7 +473,7 @@ vpn
   .description("Stop OpenVPN in the tooling container")
   .action(async () => {
     const { execFile: exec } = await import("node:child_process");
-    const container = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+    const container = config.attackbox.container;
     exec("docker", ["exec", container, "killall", "openvpn"], (err) => {
       if (err) console.error("[vpn] OpenVPN not running or kill failed");
       else console.error("[vpn] Stopped");
@@ -482,7 +485,7 @@ vpn
   .description("Check VPN status in the tooling container")
   .action(async () => {
     const { execFile: exec } = await import("node:child_process");
-    const container = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
+    const container = config.attackbox.container;
     exec("docker", ["exec", container, "ip", "-4", "addr", "show", "tun0"], (err, stdout) => {
       if (err || !stdout) console.log("VPN: disconnected");
       else {
@@ -493,8 +496,8 @@ vpn
   });
 
 // --- exec (run command + auto-log) -----------------------------------------
-const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-tooling";
-const USE_DOCKER = process.env.PK_EXEC_MODE !== "local";
+const CONTAINER = config.attackbox.container;
+const USE_DOCKER = config.attackbox.exec_mode !== "local";
 
 program
   .command("exec")
@@ -567,6 +570,12 @@ program
     }
     process.exitCode = result.code;
   });
+
+// --- config (show resolved configuration) ----------------------------------
+program
+  .command("config")
+  .description("Show the resolved configuration (defaults + global + workspace + env)")
+  .action(async () => out(config));
 
 // --- search (grep stored exec outputs) -------------------------------------
 program
