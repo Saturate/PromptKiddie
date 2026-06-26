@@ -21,6 +21,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { FileDown } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +113,13 @@ export default async function EngagementPage({
           <Badge variant="secondary" className="font-mono text-[10px] uppercase">
             {engagement.status}
           </Badge>
+          <span className="flex-1" />
+          <a href={`/api/report/${id}`} download>
+            <Button variant="outline" size="sm">
+              <FileDown className="size-3.5" data-icon="inline-start" />
+              Download Report
+            </Button>
+          </a>
         </div>
         <PhaseIndicator currentPhase={currentPhase} />
         {engagement.sourceUrl && (

@@ -15,6 +15,7 @@ import {
   createEngagement,
   deleteEngagement,
   finishAgentRun,
+  generateReport,
   getEngagement,
   getPhase,
   listActivity,
@@ -459,6 +460,34 @@ program
     if (result.stdout) process.stdout.write(result.stdout);
     if (result.stderr) process.stderr.write(result.stderr);
     process.exitCode = result.code;
+  });
+
+// --- report ----------------------------------------------------------------
+const report = program.command("report").description("Generate engagement reports");
+
+report
+  .command("generate")
+  .description("Generate a PDF report for an engagement")
+  .option("--engagement <id>")
+  .option("--output <path>", "output directory for the report files")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    // Resolve project root: walk up from this script until we find package.json with "workspaces"
+    const { resolve, dirname } = await import("node:path");
+    const { existsSync: exists, readFileSync: readF } = await import("node:fs");
+    let dir = resolve(process.cwd());
+    while (dir !== "/") {
+      const pkg = resolve(dir, "pnpm-workspace.yaml");
+      if (exists(pkg)) break;
+      dir = dirname(dir);
+    }
+    if (dir === "/") dir = process.cwd();
+
+    console.error(`[report] Generating report for engagement ${eid}...`);
+    const result = await generateReport(eid, dir, o.output);
+    console.error(`[report] .typ: ${result.typPath}`);
+    console.error(`[report] .pdf: ${result.pdfPath}`);
+    console.log(result.pdfPath);
   });
 
 async function main() {
