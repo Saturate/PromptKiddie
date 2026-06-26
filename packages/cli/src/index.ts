@@ -545,6 +545,20 @@ program
     process.exitCode = result.code;
   });
 
+// --- init (scaffold workspace) ---------------------------------------------
+program
+  .command("init")
+  .description("Scaffold a PromptKiddie workspace in the current directory")
+  .option("--harness <harness>", "AI harness: claude-code | opencode | pi")
+  .option("--db-url <url>", "PostgreSQL connection string")
+  .option("--api-secret <secret>", "API bearer token secret")
+  .option("--skip-docker", "skip starting Docker services")
+  .option("-y, --yes", "accept all defaults without prompting")
+  .action(async (o) => {
+    const { runInit } = await import("./init.js");
+    await runInit({ harness: o.harness, dbUrl: o.dbUrl, apiSecret: o.apiSecret, skipDocker: o.skipDocker, yes: o.yes });
+  });
+
 // --- config (show resolved configuration) ----------------------------------
 program
   .command("config")
