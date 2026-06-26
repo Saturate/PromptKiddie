@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
+import { Toaster } from "@/components/ui/sonner";
 
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
@@ -53,6 +54,7 @@ export default async function RootLayout({
             </SidebarInset>
           </SidebarProvider>
         </TooltipProvider>
+        <Toaster position="bottom-right" />
         </ThemeProvider>
       </body>
     </html>
