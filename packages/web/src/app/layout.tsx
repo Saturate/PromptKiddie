@@ -8,6 +8,7 @@ import { ThemeProvider } from "next-themes";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { Toaster } from "@/components/ui/sonner";
+import { ChatWidget } from "@/components/chat-widget";
 
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
@@ -54,6 +55,7 @@ export default async function RootLayout({
             </SidebarInset>
           </SidebarProvider>
         </TooltipProvider>
+        <ChatWidget />
         <Toaster position="bottom-right" />
         </ThemeProvider>
       </body>
