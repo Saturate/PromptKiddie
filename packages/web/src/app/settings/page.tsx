@@ -75,6 +75,25 @@ function ToggleGroup({
 
 type Provider = "anthropic" | "openai" | "google" | "custom";
 type ChatMode = "floating" | "harness";
+type Harness = "claude-code" | "opencode" | "pi";
+
+const HARNESS_INFO: Record<Harness, { label: string; init: string; desc: string }> = {
+  "claude-code": {
+    label: "Claude Code",
+    init: "pk init --harness claude-code",
+    desc: "Anthropic's CLI agent. Creates .claude/agents/ and CLAUDE.md.",
+  },
+  opencode: {
+    label: "OpenCode",
+    init: "pk init --harness opencode",
+    desc: "Open-source coding agent. Creates opencode config and agent definitions.",
+  },
+  pi: {
+    label: "Pi.dev",
+    init: "pk init --harness pi",
+    desc: "Google's AI coding agent. Creates Pi configuration files.",
+  },
+};
 
 const PROVIDER_DEFAULTS: Record<Provider, { orchestrator: string; subagent: string }> = {
   anthropic: { orchestrator: "claude-opus-4-8", subagent: "claude-opus-4-8" },
@@ -89,6 +108,7 @@ interface ChatSettings {
   subagentModel: string;
   baseUrl: string;
   mode: ChatMode;
+  harness: Harness;
   maxSteps: number;
 }
 
@@ -98,6 +118,7 @@ const CHAT_DEFAULTS: ChatSettings = {
   subagentModel: "",
   baseUrl: "",
   mode: "harness",
+  harness: "claude-code",
   maxSteps: 0,
 };
 
@@ -107,7 +128,8 @@ function parseChatSettings(raw: Record<string, unknown>): ChatSettings {
     orchestratorModel: (raw["chat.orchestrator_model"] as string) ?? "",
     subagentModel: (raw["chat.subagent_model"] as string) ?? "",
     baseUrl: (raw["chat.base_url"] as string) ?? "",
-    mode: (raw["chat.mode"] as ChatMode) ?? "floating",
+    mode: (raw["chat.mode"] as ChatMode) ?? "harness",
+    harness: (raw["chat.harness"] as Harness) ?? "claude-code",
     maxSteps: typeof raw["chat.max_steps"] === "number" ? raw["chat.max_steps"] : 0,
   };
 }
@@ -119,6 +141,7 @@ function chatSettingsToPayload(s: ChatSettings): Record<string, unknown> {
     "chat.subagent_model": s.subagentModel,
     "chat.base_url": s.baseUrl,
     "chat.mode": s.mode,
+    "chat.harness": s.harness,
     "chat.max_steps": s.maxSteps,
   };
 }
@@ -250,10 +273,26 @@ export default function SettingsPage() {
                 </p>
 
               {chat.mode === "harness" && (
+                <>
+                <div className="space-y-2">
+                  <Label className="font-mono text-xs uppercase tracking-wider">Harness</Label>
+                  <ToggleGroup
+                    options={[
+                      { label: "Claude Code", value: "claude-code" },
+                      { label: "OpenCode", value: "opencode" },
+                      { label: "Pi.dev", value: "pi" },
+                    ]}
+                    value={chat.harness}
+                    onChange={(v) => updateChat({ harness: v as Harness })}
+                  />
+                </div>
                 <div className="bg-muted rounded-lg p-4 space-y-2">
-                  <p className="text-xs font-mono font-semibold">External Harness Setup</p>
+                  <p className="text-xs font-mono font-semibold">{HARNESS_INFO[chat.harness].label} Setup</p>
                   <p className="text-[11px] text-muted-foreground font-mono">
-                    Run <code className="bg-background px-1.5 py-0.5 rounded text-pk-green">pk init --harness claude-code</code> in your project directory to scaffold agent definitions and skills. The harness communicates with PK via the inbox:
+                    {HARNESS_INFO[chat.harness].desc}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground font-mono">
+                    Run <code className="bg-background px-1.5 py-0.5 rounded text-pk-green">{HARNESS_INFO[chat.harness].init}</code> in your project directory, then:
                   </p>
                   <pre className="text-[11px] font-mono bg-background rounded p-2 text-muted-foreground">
 {`pk msg poll          # read new messages
@@ -261,6 +300,7 @@ pk msg send --body "..." # send replies
 pk engagement show   # get full context`}
                   </pre>
                 </div>
+                </>
               )}
               </div>
 
