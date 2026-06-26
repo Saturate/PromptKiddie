@@ -127,20 +127,20 @@ If `pk` isn't built yet, run `pnpm build` first. All commands read `DATABASE_URL
 Raw artifacts go under `engagements/<engagement-slug>/` (gitignored). Register each with
 `pk evidence add` so it's hashed and linked. Never commit target/client data.
 
-## Background operation via the inbox
+## Inbox: the human-agent communication channel
 
-This session can run in the background while a human steers from the web frontend (or
-`pk msg send`). Control flows through the `messages` table:
+The web frontend's chat panel monitors the inbox in real time. The human sends messages from
+the frontend; you read and reply via the CLI. **Always poll the inbox at the start of a
+session and between phases** to check for human input.
 
 ```bash
 pk msg poll                       # fetch new inbound messages (marks them read)
 pk msg send --body "<reply>"      # send an outbound reply
 ```
 
-When running unattended, periodically poll the inbox (default cadence
-`PK_INBOX_POLL_SECONDS`), act on instructions that are in-scope, and reply with status. If
-an instruction is out of scope or ambiguous, reply asking for clarification rather than
-guessing.
+When running unattended, periodically poll the inbox, act on instructions that are in-scope,
+and reply with status. If an instruction is out of scope or ambiguous, reply asking for
+clarification rather than guessing. The human sees your replies in the frontend immediately.
 
 ## Command discipline
 
