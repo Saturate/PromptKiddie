@@ -14,14 +14,10 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      controller.enqueue(encoder.encode(": connected\n\n"));
-
       unsubscribe = await subscribeMessages((payload) => {
-        if (payload.engagement_id !== engagementId) return;
+        if ((payload as Record<string, unknown>).engagement_id !== engagementId) return;
         try {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
-          );
+          controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
         } catch {
           // stream closed
         }
@@ -39,9 +35,9 @@ export async function GET(req: NextRequest) {
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream",
+      "Content-Type": "application/x-ndjson",
       "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }
