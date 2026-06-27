@@ -140,8 +140,12 @@ function ChatPanelInner() {
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.ok ? r.json() : {})
-      .then((s) => setMode((s["chat.mode"] as string) ?? "floating"))
-      .catch(() => setMode("floating"));
+      .then((s) => {
+        const m = (s["chat.mode"] as string) ?? "harness";
+        setMode(m);
+        if (m === "harness") setOpen(false);
+      })
+      .catch(() => setMode("harness"));
   }, []);
 
   useEffect(() => {
