@@ -1,6 +1,6 @@
 import { ToolLoopAgent, streamText, tool } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
+import { openai, createOpenAI } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
 import { LangfuseExporter } from "langfuse-vercel";
 import { z } from "zod";
@@ -36,9 +36,9 @@ import {
 
 export const maxDuration = 300;
 
-const langfuseEnabled = !!process.env.LANGFUSE_PUBLIC_KEY;
-const telemetryConfig = langfuseEnabled
-  ? { isEnabled: true, tracer: new LangfuseExporter() }
+const langfuseExporter = process.env.LANGFUSE_PUBLIC_KEY ? new LangfuseExporter() : null;
+const telemetryConfig = langfuseExporter
+  ? { isEnabled: true as const, integrations: [langfuseExporter] }
   : undefined;
 
 async function getModelConfig() {
@@ -70,7 +70,10 @@ function getModel(provider: string, modelId: string, baseUrl?: string | null) {
   switch (provider) {
     case "openai": return openai(modelId);
     case "google": return google(modelId);
-    case "custom": return openai(modelId, { baseURL: baseUrl || undefined });
+    case "custom": {
+      const custom = createOpenAI({ baseURL: baseUrl || undefined, apiKey: process.env.OPENAI_API_KEY || "dummy" });
+      return custom(modelId);
+    }
     default: return anthropic(modelId);
   }
 }

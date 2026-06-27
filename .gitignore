@@ -33,3 +33,8 @@ vpn/
 
 # Local CLI state (active engagement pointer)
 .pk/
+
+# PromptKiddie
+engagements/*/
+.pk/config.toml
+vpn/*.ovpn
