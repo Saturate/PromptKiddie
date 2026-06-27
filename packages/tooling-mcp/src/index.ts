@@ -88,7 +88,7 @@ server.tool(
     flags: z.string().optional().describe("Extra rustscan flags, e.g. '--ulimit 5000 -t 2000'"),
     nmapFlags: z.string().optional().describe("Flags to pass to nmap after port discovery, e.g. '-sV -sC'"),
   },
-  async ({ target, ports, flags, nmapFlags }) => {
+  async ({ target, ports, flags, nmapFlags }: { target: string; ports?: string; flags?: string; nmapFlags?: string }) => {
     const args = ["rustscan", "-a", target];
     if (ports) args.push("-p", ports);
     if (flags) args.push(...flags.split(/\s+/));
@@ -105,7 +105,7 @@ server.tool(
     flags: z.string().optional().describe("Extra nmap flags, e.g. '-sV -sC -p 1-1000'"),
     raw: z.boolean().optional().describe("Return raw text output instead of parsed JSON"),
   },
-  async ({ target, flags, raw }) => {
+  async ({ target, flags, raw }: { target: string; flags?: string; raw?: boolean }) => {
     const args = ["nmap"];
     if (flags) args.push(...flags.split(/\s+/));
     if (!raw) args.push("-oX", "-");
@@ -127,7 +127,7 @@ server.tool(
     wordlist: z.string().optional().describe("Wordlist path inside container (default: /usr/share/wordlists/dirb/common.txt)"),
     flags: z.string().optional().describe("Extra ffuf flags, e.g. '-mc 200,301 -t 50'"),
   },
-  async ({ url, wordlist, flags }) => {
+  async ({ url, wordlist, flags }: { url: string; wordlist?: string; flags?: string }) => {
     const wl = wordlist ?? "/usr/share/wordlists/dirb/common.txt";
     const args = ["ffuf", "-u", url, "-w", wl, "-o", "/dev/stdout", "-of", "json"];
     if (flags) args.push(...flags.split(/\s+/));
@@ -146,7 +146,7 @@ server.tool(
     flags: z.string().optional().describe("Extra nuclei flags"),
     raw: z.boolean().optional().describe("Return raw JSONL instead of parsed findings array"),
   },
-  async ({ target, templates, flags, raw }) => {
+  async ({ target, templates, flags, raw }: { target: string; templates?: string; flags?: string; raw?: boolean }) => {
     const args = ["nuclei", "-u", target, "-jsonl"];
     if (templates) args.push(...templates.split(/\s+/));
     if (flags) args.push(...flags.split(/\s+/));
@@ -168,7 +168,7 @@ server.tool(
     wordlist: z.string().optional().describe("Wordlist path (default: /usr/share/wordlists/dirb/common.txt)"),
     flags: z.string().optional().describe("Extra gobuster flags"),
   },
-  async ({ mode, target, wordlist, flags }) => {
+  async ({ mode, target, wordlist, flags }: { mode: string; target: string; wordlist?: string; flags?: string }) => {
     const wl = wordlist ?? "/usr/share/wordlists/dirb/common.txt";
     const args = ["gobuster", mode, "-u", target, "-w", wl];
     if (flags) args.push(...flags.split(/\s+/));
@@ -185,7 +185,7 @@ server.tool(
     target: z.string().describe("Target URL or host"),
     flags: z.string().optional().describe("Extra nikto flags, e.g. '-port 8080 -Tuning x'"),
   },
-  async ({ target, flags }) => {
+  async ({ target, flags }: { target: string; flags?: string }) => {
     const args = ["nikto", "-h", target, "-Format", "json", "-output", "/dev/stdout"];
     if (flags) args.push(...flags.split(/\s+/));
     return result(await dockerExec(args, "nikto"));
@@ -201,7 +201,7 @@ server.tool(
     url: z.string().describe("Target URL with injectable parameter"),
     flags: z.string().optional().describe("Extra sqlmap flags, e.g. '--dbs --batch --level 3'"),
   },
-  async ({ url, flags }) => {
+  async ({ url, flags }: { url: string; flags?: string }) => {
     const args = ["sqlmap", "-u", url, "--batch"];
     if (flags) args.push(...flags.split(/\s+/));
     return result(await dockerExec(args, "sqlmap"));
@@ -217,7 +217,7 @@ server.tool(
     targets: z.string().describe("Comma-separated URLs or hosts, or a single target"),
     flags: z.string().optional().describe("Extra httpx flags, e.g. '-tech-detect -status-code -title'"),
   },
-  async ({ targets, flags }) => {
+  async ({ targets, flags }: { targets: string; flags?: string }) => {
     const args = ["sh", "-c", `echo '${targets.replace(/,/g, "\n")}' | httpx-toolkit -json ${flags ?? ""}`];
     return result(await dockerExec(args, "httpx"));
   },
@@ -233,7 +233,7 @@ server.tool(
     type: z.string().optional().describe("Record type (A, AAAA, MX, NS, TXT, ANY)"),
     flags: z.string().optional(),
   },
-  async ({ domain, type, flags }) => {
+  async ({ domain, type, flags }: { domain: string; type?: string; flags?: string }) => {
     const args = ["dig"];
     if (flags) args.push(...flags.split(/\s+/));
     if (type) args.push(domain, type);
@@ -246,7 +246,7 @@ server.tool(
   "whois",
   "WHOIS domain/IP lookup.",
   { target: z.string().describe("Domain or IP") },
-  async ({ target }) => result(await dockerExec(["whois", target], "whois")),
+  async ({ target }: { target: string }) => result(await dockerExec(["whois", target], "whois")),
 );
 
 server.tool(
@@ -255,7 +255,7 @@ server.tool(
   {
     command: z.string().describe("Shell command to execute"),
   },
-  async ({ command }) => result(await dockerExec(["sh", "-c", command], "tooling_exec")),
+  async ({ command }: { command: string }) => result(await dockerExec(["sh", "-c", command], "tooling_exec")),
 );
 
 // --- Network isolation per engagement --------------------------------------
@@ -267,7 +267,7 @@ server.tool(
     engagementSlug: z.string().describe("Engagement slug (used as network suffix)"),
     subnet: z.string().optional().describe("Optional subnet, e.g. '172.30.0.0/24'"),
   },
-  async ({ engagementSlug, subnet }) => {
+  async ({ engagementSlug, subnet }: { engagementSlug: string; subnet?: string }) => {
     const name = `${NET_PREFIX}${engagementSlug}`;
     const args = ["docker", "network", "create", "--driver", "bridge"];
     if (subnet) args.push("--subnet", subnet);
@@ -286,7 +286,7 @@ server.tool(
   {
     engagementSlug: z.string().describe("Engagement slug"),
   },
-  async ({ engagementSlug }) => {
+  async ({ engagementSlug }: { engagementSlug: string }) => {
     const name = `${NET_PREFIX}${engagementSlug}`;
     await hostExec("docker", ["network", "disconnect", name, CONTAINER]);
     const rm = await hostExec("docker", ["network", "rm", name]);
