@@ -75,7 +75,7 @@ function ToggleGroup({
 
 type Provider = "anthropic" | "openai" | "google" | "custom";
 type ChatMode = "floating" | "harness";
-type Harness = "claude-code" | "opencode" | "pi";
+type Harness = "claude-code" | "opencode" | "pi" | "codex";
 
 const HARNESS_INFO: Record<Harness, { label: string; init: string; desc: string }> = {
   "claude-code": {
@@ -92,6 +92,11 @@ const HARNESS_INFO: Record<Harness, { label: string; init: string; desc: string 
     label: "Pi.dev",
     init: "pk init --harness pi",
     desc: "AI coding agent by Pi. Creates Pi configuration files.",
+  },
+  codex: {
+    label: "Codex",
+    init: "pk init --harness codex",
+    desc: "OpenAI's coding agent. Creates Codex configuration files.",
   },
 };
 
@@ -281,6 +286,7 @@ export default function SettingsPage() {
                       { label: "Claude Code", value: "claude-code" },
                       { label: "OpenCode", value: "opencode" },
                       { label: "Pi.dev", value: "pi" },
+                      { label: "Codex", value: "codex" },
                     ]}
                     value={chat.harness}
                     onChange={(v) => updateChat({ harness: v as Harness })}
