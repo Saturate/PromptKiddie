@@ -91,7 +91,7 @@ const HARNESS_INFO: Record<Harness, { label: string; init: string; desc: string 
   pi: {
     label: "Pi.dev",
     init: "pk init --harness pi",
-    desc: "Google's AI coding agent. Creates Pi configuration files.",
+    desc: "AI coding agent by Pi. Creates Pi configuration files.",
   },
 };
 
