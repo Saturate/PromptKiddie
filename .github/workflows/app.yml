@@ -4,9 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "packages/core/**"
-      - "packages/web/**"
-      - "packages/api/**"
+      - "packages/**"
       - "Dockerfile"
       - ".github/workflows/app.yml"
   workflow_dispatch:
