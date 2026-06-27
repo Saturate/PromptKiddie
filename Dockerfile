@@ -22,7 +22,6 @@ RUN cd packages/web && pnpm next build
 FROM base AS web
 COPY --from=build /app/packages/web/.next/standalone ./
 COPY --from=build /app/packages/web/.next/static ./packages/web/.next/static
-COPY --from=build /app/packages/web/public ./packages/web/public 2>/dev/null || true
 EXPOSE 3100
 CMD ["node", "packages/web/server.js"]
 
