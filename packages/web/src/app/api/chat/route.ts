@@ -1,6 +1,7 @@
 import { ToolLoopAgent, streamText, tool } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { openai, createOpenAI } from "@ai-sdk/openai";
+import { openai } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { google } from "@ai-sdk/google";
 import { LangfuseExporter } from "langfuse-vercel";
 import { z } from "zod";
@@ -71,8 +72,8 @@ function getModel(provider: string, modelId: string, baseUrl?: string | null) {
     case "openai": return openai(modelId);
     case "google": return google(modelId);
     case "custom": {
-      const custom = createOpenAI({ baseURL: baseUrl || undefined, apiKey: process.env.OPENAI_API_KEY || "dummy" });
-      return custom(modelId);
+      const custom = createOpenAICompatible({ name: "custom", baseURL: baseUrl || "http://localhost:11434/v1", apiKey: "ollama" });
+      return custom.chatModel(modelId);
     }
     default: return anthropic(modelId);
   }
