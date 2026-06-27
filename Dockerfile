@@ -9,6 +9,7 @@ COPY packages/web/package.json packages/web/
 COPY packages/api/package.json packages/api/
 COPY packages/cli/package.json packages/cli/
 COPY packages/mcp-server/package.json packages/mcp-server/
+COPY packages/tooling-mcp/package.json packages/tooling-mcp/
 RUN pnpm install --frozen-lockfile
 
 FROM base AS build
