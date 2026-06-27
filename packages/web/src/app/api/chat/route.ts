@@ -292,20 +292,15 @@ function buildSubAgentTool(
   description: string,
   systemPrompt: string,
   model: ReturnType<typeof getModel>,
+  provider: string,
 ) {
-  const agent = new ToolLoopAgent({
-    model,
-    instructions: systemPrompt,
-    tools: pkTools,
-  });
-
   return tool({
     description,
     parameters: z.object({
-      engagementId: z.string().uuid().describe("The engagement to work on"),
+      engagementId: z.string().describe("The engagement to work on"),
       task: z.string().describe("What to do"),
-    }),
-    execute: async ({ engagementId, task }, { abortSignal }) => {
+    }).passthrough(),
+    execute: async ({ engagementId, task }) => {
       const eng = await getEngagement(engagementId);
       const targets = await listTargets(engagementId);
       const context = `Engagement: ${eng?.name} (${engagementId})\nTargets: ${targets.map((t: { identifier: string }) => t.identifier).join(", ")}\n\nTask: ${task}`;
@@ -313,7 +308,20 @@ function buildSubAgentTool(
       await startAgentRun({ engagementId, agent: name, phase: name as "recon" });
 
       try {
-        const result = await agent.generate({ prompt: context, abortSignal, experimental_telemetry: telemetryConfig });
+        if (provider === "custom") {
+          const { agentLoop } = await import("@/lib/agent-loop");
+          const result = await agentLoop({
+            model,
+            system: systemPrompt,
+            messages: [{ role: "user", content: context }],
+            tools: pkTools,
+            maxTurns: 15,
+            telemetry: telemetryConfig,
+          });
+          return { summary: result.text, turns: result.messages.length };
+        }
+        const agent = new ToolLoopAgent({ model, instructions: systemPrompt, tools: pkTools });
+        const result = await agent.generate({ prompt: context, experimental_telemetry: telemetryConfig });
         return { summary: result.text, steps: result.steps.length };
       } catch (err) {
         return { error: (err as Error).message };
@@ -352,10 +360,10 @@ export async function POST(req: Request) {
   const subagentModel = getModel(config.provider, config.subagentModel, config.baseUrl);
 
   const subAgentTools = {
-    reconAgent: buildSubAgentTool("recon", "Delegate reconnaissance work to the recon sub-agent", RECON_SYSTEM, subagentModel),
-    enumAgent: buildSubAgentTool("enum", "Delegate enumeration work to the enumeration sub-agent", ENUM_SYSTEM, subagentModel),
-    exploitAgent: buildSubAgentTool("exploit", "Delegate exploitation work to the exploit sub-agent", EXPLOIT_SYSTEM, subagentModel),
-    reportAgent: buildSubAgentTool("report", "Delegate reporting work to the report sub-agent", REPORT_SYSTEM, subagentModel),
+    reconAgent: buildSubAgentTool("recon", "Delegate reconnaissance work to the recon sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Scan all ports and grab banners\"}", RECON_SYSTEM, subagentModel, config.provider),
+    enumAgent: buildSubAgentTool("enum", "Delegate enumeration work to the enumeration sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Enumerate web directories\"}", ENUM_SYSTEM, subagentModel, config.provider),
+    exploitAgent: buildSubAgentTool("exploit", "Delegate exploitation work to the exploit sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Test SQL injection on login form\"}", EXPLOIT_SYSTEM, subagentModel, config.provider),
+    reportAgent: buildSubAgentTool("report", "Delegate reporting work to the report sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Generate findings summary\"}", REPORT_SYSTEM, subagentModel, config.provider),
   };
 
   const result = streamText({
