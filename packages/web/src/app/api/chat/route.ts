@@ -84,7 +84,7 @@ function getModel(provider: string, modelId: string, baseUrl?: string | null) {
 const pkTools = {
   createEngagement: tool({
     description: 'Create a new pentest or CTF engagement. Example: {"name": "My CTF", "type": "ctf"}',
-    parameters: z.object({
+    inputSchema: z.object({
       name: z.string().describe("Engagement name, e.g. 'Docker-CTF'"),
       type: z.string().describe("One of: ctf, whitebox, blackbox, bugbounty"),
       scope: z.string().optional().describe("Scope description"),
@@ -103,7 +103,7 @@ const pkTools = {
   }),
   getEngagement: tool({
     description: 'Get full engagement details. Example: {"id": "uuid-here"}',
-    parameters: z.object({ id: z.string().describe("Engagement UUID") }),
+    inputSchema: z.object({ id: z.string().describe("Engagement UUID") }),
     execute: async ({ id }) => {
       const eng = await getEngagement(id);
       if (!eng) return { error: "Not found" };
@@ -121,7 +121,7 @@ const pkTools = {
   }),
   updateEngagement: tool({
     description: 'Update engagement metadata. Example: {"id": "uuid", "brief": "new brief"}',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe("Engagement UUID"),
       name: z.string().optional(),
       brief: z.string().optional(),
@@ -133,7 +133,7 @@ const pkTools = {
   }),
   setEngagementStatus: tool({
     description: 'Set engagement status. Example: {"id": "uuid", "status": "active"}',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe("Engagement UUID"),
       status: z.string().describe("One of: scoping, active, paused, reporting, done"),
     }),
@@ -141,7 +141,7 @@ const pkTools = {
   }),
   advancePhase: tool({
     description: 'Move engagement to a methodology phase. Example: {"id": "uuid", "phase": "recon"}',
-    parameters: z.object({
+    inputSchema: z.object({
       id: z.string().describe("Engagement UUID"),
       phase: z.string().describe("One of: scoping, recon, enum, exploit, postexploit, report"),
     }),
@@ -149,7 +149,7 @@ const pkTools = {
   }),
   addTarget: tool({
     description: 'Add a target to an engagement. Example: {"engagementId": "uuid", "kind": "host", "identifier": "10.0.0.1", "inScope": true}',
-    parameters: z.object({
+    inputSchema: z.object({
       engagementId: z.string().describe("Engagement UUID"),
       kind: z.string().describe("One of: host, domain, url, app, repo"),
       identifier: z.string().describe("Target address, e.g. IP, domain, or URL"),
@@ -169,17 +169,17 @@ const pkTools = {
   }),
   listTargets: tool({
     description: 'List targets for an engagement. Example: {"engagementId": "uuid"}',
-    parameters: z.object({ engagementId: z.string().describe("Engagement UUID") }),
+    inputSchema: z.object({ engagementId: z.string().describe("Engagement UUID") }),
     execute: async ({ engagementId }) => listTargets(engagementId),
   }),
   updateTarget: tool({
     description: 'Update a target. Example: {"id": "uuid", "inScope": true}',
-    parameters: z.object({ id: z.string().describe("Target UUID"), inScope: z.boolean().optional(), notes: z.string().optional() }),
+    inputSchema: z.object({ id: z.string().describe("Target UUID"), inScope: z.boolean().optional(), notes: z.string().optional() }),
     execute: async ({ id, ...rest }) => updateTarget(id, rest),
   }),
   addFinding: tool({
     description: 'Add a finding (vulnerability or flag). Example: {"engagementId": "uuid", "title": "SQL Injection", "severity": "high"}',
-    parameters: z.object({
+    inputSchema: z.object({
       engagementId: z.string().describe("Engagement UUID"),
       title: z.string().describe("Finding title"),
       severity: z.string().optional().describe("One of: critical, high, medium, low, info"),
@@ -193,12 +193,12 @@ const pkTools = {
   }),
   listFindings: tool({
     description: 'List findings for an engagement. Example: {"engagementId": "uuid"}',
-    parameters: z.object({ engagementId: z.string().describe("Engagement UUID") }),
+    inputSchema: z.object({ engagementId: z.string().describe("Engagement UUID") }),
     execute: async ({ engagementId }) => listFindings(engagementId),
   }),
   addObjective: tool({
     description: 'Add a CTF objective/task. Example: {"engagementId": "uuid", "taskNumber": 1, "title": "Find flag 1"}',
-    parameters: z.object({
+    inputSchema: z.object({
       engagementId: z.string().describe("Engagement UUID"),
       taskNumber: z.number().describe("Task number (1, 2, 3...)"),
       title: z.string().describe("Objective title"),
@@ -208,12 +208,12 @@ const pkTools = {
   }),
   captureFlag: tool({
     description: 'Capture a flag for an objective. Example: {"id": "uuid", "flag": "FLAG{secret}"}',
-    parameters: z.object({ id: z.string().describe("Objective UUID"), flag: z.string().describe("The captured flag value") }),
+    inputSchema: z.object({ id: z.string().describe("Objective UUID"), flag: z.string().describe("The captured flag value") }),
     execute: async ({ id, flag }) => captureFlag(id, flag),
   }),
   addArtifact: tool({
     description: 'Add an artifact (credential, loot, document). Example: {"engagementId": "uuid", "title": "DB creds", "type": "credential", "content": "admin:password"}',
-    parameters: z.object({
+    inputSchema: z.object({
       engagementId: z.string().describe("Engagement UUID"),
       title: z.string().describe("Artifact title"),
       type: z.string().describe("One of: credential, loot, document, config, other"),
@@ -223,7 +223,7 @@ const pkTools = {
   }),
   logActivity: tool({
     description: 'Log an activity entry. Example: {"engagementId": "uuid", "phase": "recon", "action": "Port scan completed"}',
-    parameters: z.object({
+    inputSchema: z.object({
       engagementId: z.string().describe("Engagement UUID"),
       phase: z.string().describe("One of: scoping, recon, enum, exploit, postexploit, report"),
       action: z.string().describe("What was done"),
@@ -236,12 +236,12 @@ const pkTools = {
   }),
   sendMessage: tool({
     description: 'Send a message to the engagement inbox. Example: {"body": "Status update: recon complete"}',
-    parameters: z.object({ body: z.string().describe("Message text"), engagementId: z.string().optional().describe("Engagement UUID") }),
+    inputSchema: z.object({ body: z.string().describe("Message text"), engagementId: z.string().optional().describe("Engagement UUID") }),
     execute: async (params) => sendMessage(params),
   }),
   exec: tool({
     description: "Run a command on the attackbox (Docker container with security tools: nmap, nikto, gobuster, sqlmap, etc). Use for recon, scanning, and exploitation.",
-    parameters: z.object({
+    inputSchema: z.object({
       engagementId: z.string().uuid(),
       command: z.string().describe("Shell command to run"),
       phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]).optional(),
@@ -295,7 +295,7 @@ function buildSubAgentTool(
 ) {
   return tool({
     description,
-    parameters: z.object({
+    inputSchema: z.object({
       engagementId: z.string().describe("The engagement to work on"),
       task: z.string().describe("What to do"),
     }).passthrough(),
@@ -309,11 +309,11 @@ function buildSubAgentTool(
       try {
         const result = await generateText({
           model,
-          system: systemPrompt,
+          instructions: systemPrompt,
           prompt: context,
           stopWhen: isStepCount(15),
           tools: pkTools,
-          experimental_telemetry: telemetryConfig,
+          telemetry: telemetryConfig,
         });
         return { summary: result.text, steps: result.steps.length };
       } catch (err) {
@@ -361,11 +361,11 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: orchestratorModel,
-    system: ORCHESTRATOR_SYSTEM,
+    instructions: ORCHESTRATOR_SYSTEM,
     messages,
     stopWhen: config.maxSteps ? isStepCount(config.maxSteps) : isStepCount(20),
     tools: { ...pkTools, ...subAgentTools },
-    experimental_telemetry: telemetryConfig,
+    telemetry: telemetryConfig,
   });
 
   return result.toDataStreamResponse();
