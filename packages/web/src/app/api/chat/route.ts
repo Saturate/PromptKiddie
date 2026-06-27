@@ -1,4 +1,4 @@
-import { ToolLoopAgent, streamText, tool } from "ai";
+import { ToolLoopAgent, streamText, tool, isStepCount } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -292,7 +292,6 @@ function buildSubAgentTool(
   description: string,
   systemPrompt: string,
   model: ReturnType<typeof getModel>,
-  provider: string,
 ) {
   return tool({
     description,
@@ -308,20 +307,14 @@ function buildSubAgentTool(
       await startAgentRun({ engagementId, agent: name, phase: name as "recon" });
 
       try {
-        if (provider === "custom") {
-          const { agentLoop } = await import("@/lib/agent-loop");
-          const result = await agentLoop({
-            model,
-            system: systemPrompt,
-            messages: [{ role: "user", content: context }],
-            tools: pkTools,
-            maxTurns: 15,
-            telemetry: telemetryConfig,
-          });
-          return { summary: result.text, turns: result.messages.length };
-        }
-        const agent = new ToolLoopAgent({ model, instructions: systemPrompt, tools: pkTools });
-        const result = await agent.generate({ prompt: context, experimental_telemetry: telemetryConfig });
+        const result = await generateText({
+          model,
+          system: systemPrompt,
+          prompt: context,
+          stopWhen: isStepCount(15),
+          tools: pkTools,
+          experimental_telemetry: telemetryConfig,
+        });
         return { summary: result.text, steps: result.steps.length };
       } catch (err) {
         return { error: (err as Error).message };
@@ -360,17 +353,17 @@ export async function POST(req: Request) {
   const subagentModel = getModel(config.provider, config.subagentModel, config.baseUrl);
 
   const subAgentTools = {
-    reconAgent: buildSubAgentTool("recon", "Delegate reconnaissance work to the recon sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Scan all ports and grab banners\"}", RECON_SYSTEM, subagentModel, config.provider),
-    enumAgent: buildSubAgentTool("enum", "Delegate enumeration work to the enumeration sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Enumerate web directories\"}", ENUM_SYSTEM, subagentModel, config.provider),
-    exploitAgent: buildSubAgentTool("exploit", "Delegate exploitation work to the exploit sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Test SQL injection on login form\"}", EXPLOIT_SYSTEM, subagentModel, config.provider),
-    reportAgent: buildSubAgentTool("report", "Delegate reporting work to the report sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Generate findings summary\"}", REPORT_SYSTEM, subagentModel, config.provider),
+    reconAgent: buildSubAgentTool("recon", "Delegate reconnaissance work to the recon sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Scan all ports and grab banners\"}", RECON_SYSTEM, subagentModel),
+    enumAgent: buildSubAgentTool("enum", "Delegate enumeration work to the enumeration sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Enumerate web directories\"}", ENUM_SYSTEM, subagentModel),
+    exploitAgent: buildSubAgentTool("exploit", "Delegate exploitation work to the exploit sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Test SQL injection on login form\"}", EXPLOIT_SYSTEM, subagentModel),
+    reportAgent: buildSubAgentTool("report", "Delegate reporting work to the report sub-agent. Example: {\"engagementId\": \"uuid\", \"task\": \"Generate findings summary\"}", REPORT_SYSTEM, subagentModel),
   };
 
   const result = streamText({
     model: orchestratorModel,
     system: ORCHESTRATOR_SYSTEM,
     messages,
-    maxSteps: config.maxSteps,
+    stopWhen: config.maxSteps ? isStepCount(config.maxSteps) : isStepCount(20),
     tools: { ...pkTools, ...subAgentTools },
     experimental_telemetry: telemetryConfig,
   });
