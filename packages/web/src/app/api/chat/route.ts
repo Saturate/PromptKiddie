@@ -93,7 +93,6 @@ const pkTools = {
   }),
   listEngagements: tool({
     description: "List all engagements",
-    parameters: z.object({}),
     execute: async () => listEngagements(),
   }),
   getEngagement: tool({
