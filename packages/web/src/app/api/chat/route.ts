@@ -79,26 +79,31 @@ function getModel(provider: string, modelId: string, baseUrl?: string | null) {
   }
 }
 
+// Use z.string() instead of z.enum() for fields local models send in wrong case.
+// Normalize in execute handlers. Use .passthrough() so unknown field names aren't stripped.
 const pkTools = {
   createEngagement: tool({
-    description: "Create a new engagement (CTF, whitebox, blackbox, or bugbounty)",
+    description: 'Create a new pentest or CTF engagement. Example: {"name": "My CTF", "type": "ctf"}',
     parameters: z.object({
-      name: z.string(),
-      type: z.enum(["ctf", "whitebox", "blackbox", "bugbounty"]),
-      scope: z.string().optional(),
-      brief: z.string().optional(),
-      sourceUrl: z.string().optional(),
-      group: z.string().optional(),
-    }),
-    execute: async (params) => createEngagement(params),
+      name: z.string().describe("Engagement name, e.g. 'Docker-CTF'"),
+      type: z.string().describe("One of: ctf, whitebox, blackbox, bugbounty"),
+      scope: z.string().optional().describe("Scope description"),
+      brief: z.string().optional().describe("Brief / description"),
+      sourceUrl: z.string().optional().describe("Source URL, e.g. a THM room URL"),
+      group: z.string().optional().describe("Group name, e.g. THM"),
+    }).passthrough(),
+    execute: async (params) => {
+      const p = { ...params, type: (params.type || "ctf").toLowerCase() };
+      return createEngagement(p as Parameters<typeof createEngagement>[0]);
+    },
   }),
   listEngagements: tool({
-    description: "List all engagements",
+    description: "List all engagements. No parameters needed.",
     execute: async () => listEngagements(),
   }),
   getEngagement: tool({
-    description: "Get full engagement details including targets, findings, objectives",
-    parameters: z.object({ id: z.string().uuid() }),
+    description: 'Get full engagement details. Example: {"id": "uuid-here"}',
+    parameters: z.object({ id: z.string().describe("Engagement UUID") }),
     execute: async ({ id }) => {
       const eng = await getEngagement(id);
       if (!eng) return { error: "Not found" };
@@ -115,9 +120,9 @@ const pkTools = {
     },
   }),
   updateEngagement: tool({
-    description: "Update engagement metadata",
+    description: 'Update engagement metadata. Example: {"id": "uuid", "brief": "new brief"}',
     parameters: z.object({
-      id: z.string().uuid(),
+      id: z.string().describe("Engagement UUID"),
       name: z.string().optional(),
       brief: z.string().optional(),
       sourceUrl: z.string().optional(),
@@ -127,96 +132,111 @@ const pkTools = {
     execute: async ({ id, ...rest }) => updateEngagement(id, rest),
   }),
   setEngagementStatus: tool({
-    description: "Set engagement status",
+    description: 'Set engagement status. Example: {"id": "uuid", "status": "active"}',
     parameters: z.object({
-      id: z.string().uuid(),
-      status: z.enum(["scoping", "active", "paused", "reporting", "done"]),
+      id: z.string().describe("Engagement UUID"),
+      status: z.string().describe("One of: scoping, active, paused, reporting, done"),
     }),
-    execute: async ({ id, status }) => setEngagementStatus(id, status),
+    execute: async ({ id, status }) => setEngagementStatus(id, status.toLowerCase() as Parameters<typeof setEngagementStatus>[1]),
   }),
   advancePhase: tool({
-    description: "Move engagement to a methodology phase",
+    description: 'Move engagement to a methodology phase. Example: {"id": "uuid", "phase": "recon"}',
     parameters: z.object({
-      id: z.string().uuid(),
-      phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]),
+      id: z.string().describe("Engagement UUID"),
+      phase: z.string().describe("One of: scoping, recon, enum, exploit, postexploit, report"),
     }),
-    execute: async ({ id, phase }) => advancePhase(id, phase),
+    execute: async ({ id, phase }) => advancePhase(id, phase.toLowerCase() as Parameters<typeof advancePhase>[1]),
   }),
   addTarget: tool({
-    description: "Add a target to an engagement",
+    description: 'Add a target to an engagement. Example: {"engagementId": "uuid", "kind": "host", "identifier": "10.0.0.1", "inScope": true}',
     parameters: z.object({
-      engagementId: z.string().uuid(),
-      kind: z.enum(["host", "domain", "url", "app", "repo"]),
-      identifier: z.string(),
-      inScope: z.boolean().optional(),
+      engagementId: z.string().describe("Engagement UUID"),
+      kind: z.string().describe("One of: host, domain, url, app, repo"),
+      identifier: z.string().describe("Target address, e.g. IP, domain, or URL"),
+      inScope: z.boolean().optional().describe("Whether target is in scope (default false)"),
       notes: z.string().optional(),
-    }),
-    execute: async (params) => addTarget(params),
+    }).passthrough(),
+    execute: async (params) => {
+      const p = {
+        engagementId: params.engagementId,
+        kind: (params.kind || "host").toLowerCase() as Parameters<typeof addTarget>[0]["kind"],
+        identifier: params.identifier || (params as Record<string, string>).target_ip || (params as Record<string, string>).target || (params as Record<string, string>).host || "",
+        inScope: params.inScope ?? true,
+        notes: params.notes,
+      };
+      return addTarget(p);
+    },
   }),
   listTargets: tool({
-    description: "List targets for an engagement",
-    parameters: z.object({ engagementId: z.string().uuid() }),
+    description: 'List targets for an engagement. Example: {"engagementId": "uuid"}',
+    parameters: z.object({ engagementId: z.string().describe("Engagement UUID") }),
     execute: async ({ engagementId }) => listTargets(engagementId),
   }),
   updateTarget: tool({
-    description: "Update a target",
-    parameters: z.object({ id: z.string().uuid(), inScope: z.boolean().optional(), notes: z.string().optional() }),
+    description: 'Update a target. Example: {"id": "uuid", "inScope": true}',
+    parameters: z.object({ id: z.string().describe("Target UUID"), inScope: z.boolean().optional(), notes: z.string().optional() }),
     execute: async ({ id, ...rest }) => updateTarget(id, rest),
   }),
   addFinding: tool({
-    description: "Add a finding (vulnerability or flag)",
+    description: 'Add a finding (vulnerability or flag). Example: {"engagementId": "uuid", "title": "SQL Injection", "severity": "high"}',
     parameters: z.object({
-      engagementId: z.string().uuid(),
-      title: z.string(),
-      severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
+      engagementId: z.string().describe("Engagement UUID"),
+      title: z.string().describe("Finding title"),
+      severity: z.string().optional().describe("One of: critical, high, medium, low, info"),
       description: z.string().optional(),
-      status: z.enum(["triage", "confirmed", "reported"]).optional(),
+      status: z.string().optional().describe("One of: triage, confirmed, reported"),
     }),
-    execute: async (params) => addFinding(params),
+    execute: async (params) => {
+      const p = { ...params, severity: ((params.severity || "info").toLowerCase()) as Parameters<typeof addFinding>[0]["severity"] };
+      return addFinding(p as Parameters<typeof addFinding>[0]);
+    },
   }),
   listFindings: tool({
-    description: "List findings for an engagement",
-    parameters: z.object({ engagementId: z.string().uuid() }),
+    description: 'List findings for an engagement. Example: {"engagementId": "uuid"}',
+    parameters: z.object({ engagementId: z.string().describe("Engagement UUID") }),
     execute: async ({ engagementId }) => listFindings(engagementId),
   }),
   addObjective: tool({
-    description: "Add a CTF objective/task",
+    description: 'Add a CTF objective/task. Example: {"engagementId": "uuid", "taskNumber": 1, "title": "Find flag 1"}',
     parameters: z.object({
-      engagementId: z.string().uuid(),
-      taskNumber: z.number(),
-      title: z.string(),
-      flagFormat: z.string().optional(),
+      engagementId: z.string().describe("Engagement UUID"),
+      taskNumber: z.number().describe("Task number (1, 2, 3...)"),
+      title: z.string().describe("Objective title"),
+      flagFormat: z.string().optional().describe("Expected flag format, e.g. FLAG{...}"),
     }),
     execute: async (params) => addObjective(params),
   }),
   captureFlag: tool({
-    description: "Capture a flag for an objective",
-    parameters: z.object({ id: z.string().uuid(), flag: z.string() }),
+    description: 'Capture a flag for an objective. Example: {"id": "uuid", "flag": "FLAG{secret}"}',
+    parameters: z.object({ id: z.string().describe("Objective UUID"), flag: z.string().describe("The captured flag value") }),
     execute: async ({ id, flag }) => captureFlag(id, flag),
   }),
   addArtifact: tool({
-    description: "Add an artifact (credential, loot, document)",
+    description: 'Add an artifact (credential, loot, document). Example: {"engagementId": "uuid", "title": "DB creds", "type": "credential", "content": "admin:password"}',
     parameters: z.object({
-      engagementId: z.string().uuid(),
-      title: z.string(),
-      type: z.string(),
-      content: z.string().optional(),
+      engagementId: z.string().describe("Engagement UUID"),
+      title: z.string().describe("Artifact title"),
+      type: z.string().describe("One of: credential, loot, document, config, other"),
+      content: z.string().optional().describe("Artifact content"),
     }),
     execute: async (params) => addArtifact(params),
   }),
   logActivity: tool({
-    description: "Log an activity entry",
+    description: 'Log an activity entry. Example: {"engagementId": "uuid", "phase": "recon", "action": "Port scan completed"}',
     parameters: z.object({
-      engagementId: z.string().uuid(),
-      phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]),
-      action: z.string(),
-      command: z.string().optional(),
+      engagementId: z.string().describe("Engagement UUID"),
+      phase: z.string().describe("One of: scoping, recon, enum, exploit, postexploit, report"),
+      action: z.string().describe("What was done"),
+      command: z.string().optional().describe("Command that was run"),
     }),
-    execute: async (params) => logActivity(params),
+    execute: async (params) => {
+      const p = { ...params, phase: params.phase.toLowerCase() as Parameters<typeof logActivity>[0]["phase"] };
+      return logActivity(p);
+    },
   }),
   sendMessage: tool({
-    description: "Send a message to the engagement inbox",
-    parameters: z.object({ body: z.string(), engagementId: z.string().uuid().optional() }),
+    description: 'Send a message to the engagement inbox. Example: {"body": "Status update: recon complete"}',
+    parameters: z.object({ body: z.string().describe("Message text"), engagementId: z.string().optional().describe("Engagement UUID") }),
     execute: async (params) => sendMessage(params),
   }),
   exec: tool({
