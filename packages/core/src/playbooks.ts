@@ -71,16 +71,10 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       { key: "post.start", title: "Start Post-Exploitation", type: "mechanical", nodeType: "sequence", priority: 0 },
       { key: "post.sysinfo", title: "System info", type: "mechanical", command: "pk exec -- id && whoami && uname -a && hostname", dependsOn: ["post.start"], priority: 5 },
 
-      // Parallel privesc checks
-      { key: "post.fork", title: "Privesc checks", type: "mechanical", nodeType: "parallel", dependsOn: ["post.sysinfo"], priority: 8 },
-      { key: "post.sudo", title: "sudo -l", type: "mechanical", command: "pk exec -- sudo -l 2>/dev/null", dependsOn: ["post.fork"], priority: 10 },
-      { key: "post.suid", title: "SUID binaries", type: "mechanical", command: "pk exec -- find / -perm -4000 -type f 2>/dev/null", dependsOn: ["post.fork"], priority: 10 },
-      { key: "post.cron", title: "Cron jobs", type: "mechanical", command: "pk exec -- cat /etc/crontab && ls -la /etc/cron.* 2>/dev/null", dependsOn: ["post.fork"], priority: 15 },
-      { key: "post.configs", title: "Credentials in files", type: "mechanical", command: "pk exec -- find / -name '*.conf' -o -name '.env' -o -name 'wp-config*' 2>/dev/null | head -20", dependsOn: ["post.fork"], priority: 15 },
+      // Privesc block reference (OS-aware: Linux/Windows/macOS)
+      { key: "post.privesc", title: "Privilege Escalation", type: "mechanical", nodeType: "block_ref", blockRef: "Privilege Escalation", dependsOn: ["post.sysinfo"], priority: 10 },
 
-      { key: "post.join", title: "Evaluate vectors", type: "mechanical", nodeType: "parallel", dependsOn: ["post.sudo", "post.suid", "post.cron", "post.configs"], priority: 25 },
-      { key: "post.escalate", title: "Escalate to root", type: "judgment", description: "Use GTFOBins for SUID/sudo. Prefer reliable over kernel exploits.", dependsOn: ["post.join"], priority: 30 },
-      { key: "post.root_flag", title: "Capture root flag", type: "mechanical", command: "pk exec -- cat /root/root.txt || find / -name root.txt 2>/dev/null", dependsOn: ["post.escalate"], priority: 35 },
+      { key: "post.root_flag", title: "Capture root flag", type: "mechanical", command: "pk exec -- cat /root/root.txt || find / -name root.txt 2>/dev/null", dependsOn: ["post.privesc"], priority: 35 },
       { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag"], priority: 99 },
     ],
   },
