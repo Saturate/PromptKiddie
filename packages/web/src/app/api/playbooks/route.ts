@@ -11,3 +11,16 @@ export async function GET(req: NextRequest) {
   const rows = await listPlaybooks();
   return Response.json(rows);
 }
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const db = getDb();
+  const [row] = await db.insert(schema.playbooks).values({
+    name: body.name,
+    engagementType: body.engagementType ?? "ctf",
+    description: body.description ?? null,
+    isDefault: false,
+    phases: body.phases ?? [],
+  }).returning();
+  return Response.json(row);
+}

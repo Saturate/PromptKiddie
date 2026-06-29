@@ -253,8 +253,31 @@ export default function PlaybooksPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_1fr_220px]">
-        {/* File tree (Obsidian-style) */}
+        {/* File tree */}
         <div className="font-mono text-xs">
+          <div className="flex items-center justify-between px-2 mb-1">
+            <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider">Playbooks</span>
+            <button
+              onClick={async () => {
+                const name = prompt("Playbook name:");
+                if (!name) return;
+                const type = prompt("Type (ctf / blackbox / whitebox / bugbounty):", "ctf");
+                if (!type) return;
+                const res = await fetch("/api/playbooks", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name, engagementType: type, phases: [
+                    { phase: "recon", title: "Reconnaissance", steps: [{ key: "recon.start", title: "Start Recon", type: "mechanical", nodeType: "sequence", priority: 0 }, { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.start"], priority: 99 }] },
+                  ] }),
+                });
+                if (res.ok) { toast.success("Created"); fetchPlaybooks(); }
+              }}
+              className="text-muted-foreground/40 hover:text-foreground transition-colors p-0.5"
+              title="New playbook"
+            >
+              <svg viewBox="0 0 16 16" className="size-3"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+            </button>
+          </div>
           {playbooks.map((pb) => (
             <button
               key={pb.id}
@@ -263,7 +286,7 @@ export default function PlaybooksPage() {
                 selected === pb.id && !editingBlock ? "bg-primary/10 text-primary" : "text-foreground/80 hover:bg-muted/50 hover:text-foreground"
               }`}
             >
-              <svg viewBox="0 0 16 16" className="size-3.5 shrink-0 text-muted-foreground/50"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.879a1.5 1.5 0 011.06.44l1.122 1.12A1.5 1.5 0 009.62 4H13.5A1.5 1.5 0 0115 5.5v7a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" fill="currentColor"/></svg>
+              <svg viewBox="0 0 16 16" className="size-3 shrink-0 text-muted-foreground/40"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="8" r="1" fill="currentColor"/></svg>
               <span className="truncate">{pb.name}</span>
             </button>
           ))}
