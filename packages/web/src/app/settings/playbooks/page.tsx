@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Plus, Save, GripVertical, Trash2, Package } from "lucide-react";
 import { StepNode, type StepNodeData } from "@/components/graph/step-node";
+import { MetaNode, type MetaNodeData } from "@/components/graph/meta-node";
+import { layoutGraph } from "@/components/graph/layout";
 
 interface PlaybookStep {
   key: string;
@@ -82,98 +84,76 @@ const PHASE_BG: Record<string, string> = {
   report: "bg-emerald-500",
 };
 
-const nodeTypes = { step: StepNode };
+const nodeTypes = { step: StepNode, meta: MetaNode };
 
 function playbookToFlow(pb: Playbook): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = [];
-  const edges: Edge[] = [];
-  const PHASE_ORDER = ["recon", "enum", "exploit", "postexploit", "report"];
-  const X_GAP = 240;
-  const Y_GAP = 100;
-  const PHASE_GAP = 70;
-  let currentY = 0;
-
+  const rawNodes: Node[] = [];
+  const rawEdges: Edge[] = [];
   const allSteps = pb.phases.flatMap((p) => p.steps.map((s) => ({ ...s, phase: p.phase })));
-  const stepMap = new Map(allSteps.map((s) => [s.key, s]));
 
-  const phases = pb.phases.sort(
-    (a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase)
-  );
+  // Connect phase end -> next phase start
+  const PHASE_ORDER = ["recon", "enum", "exploit", "postexploit", "report"];
+  const sortedPhases = pb.phases.sort((a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase));
 
-  for (const phase of phases) {
-    const steps = phase.steps.sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50));
-
-    const depMap = new Map<string, string[]>();
-    for (const s of steps) {
-      depMap.set(s.key, (s.dependsOn ?? []).filter((d) => steps.some((ps) => ps.key === d)));
-    }
-
-    const placed = new Set<string>();
-    const levels: string[][] = [];
-    let safety = 0;
-    while (placed.size < steps.length && safety++ < 100) {
-      const level: string[] = [];
-      for (const s of steps) {
-        if (placed.has(s.key)) continue;
-        if ((depMap.get(s.key) ?? []).every((d) => placed.has(d))) level.push(s.key);
-      }
-      if (level.length === 0) {
-        for (const s of steps) { if (!placed.has(s.key)) level.push(s.key); }
-      }
-      for (const k of level) placed.add(k);
-      levels.push(level);
-    }
-
-    for (let li = 0; li < levels.length; li++) {
-      const level = levels[li];
-      const totalWidth = (level.length - 1) * X_GAP;
-      const startX = -totalWidth / 2;
-
-      for (let ni = 0; ni < level.length; ni++) {
-        const step = steps.find((s) => s.key === level[ni])!;
-        nodes.push({
-          id: step.key,
-          type: "step",
-          position: { x: startX + ni * X_GAP, y: currentY + li * Y_GAP },
-          data: {
-            title: step.title,
-            stepKey: step.key,
-            status: "pending",
-            nodeType: step.nodeType ?? "action",
-            type: step.type,
-            priority: step.priority ?? 50,
-            phase: phase.phase,
-          } satisfies StepNodeData,
-        });
-
-      }
-    }
-    currentY += levels.length * Y_GAP + PHASE_GAP;
-  }
-
-  // Build edges with position-aware handles
-  const posMap = new Map(nodes.map((n) => [n.id, n.position]));
   for (const step of allSteps) {
+    const isMeta = step.nodeType === "sequence" || step.key.endsWith(".start") || step.key.endsWith(".end");
+
+    if (isMeta) {
+      rawNodes.push({
+        id: step.key,
+        type: "meta",
+        position: { x: 0, y: 0 },
+        data: {
+          label: step.title,
+          phase: step.phase,
+          variant: step.key.endsWith(".start") ? "start" : "end",
+          isMeta: true,
+        } satisfies MetaNodeData,
+      });
+    } else {
+      rawNodes.push({
+        id: step.key,
+        type: "step",
+        position: { x: 0, y: 0 },
+        data: {
+          title: step.title,
+          stepKey: step.key,
+          status: "pending",
+          nodeType: step.nodeType ?? "action",
+          type: step.type,
+          priority: step.priority ?? 50,
+          phase: step.phase,
+        } satisfies StepNodeData,
+      });
+    }
+
     for (const dep of step.dependsOn ?? []) {
-      if (!posMap.has(dep) || !posMap.has(step.key)) continue;
-      const src = posMap.get(dep)!;
-      const tgt = posMap.get(step.key)!;
-      const dx = tgt.x - src.x;
-      const dy = tgt.y - src.y;
-      const horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
-      edges.push({
+      rawEdges.push({
         id: `${dep}-${step.key}`,
         source: dep,
         target: step.key,
-        sourceHandle: horizontal ? (dx > 0 ? "right" : "bottom") : "bottom",
-        targetHandle: horizontal ? (dx > 0 ? "left" : "top") : "top",
         style: { stroke: "#3a4260", strokeWidth: 1.5 },
         type: "smoothstep",
       });
     }
   }
 
-  return { nodes, edges };
+  // Connect phase transitions: phase.end -> next_phase.start
+  for (let i = 0; i < sortedPhases.length - 1; i++) {
+    const endKey = sortedPhases[i].steps.find((s) => s.key.endsWith(".end"))?.key;
+    const startKey = sortedPhases[i + 1].steps.find((s) => s.key.endsWith(".start"))?.key;
+    if (endKey && startKey) {
+      rawEdges.push({
+        id: `${endKey}-${startKey}`,
+        source: endKey,
+        target: startKey,
+        style: { stroke: "#e8a040", strokeWidth: 2, strokeDasharray: "6 3" },
+        type: "smoothstep",
+      });
+    }
+  }
+
+  return layoutGraph(rawNodes, rawEdges, "TB");
 }
 
 function EditPanel({

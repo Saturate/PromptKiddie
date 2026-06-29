@@ -10,6 +10,8 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { StepNode, type StepNodeData } from "./step-node";
+import { MetaNode, type MetaNodeData } from "./meta-node";
+import { layoutGraph } from "./layout";
 import { useMemo } from "react";
 
 interface StepRow {
@@ -32,102 +34,53 @@ interface PlaybookGraphProps {
   className?: string;
 }
 
-const nodeTypes = { step: StepNode };
+const nodeTypes = { step: StepNode, meta: MetaNode };
 
-const PHASE_ORDER = ["recon", "enum", "exploit", "postexploit", "report"];
-
-function autoLayout(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
-  const phases = [...new Set(steps.map((s) => s.phase))].sort(
-    (a, b) => PHASE_ORDER.indexOf(a) - PHASE_ORDER.indexOf(b)
-  );
-
+function buildGraph(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-  const X_GAP = 220;
-  const Y_GAP = 90;
-  const PHASE_GAP = 60;
-
-  let currentY = 0;
-
-  for (const phase of phases) {
-    const phaseSteps = steps
-      .filter((s) => s.phase === phase)
-      .sort((a, b) => a.priority - b.priority);
-
-    const depMap = new Map<string, string[]>();
-    for (const s of phaseSteps) {
-      depMap.set(s.stepKey, s.dependsOn?.filter((d) => phaseSteps.some((ps) => ps.stepKey === d)) ?? []);
-    }
-
-    // Topological sort within phase
-    const placed = new Set<string>();
-    const levels: string[][] = [];
-
-    while (placed.size < phaseSteps.length) {
-      const level: string[] = [];
-      for (const s of phaseSteps) {
-        if (placed.has(s.stepKey)) continue;
-        const deps = depMap.get(s.stepKey) ?? [];
-        if (deps.every((d) => placed.has(d))) {
-          level.push(s.stepKey);
-        }
-      }
-      if (level.length === 0) break; // prevent infinite loop on cycles
-      for (const k of level) placed.add(k);
-      levels.push(level);
-    }
-
-    for (let li = 0; li < levels.length; li++) {
-      const level = levels[li];
-      const totalWidth = (level.length - 1) * X_GAP;
-      const startX = -totalWidth / 2;
-
-      for (let ni = 0; ni < level.length; ni++) {
-        const step = phaseSteps.find((s) => s.stepKey === level[ni])!;
-        const x = step.positionX || (startX + ni * X_GAP);
-        const y = step.positionY || (currentY + li * Y_GAP);
-
-        nodes.push({
-          id: step.id,
-          type: "step",
-          position: { x, y },
-          data: {
-            title: step.title,
-            stepKey: step.stepKey,
-            status: step.status,
-            nodeType: step.nodeType,
-            type: step.stepKey.includes("scan") || step.stepKey.includes("fuzz") || step.stepKey.includes("exec") ? "mechanical" : "judgment",
-            priority: step.priority,
-            agentId: step.agentId,
-            phase: step.phase,
-          } satisfies StepNodeData,
-        });
-
-      }
-    }
-
-    currentY += levels.length * Y_GAP + PHASE_GAP;
-  }
-
-  // Build edges with position-aware handles
-  const posMap = new Map(nodes.map((n) => [n.id, n.position]));
   const idByKey = new Map(steps.map((s) => [s.stepKey, s.id]));
+
   for (const step of steps) {
+    const isMeta = step.nodeType === "sequence" || step.stepKey.endsWith(".start") || step.stepKey.endsWith(".end");
+
+    if (isMeta) {
+      nodes.push({
+        id: step.id,
+        type: "meta",
+        position: { x: 0, y: 0 },
+        data: {
+          label: step.title,
+          phase: step.phase,
+          variant: step.stepKey.endsWith(".start") ? "start" : "end",
+          isMeta: true,
+        } satisfies MetaNodeData,
+      });
+    } else {
+      nodes.push({
+        id: step.id,
+        type: "step",
+        position: { x: 0, y: 0 },
+        data: {
+          title: step.title,
+          stepKey: step.stepKey,
+          status: step.status,
+          nodeType: step.nodeType,
+          type: step.stepKey.includes("scan") || step.stepKey.includes("fuzz") || step.stepKey.includes("exec") || step.stepKey.includes("curl") || step.stepKey.includes("nmap") || step.stepKey.includes("enum4linux") ? "mechanical" : "judgment",
+          priority: step.priority,
+          agentId: step.agentId,
+          phase: step.phase,
+        } satisfies StepNodeData,
+      });
+    }
+
     for (const dep of step.dependsOn ?? []) {
       const srcId = idByKey.get(dep);
-      const tgtId = step.id;
-      if (!srcId || !posMap.has(srcId) || !posMap.has(tgtId)) continue;
-      const src = posMap.get(srcId)!;
-      const tgt = posMap.get(tgtId)!;
-      const dx = tgt.x - src.x;
-      const dy = tgt.y - src.y;
-      const horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+      if (!srcId) continue;
       edges.push({
-        id: `${srcId}-${tgtId}`,
+        id: `${srcId}-${step.id}`,
         source: srcId,
-        target: tgtId,
-        sourceHandle: horizontal ? (dx > 0 ? "right" : "bottom") : "bottom",
-        targetHandle: horizontal ? (dx > 0 ? "left" : "top") : "top",
+        target: step.id,
         animated: step.status === "running",
         style: {
           stroke: step.status === "running" ? "#e8a040" : step.status === "done" ? "#50b880" : "#3a4260",
@@ -138,11 +91,11 @@ function autoLayout(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
     }
   }
 
-  return { nodes, edges };
+  return layoutGraph(nodes, edges, "TB");
 }
 
 export function PlaybookGraph({ steps, className }: PlaybookGraphProps) {
-  const { nodes, edges } = useMemo(() => autoLayout(steps), [steps]);
+  const { nodes, edges } = useMemo(() => buildGraph(steps), [steps]);
 
   return (
     <div className={`w-full h-[500px] rounded-lg border border-border bg-background ${className ?? ""}`}>
@@ -151,15 +104,12 @@ export function PlaybookGraph({ steps, className }: PlaybookGraphProps) {
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        minZoom={0.3}
+        minZoom={0.2}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}
-        defaultEdgeOptions={{ type: "smoothstep" }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#232a3f" />
-        <Controls
-          className="!bg-card !border-border !rounded-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-muted-foreground"
-        />
+        <Controls className="!bg-card !border-border !rounded-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-muted-foreground" />
       </ReactFlow>
     </div>
   );
