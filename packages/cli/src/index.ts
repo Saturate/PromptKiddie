@@ -533,8 +533,25 @@ vpn
   });
 
 // --- exec (run command + auto-log) -----------------------------------------
-const CONTAINER = config.attackbox.container;
+const DEFAULT_CONTAINER = config.attackbox.container;
 const USE_DOCKER = config.attackbox.exec_mode !== "local";
+
+const PHASE_CONTAINERS: Record<string, string> = {
+  recon: process.env.PK_RECON_CONTAINER ?? "promptkiddie-recon",
+  enum: process.env.PK_ENUM_CONTAINER ?? "promptkiddie-enum",
+  exploit: process.env.PK_EXPLOIT_CONTAINER ?? "promptkiddie-exploit",
+};
+
+async function resolveContainer(phase?: string): Promise<string> {
+  if (!phase || !PHASE_CONTAINERS[phase]) return DEFAULT_CONTAINER;
+  const target = PHASE_CONTAINERS[phase];
+  const { execFile: exec } = await import("node:child_process");
+  return new Promise((resolve) => {
+    exec("docker", ["inspect", "--format", "{{.State.Running}}", target], (err, stdout) => {
+      resolve(stdout?.trim() === "true" ? target : DEFAULT_CONTAINER);
+    });
+  });
+}
 
 program
   .command("exec")
@@ -551,11 +568,12 @@ program
     const cmdStr = cmd.join(" ");
     const start = Date.now();
     const local = o.host || !USE_DOCKER;
+    const container = local ? "" : await resolveContainer(o.phase);
 
     const { execFile: exec } = await import("node:child_process");
     const execArgs: [string, string[]] = local
       ? ["sh", ["-c", cmdStr]]
-      : ["docker", ["exec", CONTAINER, "sh", "-c", cmdStr]];
+      : ["docker", ["exec", "-e", "PK_EXEC=1", container, "sh", "-c", cmdStr]];
 
     const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
       const proc = exec(
