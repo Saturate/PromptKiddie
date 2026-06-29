@@ -536,10 +536,12 @@ vpn
 const DEFAULT_CONTAINER = config.attackbox.container;
 const USE_DOCKER = config.attackbox.exec_mode !== "local";
 
+const ATTACK_CONTAINER = process.env.PK_ATTACK_CONTAINER ?? "promptkiddie-attack";
 const PHASE_CONTAINERS: Record<string, string> = {
   recon: process.env.PK_RECON_CONTAINER ?? "promptkiddie-recon",
-  enum: process.env.PK_ENUM_CONTAINER ?? "promptkiddie-enum",
-  exploit: process.env.PK_EXPLOIT_CONTAINER ?? "promptkiddie-exploit",
+  enum: ATTACK_CONTAINER,
+  exploit: ATTACK_CONTAINER,
+  postexploit: ATTACK_CONTAINER,
 };
 
 async function resolveContainer(phase?: string): Promise<string> {
