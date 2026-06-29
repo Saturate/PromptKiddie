@@ -556,19 +556,21 @@ async function resolveContainer(phase?: string): Promise<string> {
 program
   .command("exec")
   .description("Run a command and auto-log it. Uses Docker container by default, --local for host.")
-  .option("--phase <phase>", "scoping | recon | enum | exploit | postexploit | report", "recon")
+  .option("--phase <phase>", "override phase (default: read from active engagement)")
   .option("--agent <name>", "agent name for attribution", "agent")
-  .option("--host", "run on the host instead of in the Docker container (for VPN targets)")
+  .option("--host", "run on the host instead of in the Docker container")
   .option("--reason <reason>", "why this command is being run (logged to activity)")
   .option("--max-output <bytes>", "max bytes returned to caller (full output saved to file)", parseInt, 4096)
   .option("--engagement <id>")
   .argument("<command...>", "command to run")
   .action(async (cmd: string[], o) => {
     const eid = await resolveEngagementId(o.engagement);
+    const eng = await repo.getEngagement(eid) as { phase?: string } | null;
+    const phase = o.phase ?? eng?.phase ?? "recon";
     const cmdStr = cmd.join(" ");
     const start = Date.now();
     const local = o.host || !USE_DOCKER;
-    const container = local ? "" : await resolveContainer(o.phase);
+    const container = local ? "" : await resolveContainer(phase);
 
     const { execFile: exec } = await import("node:child_process");
     const execArgs: [string, string[]] = local
@@ -608,7 +610,7 @@ program
 
       await repo.logActivity({
         engagementId: eid,
-        phase: o.phase,
+        phase: phase,
         action: `[${o.agent}] ${toolName} not found in ${container}, retrying on ${DEFAULT_CONTAINER}`,
         command: cmdStr,
         actor: "agent",
@@ -648,7 +650,7 @@ program
 
     await repo.logActivity({
       engagementId: eid,
-      phase: o.phase,
+      phase: phase,
       action: `[${o.agent}] ${toolName} (${duration}ms, exit ${result.code})${reasonSuffix}`,
       command: cmdStr,
       actor: "agent",
