@@ -103,25 +103,39 @@ function autoLayout(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
           } satisfies StepNodeData,
         });
 
-        for (const dep of step.dependsOn ?? []) {
-          const depStep = steps.find((s) => s.stepKey === dep);
-          if (depStep) {
-            edges.push({
-              id: `${depStep.id}-${step.id}`,
-              source: depStep.id,
-              target: step.id,
-              animated: step.status === "running",
-              style: {
-                stroke: step.status === "running" ? "#e8a040" : step.status === "done" ? "#50b880" : "#232a3f",
-                strokeWidth: 1.5,
-              },
-            });
-          }
-        }
       }
     }
 
     currentY += levels.length * Y_GAP + PHASE_GAP;
+  }
+
+  // Build edges with position-aware handles
+  const posMap = new Map(nodes.map((n) => [n.id, n.position]));
+  const idByKey = new Map(steps.map((s) => [s.stepKey, s.id]));
+  for (const step of steps) {
+    for (const dep of step.dependsOn ?? []) {
+      const srcId = idByKey.get(dep);
+      const tgtId = step.id;
+      if (!srcId || !posMap.has(srcId) || !posMap.has(tgtId)) continue;
+      const src = posMap.get(srcId)!;
+      const tgt = posMap.get(tgtId)!;
+      const dx = tgt.x - src.x;
+      const dy = tgt.y - src.y;
+      const horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+      edges.push({
+        id: `${srcId}-${tgtId}`,
+        source: srcId,
+        target: tgtId,
+        sourceHandle: horizontal ? (dx > 0 ? "right" : "bottom") : "bottom",
+        targetHandle: horizontal ? (dx > 0 ? "left" : "top") : "top",
+        animated: step.status === "running",
+        style: {
+          stroke: step.status === "running" ? "#e8a040" : step.status === "done" ? "#50b880" : "#3a4260",
+          strokeWidth: 1.5,
+        },
+        type: "smoothstep",
+      });
+    }
   }
 
   return { nodes, edges };
