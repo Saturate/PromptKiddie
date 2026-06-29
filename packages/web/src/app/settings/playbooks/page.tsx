@@ -146,20 +146,31 @@ function playbookToFlow(pb: Playbook): { nodes: Node[]; edges: Edge[] } {
           } satisfies StepNodeData,
         });
 
-        for (const dep of step.dependsOn ?? []) {
-          if (stepMap.has(dep)) {
-            edges.push({
-              id: `${dep}-${step.key}`,
-              source: dep,
-              target: step.key,
-              style: { stroke: "#232a3f", strokeWidth: 1.5 },
-              type: "smoothstep",
-            });
-          }
-        }
       }
     }
     currentY += levels.length * Y_GAP + PHASE_GAP;
+  }
+
+  // Build edges with position-aware handles
+  const posMap = new Map(nodes.map((n) => [n.id, n.position]));
+  for (const step of allSteps) {
+    for (const dep of step.dependsOn ?? []) {
+      if (!posMap.has(dep) || !posMap.has(step.key)) continue;
+      const src = posMap.get(dep)!;
+      const tgt = posMap.get(step.key)!;
+      const dx = tgt.x - src.x;
+      const dy = tgt.y - src.y;
+      const horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+      edges.push({
+        id: `${dep}-${step.key}`,
+        source: dep,
+        target: step.key,
+        sourceHandle: horizontal ? (dx > 0 ? "right" : "bottom") : "bottom",
+        targetHandle: horizontal ? (dx > 0 ? "left" : "top") : "top",
+        style: { stroke: "#3a4260", strokeWidth: 1.5 },
+        type: "smoothstep",
+      });
+    }
   }
 
   return { nodes, edges };
