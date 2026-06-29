@@ -26,18 +26,8 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       { key: "recon.port_scan", title: "Full port scan (all 65535)", type: "mechanical", command: "pk exec -- rustscan -a {target} -- -sV", dependsOn: ["recon.start"], priority: 5 },
       { key: "recon.service_id", title: "Service version detection", type: "mechanical", command: "pk exec -- nmap -sV -sC -p {ports} {target}", dependsOn: ["recon.port_scan"], priority: 10 },
 
-      // Service-specific branches (parallel after service_id)
-      { key: "recon.http_check", title: "Check HTTP services", type: "mechanical", command: "pk exec -- curl -sI http://{target}:{port}", dependsOn: ["recon.service_id"], condition: "ports.service contains http", priority: 15 },
-      { key: "recon.robots", title: "Check robots.txt", type: "mechanical", command: "pk exec -- curl -s http://{target}:{port}/robots.txt", dependsOn: ["recon.http_check"], priority: 20 },
-      { key: "recon.source", title: "View page source / comments", type: "judgment", description: "Check HTML for comments, hidden forms, JS files, API endpoints, version strings.", dependsOn: ["recon.http_check"], priority: 20 },
-      { key: "recon.tech_fp", title: "Technology fingerprint", type: "mechanical", command: "pk exec -- whatweb http://{target}:{port}", dependsOn: ["recon.http_check"], priority: 20 },
-
-      { key: "recon.ssh_check", title: "Note SSH version", type: "judgment", description: "Check OpenSSH version for known CVEs (user enum < 7.7, etc).", dependsOn: ["recon.service_id"], condition: "ports.port = 22", priority: 15 },
-      { key: "recon.smb_check", title: "Check SMB/NetBIOS", type: "mechanical", command: "pk exec -- nmap -p 139,445 --script smb-os-discovery {target}", dependsOn: ["recon.service_id"], condition: "ports.port in [139,445]", priority: 15 },
-      { key: "recon.ftp_check", title: "Check FTP anonymous", type: "mechanical", command: "pk exec -- curl -s ftp://{target}/", dependsOn: ["recon.service_id"], condition: "ports.port = 21", priority: 15 },
-
-      // Meta: phase end (all branches converge)
-      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.robots", "recon.source", "recon.tech_fp", "recon.ssh_check", "recon.smb_check", "recon.ftp_check"], priority: 99 },
+      // Recon is discovery only - what's running, what version
+      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.service_id"], priority: 99 },
     ],
   },
   {
@@ -46,26 +36,21 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
     steps: [
       { key: "enum.start", title: "Start Enumeration", type: "mechanical", nodeType: "sequence", priority: 0 },
 
-      // Web enumeration branch
-      { key: "enum.dir_fuzz", title: "Directory fuzzing (common.txt)", type: "mechanical", command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200,301,302,403", dependsOn: ["enum.start"], condition: "ports.service contains http", priority: 10 },
-      { key: "enum.dir_fuzz_medium", title: "Directory fuzzing (medium list)", type: "mechanical", command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -mc 200,301,302,403", dependsOn: ["enum.dir_fuzz"], condition: "ports.service contains http", priority: 30, optional: true },
-      { key: "enum.vhost_fuzz", title: "Virtual host fuzzing", type: "mechanical", command: "pk exec -- ffuf -u http://{target} -H 'Host: FUZZ.{target}' -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt -mc 200,301,302", dependsOn: ["enum.start"], condition: "ports.service contains http", priority: 25, optional: true },
-      { key: "enum.nikto", title: "Nikto web scan", type: "mechanical", command: "pk exec -- nikto -h http://{target}:{port}", dependsOn: ["enum.dir_fuzz"], condition: "ports.service contains http", priority: 35 },
-      { key: "enum.nuclei", title: "Nuclei vulnerability templates", type: "mechanical", command: "pk exec -- nuclei -u http://{target}:{port} -tags cve,misconfig,exposure", dependsOn: ["enum.dir_fuzz"], condition: "ports.service contains http", priority: 20 },
+      // Universal checks applied to EVERY discovered service
+      { key: "enum.known_cves", title: "Check known CVEs per service", type: "judgment", description: "For each service+version from recon: search for known CVEs in searchsploit, NVD, exploit-db. Record as triage findings.", dependsOn: ["enum.start"], priority: 5 },
+      { key: "enum.default_creds", title: "Try default/anonymous access", type: "judgment", description: "For each service: try anonymous access (FTP, SMB null session) and default credentials (admin:admin, root:root, service-specific defaults). Record what works.", dependsOn: ["enum.start"], priority: 5 },
+      { key: "enum.nuclei", title: "Automated vulnerability scan", type: "mechanical", command: "pk exec -- nuclei -u http://{target} -tags cve,misconfig,exposure,default-login", dependsOn: ["enum.start"], condition: "ports.service contains http", priority: 10 },
 
-      // SMB enumeration branch
-      { key: "enum.smb_enum", title: "SMB full enumeration", type: "mechanical", command: "pk exec -- enum4linux -a {target}", dependsOn: ["enum.start"], condition: "ports.port in [139,445]", priority: 10 },
-      { key: "enum.smb_shares", title: "List and access shares", type: "mechanical", command: "pk exec -- smbclient -L //{target} -N", dependsOn: ["enum.smb_enum"], priority: 15 },
+      // Service-specific deep enumeration (parallel)
+      { key: "enum.web_content", title: "Web content discovery", type: "mechanical", command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200,301,302,403", dependsOn: ["enum.default_creds"], condition: "ports.service contains http", priority: 15 },
+      { key: "enum.web_source", title: "Analyze web pages", type: "judgment", description: "Check robots.txt, sitemap.xml, page source for comments/hidden forms/JS/API endpoints. View interesting directories found by fuzzing.", dependsOn: ["enum.web_content"], priority: 20 },
+      { key: "enum.smb_shares", title: "Enumerate SMB shares + files", type: "mechanical", command: "pk exec -- enum4linux -a {target} && smbclient -L //{target} -N", dependsOn: ["enum.default_creds"], condition: "ports.port in [139,445]", priority: 15 },
+      { key: "enum.ftp_files", title: "List and download FTP files", type: "judgment", description: "List FTP contents. Download configs, backups, source code, anything interesting.", dependsOn: ["enum.default_creds"], condition: "ports.port = 21", priority: 15 },
 
-      // FTP enumeration branch
-      { key: "enum.ftp_list", title: "List FTP files", type: "mechanical", command: "pk exec -- curl -s ftp://{target}/ --list-only", dependsOn: ["enum.start"], condition: "ports.port = 21", priority: 10 },
-      { key: "enum.ftp_download", title: "Download interesting FTP files", type: "judgment", description: "Download configs, backups, source code from FTP.", dependsOn: ["enum.ftp_list"], priority: 20 },
+      // Consolidate
+      { key: "enum.harvest_creds", title: "Harvest credentials from findings", type: "judgment", description: "Collect all credentials found: default creds that worked, keys in files, passwords in configs, hashes in databases. Record each as an artifact.", dependsOn: ["enum.web_source", "enum.smb_shares", "enum.ftp_files", "enum.known_cves", "enum.nuclei"], priority: 30 },
 
-      // Credential testing (after all enum branches)
-      { key: "enum.default_creds", title: "Try default credentials", type: "judgment", description: "Research the specific services/apps and try default credentials. Check for login forms, SSH, FTP, databases.", dependsOn: ["enum.nuclei", "enum.smb_shares", "enum.ftp_download"], priority: 40 },
-      { key: "enum.brute_force", title: "Targeted brute force", type: "judgment", description: "If default creds fail, try targeted brute force with hydra on discovered usernames. Stay within RoE.", dependsOn: ["enum.default_creds"], priority: 50, optional: true },
-
-      { key: "enum.end", title: "Enumeration Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["enum.default_creds", "enum.brute_force"], priority: 99 },
+      { key: "enum.end", title: "Enumeration Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["enum.harvest_creds"], priority: 99 },
     ],
   },
   {
