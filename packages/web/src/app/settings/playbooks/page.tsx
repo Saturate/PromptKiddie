@@ -411,55 +411,102 @@ export default function PlaybooksPage() {
           {currentStep ? (
             <div className="p-3 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-semibold text-foreground">Edit Node</span>
+                <span className="font-mono text-xs font-semibold text-foreground">
+                  {currentStep.nodeType === "block_ref" ? "Block Reference" :
+                   currentStep.nodeType === "sequence" ? "Phase Gate" :
+                   currentStep.nodeType === "parallel" ? "Parallel Fork" :
+                   currentStep.nodeType === "selector" ? "Selector" :
+                   "Action Node"}
+                </span>
                 <button onClick={() => deleteStep(currentStep.key)} className="p-1 hover:bg-destructive/10 rounded">
                   <Trash2 className="size-3 text-muted-foreground hover:text-destructive" />
                 </button>
               </div>
+
+              {/* Title - all node types */}
               <div className="space-y-1.5">
                 <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Title</label>
                 <Input value={currentStep.title} onChange={(e) => updateStep(currentStep.key, "title", e.target.value)} className="font-mono text-xs h-7" />
               </div>
+
+              {/* Key - readonly */}
               <div className="space-y-1.5">
                 <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Key</label>
                 <code className="block font-mono text-[10px] text-muted-foreground bg-muted px-2 py-1 rounded">{currentStep.key}</code>
               </div>
+
+              {/* Node type selector */}
               <div className="space-y-1.5">
-                <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Type</label>
-                <div className="flex gap-1">
-                  {(["mechanical", "judgment"] as const).map((t) => (
-                    <button key={t} onClick={() => updateStep(currentStep.key, "type", t)}
-                      className={`font-mono text-[10px] px-2 py-0.5 rounded border ${currentStep.type === t ? (t === "mechanical" ? "text-blue-400 border-blue-500/30 bg-blue-500/10" : "text-amber-400 border-amber-500/30 bg-amber-500/10") : "text-muted-foreground border-border"}`}>
-                      {t}
+                <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Node Type</label>
+                <div className="flex flex-wrap gap-1">
+                  {(["action", "sequence", "parallel", "selector", "block_ref"] as const).map((nt) => (
+                    <button key={nt} onClick={() => updateStep(currentStep.key, "nodeType", nt === "action" ? undefined : nt)}
+                      className={`font-mono text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+                        (currentStep.nodeType ?? "action") === nt
+                          ? nt === "parallel" ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                          : nt === "selector" ? "text-purple-400 border-purple-500/30 bg-purple-500/10"
+                          : nt === "sequence" ? "text-blue-400 border-blue-500/30 bg-blue-500/10"
+                          : nt === "block_ref" ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                          : "text-foreground border-border bg-muted"
+                          : "text-muted-foreground border-border hover:bg-muted/50"
+                      }`}>
+                      {nt === "block_ref" ? "block" : nt}
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Priority</label>
-                <Input type="number" value={currentStep.priority ?? 50} onChange={(e) => updateStep(currentStep.key, "priority", parseInt(e.target.value))} className="font-mono text-xs h-7" />
-              </div>
-              {currentStep.type === "mechanical" && (
+
+              {/* Action-specific fields */}
+              {(!currentStep.nodeType || currentStep.nodeType === "action") && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Step Type</label>
+                    <div className="flex gap-1">
+                      {(["mechanical", "judgment"] as const).map((t) => (
+                        <button key={t} onClick={() => updateStep(currentStep.key, "type", t)}
+                          className={`font-mono text-[10px] px-2 py-0.5 rounded border ${currentStep.type === t ? (t === "mechanical" ? "text-blue-400 border-blue-500/30 bg-blue-500/10" : "text-amber-400 border-amber-500/30 bg-amber-500/10") : "text-muted-foreground border-border"}`}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {currentStep.type === "mechanical" && (
+                    <div className="space-y-1.5">
+                      <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Command</label>
+                      <Input value={currentStep.command ?? ""} onChange={(e) => updateStep(currentStep.key, "command", e.target.value)} placeholder="pk exec -- ..." className="font-mono text-[10px] h-7" />
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Description</label>
+                    <textarea value={currentStep.description ?? ""} onChange={(e) => updateStep(currentStep.key, "description", e.target.value)} placeholder="What this step does..." className="w-full bg-muted rounded px-2 py-1 text-[10px] font-mono h-16 resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
+                  </div>
+                </>
+              )}
+
+              {/* Block ref fields */}
+              {currentStep.nodeType === "block_ref" && (
                 <div className="space-y-1.5">
-                  <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Command</label>
-                  <Input value={currentStep.command ?? ""} onChange={(e) => updateStep(currentStep.key, "command", e.target.value)} placeholder="pk exec -- ..." className="font-mono text-[10px] h-7" />
+                  <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Block</label>
+                  <div className="flex items-center gap-2">
+                    <code className="font-mono text-[10px] text-primary bg-primary/10 px-2 py-1 rounded flex-1">{currentStep.blockRef ?? "none"}</code>
+                    {currentStep.blockRef && (
+                      <button onClick={() => drillIntoBlock(currentStep.blockRef!)} className="text-[10px] font-mono text-primary hover:underline flex items-center gap-0.5">
+                        Edit <ChevronRight className="size-2.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
+
+              {/* Common: priority + condition */}
+              <div className="space-y-1.5">
+                <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Priority (0=highest)</label>
+                <Input type="number" value={currentStep.priority ?? 50} onChange={(e) => updateStep(currentStep.key, "priority", parseInt(e.target.value))} className="font-mono text-xs h-7" />
+              </div>
               <div className="space-y-1.5">
                 <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Condition</label>
                 <Input value={currentStep.condition ?? ""} onChange={(e) => updateStep(currentStep.key, "condition", e.target.value)} placeholder="ports.service contains http" className="font-mono text-[10px] h-7" />
               </div>
-              <div className="space-y-1.5">
-                <label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Description</label>
-                <textarea value={currentStep.description ?? ""} onChange={(e) => updateStep(currentStep.key, "description", e.target.value)} placeholder="What this step does..." className="w-full bg-muted rounded px-2 py-1 text-[10px] font-mono h-16 resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
-              </div>
-              {currentStep.blockRef && (
-                <div className="pt-2 border-t border-border">
-                  <button onClick={() => drillIntoBlock(currentStep.blockRef!)} className="text-xs font-mono text-primary hover:underline flex items-center gap-1">
-                    Edit &quot;{currentStep.blockRef}&quot; block <ChevronRight className="size-3" />
-                  </button>
-                </div>
-              )}
             </div>
           ) : (
             <div className="p-4 text-center text-muted-foreground">
