@@ -11,6 +11,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { StepNode, type StepNodeData } from "./step-node";
 import { MetaNode, type MetaNodeData } from "./meta-node";
+import { ControlNode, type ControlNodeData } from "./control-node";
 import { layoutGraph } from "./layout";
 import { useMemo } from "react";
 
@@ -34,7 +35,7 @@ interface PlaybookGraphProps {
   className?: string;
 }
 
-const nodeTypes = { step: StepNode, meta: MetaNode };
+const nodeTypes = { step: StepNode, meta: MetaNode, control: ControlNode };
 
 function buildGraph(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
@@ -44,7 +45,20 @@ function buildGraph(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
   for (const step of steps) {
     const isMeta = step.nodeType === "sequence" || step.stepKey.endsWith(".start") || step.stepKey.endsWith(".end");
 
-    if (isMeta) {
+    const isControl = step.nodeType === "parallel" || step.nodeType === "selector";
+    if (isControl) {
+      nodes.push({
+        id: step.id,
+        type: "control",
+        position: { x: 0, y: 0 },
+        data: {
+          label: step.title,
+          variant: step.nodeType as "parallel" | "selector",
+          phase: step.phase,
+          isMeta: true,
+        } satisfies ControlNodeData,
+      });
+    } else if (isMeta) {
       nodes.push({
         id: step.id,
         type: "meta",
@@ -77,16 +91,15 @@ function buildGraph(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
     for (const dep of step.dependsOn ?? []) {
       const srcId = idByKey.get(dep);
       if (!srcId) continue;
+      const color = step.status === "running" ? "#e8a040" : step.status === "done" ? "#50b880" : "#3a4260";
       edges.push({
         id: `${srcId}-${step.id}`,
         source: srcId,
         target: step.id,
         animated: step.status === "running",
-        style: {
-          stroke: step.status === "running" ? "#e8a040" : step.status === "done" ? "#50b880" : "#3a4260",
-          strokeWidth: 1.5,
-        },
+        style: { stroke: color, strokeWidth: 1.5 },
         type: "smoothstep",
+        markerEnd: { type: "arrowclosed" as const, width: 12, height: 12, color },
       });
     }
   }
