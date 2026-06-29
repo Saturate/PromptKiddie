@@ -8,6 +8,8 @@ import {
   listFindings,
   listObjectives,
   listTargets,
+  listEngagementSteps,
+  getPlaybook,
 } from "@promptkiddie/core";
 import { notFound } from "next/navigation";
 import { Inbox } from "./inbox";
@@ -75,7 +77,7 @@ export default async function EngagementPage({
   const engagement = await getEngagement(id);
   if (!engagement) notFound();
 
-  const [targets, findings, activity, evidence, agentRuns, objectives, agentLogEntries] = await Promise.all([
+  const [targets, findings, activity, evidence, agentRuns, objectives, agentLogEntries, steps] = await Promise.all([
     listTargets(id),
     listFindings(id),
     listActivity(id),
@@ -83,6 +85,7 @@ export default async function EngagementPage({
     listAgentRuns(id),
     listObjectives(id),
     listAgentLog(id),
+    listEngagementSteps(id),
   ]);
 
   const hasRunningAgent = agentRuns.some((r) => r.status === "running");
@@ -152,6 +155,82 @@ export default async function EngagementPage({
           </CardContent>
         </Card>
       )}
+
+      {/* Playbook checklist */}
+      {steps.length > 0 && (() => {
+        const phases = [...new Set(steps.map((s) => s.phase))];
+        const doneCount = steps.filter((s) => s.status === "done").length;
+        const skippedCount = steps.filter((s) => s.status === "skipped").length;
+        const totalCount = steps.length;
+        const pct = Math.round((doneCount / totalCount) * 100);
+        return (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-mono">
+                  Playbook <span className="text-muted-foreground">({doneCount}/{totalCount} done{skippedCount ? `, ${skippedCount} skipped` : ""})</span>
+                </CardTitle>
+                <span className="font-mono text-xs text-pk-amber font-bold">{pct}%</span>
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-1">
+                <div className="h-full bg-pk-amber transition-all" style={{ width: `${pct}%` }} />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {phases.map((phaseName) => {
+                  const phaseSteps = steps.filter((s) => s.phase === phaseName);
+                  const phaseDone = phaseSteps.filter((s) => s.status === "done" || s.status === "skipped").length;
+                  const isCurrentPhase = phaseName === currentPhase;
+                  return (
+                    <div key={phaseName}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`font-mono text-[10px] uppercase tracking-wider font-semibold ${isCurrentPhase ? "text-pk-amber" : "text-muted-foreground"}`}>
+                          {phaseName}
+                        </span>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {phaseDone}/{phaseSteps.length}
+                        </span>
+                        {isCurrentPhase && <span className="h-1.5 w-1.5 rounded-full bg-pk-amber animate-pulse" />}
+                      </div>
+                      <div className="space-y-1 ml-1">
+                        {phaseSteps.map((step) => (
+                          <div
+                            key={step.id}
+                            className={`flex items-start gap-2 py-1 px-2 rounded text-xs font-mono ${
+                              step.status === "done" ? "text-muted-foreground" :
+                              step.status === "skipped" ? "text-muted-foreground/50 line-through" :
+                              isCurrentPhase ? "text-foreground" : "text-muted-foreground/60"
+                            }`}
+                          >
+                            <span className="mt-0.5 shrink-0">
+                              {step.status === "done" ? (
+                                <span className="text-emerald-400">&#10003;</span>
+                              ) : step.status === "skipped" ? (
+                                <span className="text-muted-foreground/40">&#8212;</span>
+                              ) : step.status === "running" ? (
+                                <span className="text-pk-amber animate-pulse">&#9679;</span>
+                              ) : (
+                                <span className="text-muted-foreground/30">&#9675;</span>
+                              )}
+                            </span>
+                            <span className="flex-1">{step.title}</span>
+                            {step.skipReason && (
+                              <span className="text-[9px] text-muted-foreground/40 italic truncate max-w-[150px]" title={step.skipReason}>
+                                {step.skipReason}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Flag progress - CTF only */}
       {engagement.type === "ctf" && objectives.length > 0 && (
