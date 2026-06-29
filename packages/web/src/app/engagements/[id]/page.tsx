@@ -12,7 +12,6 @@ import {
   getPlaybook,
 } from "@promptkiddie/core";
 import { notFound } from "next/navigation";
-import { Inbox } from "./inbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -735,10 +734,6 @@ export default async function EngagementPage({
         </div>
       )}
 
-      {/* Inbox */}
-      <div id="inbox">
-        <Inbox engagementId={id} />
-      </div>
     </div>
   );
 }
