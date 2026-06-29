@@ -50,6 +50,12 @@ export interface Repo {
   sendMessage(input: { body: string; engagementId?: string; direction?: string; author?: string }): Promise<unknown>;
   listMessages(engagementId: string): Promise<unknown[]>;
   pollInbox(engagementId?: string): Promise<unknown[]>;
+
+  listEngagementSteps(engagementId: string): Promise<unknown[]>;
+  completeStep(engagementId: string, stepKey: string, result?: { type: string; id: string }): Promise<unknown>;
+  skipStep(engagementId: string, stepKey: string, reason: string): Promise<unknown>;
+  getDefaultPlaybook(engagementType: string): Promise<unknown>;
+  initEngagementSteps(engagementId: string, playbookId: string): Promise<unknown[]>;
 }
 
 function createLocalRepo(): Repo {
@@ -90,6 +96,11 @@ function createLocalRepo(): Repo {
     sendMessage: async (i) => (await r).sendMessage(i as Parameters<Awaited<typeof r>["sendMessage"]>[0]),
     listMessages: async (eid) => (await r).listMessages(eid),
     pollInbox: async (eid) => (await r).pollInbox(eid),
+    listEngagementSteps: async (eid) => (await r).listEngagementSteps(eid),
+    completeStep: async (eid, key, result) => (await r).completeStep(eid, key, result),
+    skipStep: async (eid, key, reason) => (await r).skipStep(eid, key, reason),
+    getDefaultPlaybook: async (type) => (await r).getDefaultPlaybook(type),
+    initEngagementSteps: async (eid, pid) => (await r).initEngagementSteps(eid, pid),
   };
 }
 
@@ -159,6 +170,11 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     sendMessage: (i) => post("/messages", i),
     listMessages: (eid) => get<unknown[]>(`/messages?engagementId=${eid}`),
     pollInbox: (eid) => get<unknown[]>(`/messages/poll${eid ? `?engagementId=${eid}` : ""}`),
+    listEngagementSteps: (eid) => get<unknown[]>(`/engagements/${eid}/steps`),
+    completeStep: (eid, key, result) => put(`/engagements/${eid}/steps/${key}/complete`, result ?? {}),
+    skipStep: (eid, key, reason) => put(`/engagements/${eid}/steps/${key}/skip`, { reason }),
+    getDefaultPlaybook: (type) => get(`/playbooks/default/${type}`),
+    initEngagementSteps: (eid, pid) => post(`/engagements/${eid}/steps/init`, { playbookId: pid }) as Promise<unknown[]>,
   };
 }
 

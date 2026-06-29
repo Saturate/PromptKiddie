@@ -36,6 +36,11 @@ import {
   listPorts,
   ingestPorts,
   looksLikeNmapOutput,
+  getDefaultPlaybook,
+  initEngagementSteps,
+  listEngagementSteps,
+  completeStep,
+  skipStep,
   getSetting,
 } from "@promptkiddie/core";
 
@@ -120,7 +125,12 @@ const pkTools = {
     }).passthrough(),
     execute: async (params) => {
       const p = { ...params, type: (params.type || "ctf").toLowerCase() };
-      return createEngagement(p as Parameters<typeof createEngagement>[0]);
+      const eng = await createEngagement(p as Parameters<typeof createEngagement>[0]);
+      const pb = await getDefaultPlaybook(p.type);
+      if (pb && eng) {
+        await initEngagementSteps((eng as { id: string }).id, pb.id);
+      }
+      return eng;
     },
   }),
   listEngagements: tool({
@@ -220,6 +230,31 @@ const pkTools = {
     description: 'List all ports for a target. Example: {"targetId": "uuid"}',
     inputSchema: z.object({ targetId: z.string().describe("Target UUID") }),
     execute: async ({ targetId }) => listPorts(targetId),
+  }),
+  listSteps: tool({
+    description: 'List playbook steps for an engagement. Shows what to do next. Example: {"engagementId": "uuid"}',
+    inputSchema: z.object({ engagementId: z.string().describe("Engagement UUID") }),
+    execute: async ({ engagementId }) => listEngagementSteps(engagementId),
+  }),
+  completeStep: tool({
+    description: 'Mark a playbook step as done. Example: {"engagementId": "uuid", "stepKey": "recon.full_port_scan"}',
+    inputSchema: z.object({
+      engagementId: z.string().describe("Engagement UUID"),
+      stepKey: z.string().describe("Step key, e.g. recon.full_port_scan"),
+      resultType: z.string().optional().describe("What was produced: port, finding, evidence, activity"),
+      resultId: z.string().optional().describe("UUID of the result row"),
+    }),
+    execute: async ({ engagementId, stepKey, resultType, resultId }) =>
+      completeStep(engagementId, stepKey, resultType && resultId ? { type: resultType, id: resultId } : undefined),
+  }),
+  skipStep: tool({
+    description: 'Skip a playbook step with a reason. Example: {"engagementId": "uuid", "stepKey": "enum.smb_enum", "reason": "No SMB ports open"}',
+    inputSchema: z.object({
+      engagementId: z.string().describe("Engagement UUID"),
+      stepKey: z.string().describe("Step key to skip"),
+      reason: z.string().describe("Why this step is being skipped"),
+    }),
+    execute: async ({ engagementId, stepKey, reason }) => skipStep(engagementId, stepKey, reason),
   }),
   addFinding: tool({
     description: 'Add a finding. Include exploit_scenario and source/sink refs when possible. Example: {"engagementId": "uuid", "title": "SQL Injection on /login", "severity": "high", "exploitScenario": "POST user=admin\' OR 1=1-- to /login bypasses auth", "sourceRef": "/login POST parameter", "sinkRef": "SQL query in auth.py:42", "confidence": 0.9}',
