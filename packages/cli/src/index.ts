@@ -532,6 +532,59 @@ vpn
     });
   });
 
+// --- shell (tmux sessions inside containers) --------------------------------
+const shell = program.command("shell").description("Manage tmux sessions inside containers");
+
+shell
+  .command("new")
+  .description("Create a named tmux session in the active container")
+  .argument("<name>", "session name")
+  .option("--container <name>", "container to use (default: active phase container)")
+  .action(async (name: string, o) => {
+    const container = o.container ?? config.attackbox.container;
+    const { spawnSync } = await import("node:child_process");
+    spawnSync("docker", ["exec", container, "tmux", "new-session", "-d", "-s", name], { stdio: "inherit" });
+    console.log(`Session '${name}' created in ${container}`);
+  });
+
+shell
+  .command("attach")
+  .description("Attach to a tmux session")
+  .argument("<name>", "session name")
+  .option("--container <name>")
+  .action(async (name: string, o) => {
+    const container = o.container ?? config.attackbox.container;
+    const { spawnSync } = await import("node:child_process");
+    spawnSync("docker", ["exec", "-it", container, "tmux", "attach-session", "-t", name], { stdio: "inherit" });
+  });
+
+shell
+  .command("list")
+  .description("List tmux sessions")
+  .option("--container <name>")
+  .action(async (o) => {
+    const container = o.container ?? config.attackbox.container;
+    const { execFile: exec } = await import("node:child_process");
+    exec("docker", ["exec", container, "tmux", "list-sessions"], (err, stdout) => {
+      if (err) { console.log("No active sessions"); return; }
+      console.log(stdout);
+    });
+  });
+
+shell
+  .command("kill")
+  .description("Kill a tmux session")
+  .argument("<name>", "session name")
+  .option("--container <name>")
+  .action(async (name: string, o) => {
+    const container = o.container ?? config.attackbox.container;
+    const { execFile: exec } = await import("node:child_process");
+    exec("docker", ["exec", container, "tmux", "kill-session", "-t", name], (err) => {
+      if (err) console.error(`Failed to kill session: ${err.message}`);
+      else console.log(`Session '${name}' killed`);
+    });
+  });
+
 // --- exec (run command + auto-log) -----------------------------------------
 const DEFAULT_CONTAINER = config.attackbox.container;
 const USE_DOCKER = config.attackbox.exec_mode !== "local";

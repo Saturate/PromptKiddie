@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip \
     openssh-client sshpass \
     netcat-openbsd iproute2 iputils-ping dnsutils whois \
-    openvpn procps \
+    openvpn procps tmux \
     && rm -rf /var/lib/apt/lists/*
 
 COPY exec-logger.sh /usr/local/bin/pk-shell
