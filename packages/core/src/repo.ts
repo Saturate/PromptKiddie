@@ -12,14 +12,18 @@ import {
   agentRuns,
   artifacts,
   engagements,
+  engagementSteps,
   evidence,
   findings,
   messages,
   objectives,
+  playbooks,
   ports,
   settings,
   targets,
+  type PlaybookPhase,
 } from "./schema.js";
+import { DEFAULT_PLAYBOOKS } from "./playbooks.js";
 
 /** Turn a name into a filesystem/url-safe slug. */
 export function slugify(name: string): string {
@@ -714,4 +718,112 @@ export async function seedDefaultSettings() {
       await setSetting(key, value);
     }
   }
+}
+
+// --- Playbooks ---------------------------------------------------------------
+
+export async function seedPlaybooks() {
+  const db = getDb();
+  for (const [type, def] of Object.entries(DEFAULT_PLAYBOOKS)) {
+    const existing = await db.select().from(playbooks)
+      .where(and(eq(playbooks.engagementType, type as "ctf"), eq(playbooks.isDefault, true)));
+    if (existing.length === 0) {
+      await db.insert(playbooks).values({
+        name: def.name,
+        engagementType: type as "ctf",
+        description: def.description,
+        isDefault: true,
+        phases: def.phases,
+      });
+    }
+  }
+}
+
+export async function getPlaybook(id: string) {
+  const db = getDb();
+  const [row] = await db.select().from(playbooks).where(eq(playbooks.id, id));
+  return row ?? null;
+}
+
+export async function getDefaultPlaybook(engagementType: string) {
+  const db = getDb();
+  const [row] = await db.select().from(playbooks)
+    .where(and(eq(playbooks.engagementType, engagementType as "ctf"), eq(playbooks.isDefault, true)));
+  return row ?? null;
+}
+
+export async function listPlaybooks() {
+  const db = getDb();
+  return db.select().from(playbooks).orderBy(playbooks.name);
+}
+
+export async function initEngagementSteps(engagementId: string, playbookId: string) {
+  const db = getDb();
+  const pb = await getPlaybook(playbookId);
+  if (!pb) return [];
+
+  const phases = pb.phases as PlaybookPhase[];
+  const rows = [];
+  for (const phase of phases) {
+    for (const step of phase.steps) {
+      const [row] = await db.insert(engagementSteps).values({
+        engagementId,
+        phase: phase.phase,
+        stepKey: step.key,
+        title: step.title,
+      }).onConflictDoNothing().returning();
+      if (row) rows.push(row);
+    }
+  }
+
+  await db.update(engagements).set({ playbookId }).where(eq(engagements.id, engagementId));
+  return rows;
+}
+
+export async function listEngagementSteps(engagementId: string) {
+  const db = getDb();
+  return db.select().from(engagementSteps)
+    .where(eq(engagementSteps.engagementId, engagementId))
+    .orderBy(engagementSteps.createdAt);
+}
+
+export async function completeStep(
+  engagementId: string,
+  stepKey: string,
+  result?: { type: string; id: string },
+) {
+  const db = getDb();
+  const [row] = await db.update(engagementSteps)
+    .set({
+      status: "done",
+      completedAt: new Date(),
+      resultType: result?.type,
+      resultId: result?.id,
+    })
+    .where(and(
+      eq(engagementSteps.engagementId, engagementId),
+      eq(engagementSteps.stepKey, stepKey),
+    ))
+    .returning();
+  return row;
+}
+
+export async function skipStep(
+  engagementId: string,
+  stepKey: string,
+  reason: string,
+) {
+  const db = getDb();
+  const [row] = await db.update(engagementSteps)
+    .set({
+      status: "skipped",
+      skipReason: reason,
+      completedAt: new Date(),
+    })
+    .where(and(
+      eq(engagementSteps.engagementId, engagementId),
+      eq(engagementSteps.stepKey, stepKey),
+    ))
+    .returning();
+  return row;
 }

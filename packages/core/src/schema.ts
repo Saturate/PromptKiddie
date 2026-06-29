@@ -116,10 +116,70 @@ export const engagements = pgTable("engagements", {
   scope: text("scope"),
   /** Rules of Engagement: authorization, allowed/disallowed actions, windows. */
   roe: jsonb("roe").$type<Record<string, unknown>>(),
+  playbookId: uuid("playbook_id"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   endedAt: timestamp("ended_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Playbook templates defining phases and steps per engagement type. */
+export const playbooks = pgTable("playbooks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  engagementType: engagementType("engagement_type").notNull(),
+  description: text("description"),
+  isDefault: boolean("is_default").notNull().default(false),
+  phases: jsonb("phases").notNull().$type<PlaybookPhase[]>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export interface PlaybookStep {
+  key: string;
+  title: string;
+  description?: string;
+  type: "mechanical" | "judgment";
+  command?: string;
+  condition?: string;
+  optional?: boolean;
+}
+
+export interface PlaybookPhase {
+  phase: string;
+  title: string;
+  steps: PlaybookStep[];
+}
+
+export const stepStatus = pgEnum("step_status", [
+  "pending",
+  "running",
+  "done",
+  "skipped",
+]);
+
+/** Per-engagement step progress tracking. */
+export const engagementSteps = pgTable(
+  "engagement_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    phase: text("phase").notNull(),
+    stepKey: text("step_key").notNull(),
+    title: text("title").notNull(),
+    status: text("status").notNull().default("pending"),
+    skipReason: text("skip_reason"),
+    resultType: text("result_type"),
+    resultId: uuid("result_id"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("engagement_steps_eng_idx").on(t.engagementId),
+  ],
+);
 
 /** CTF tasks / room objectives. Each has a description and an expected flag to capture. */
 export const objectives = pgTable(
