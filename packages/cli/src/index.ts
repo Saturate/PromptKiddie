@@ -594,6 +594,57 @@ program
     const duration = Date.now() - start;
     const toolName = cmdStr.split(/\s+/)[0];
     const reasonSuffix = o.reason ? ` | ${o.reason}` : "";
+    const combined = result.stdout + result.stderr;
+
+    const isNotFound = result.code === 127 ||
+      combined.includes("not found") ||
+      combined.includes("No such file or directory");
+
+    if (isNotFound && !local && container !== DEFAULT_CONTAINER) {
+      process.stderr.write(
+        `[pk] Command "${toolName}" not available in ${container} (${o.phase} image).\n` +
+        `[pk] Retrying on full attackbox (${DEFAULT_CONTAINER})...\n`
+      );
+
+      await repo.logActivity({
+        engagementId: eid,
+        phase: o.phase,
+        action: `[${o.agent}] ${toolName} not found in ${container}, retrying on ${DEFAULT_CONTAINER}`,
+        command: cmdStr,
+        actor: "agent",
+      });
+
+      const retry = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
+        const proc = exec(
+          "docker", ["exec", "-e", "PK_EXEC=1", DEFAULT_CONTAINER, "sh", "-c", cmdStr],
+          { maxBuffer: 10 * 1024 * 1024, timeout: 300000 },
+          (err, stdout, stderr) => {
+            resolve({
+              stdout: stdout ?? "",
+              stderr: stderr ?? "",
+              code: err && "code" in err ? (err.code as number) : err ? 1 : 0,
+            });
+          },
+        );
+        proc.on("error", (err) => resolve({ stdout: "", stderr: err.message, code: 1 }));
+      });
+
+      const retryNotFound = retry.code === 127 ||
+        (retry.stdout + retry.stderr).includes("not found");
+
+      if (retryNotFound) {
+        process.stderr.write(
+          `[pk] "${toolName}" not available in any container. Install it with: pk exec -- apt-get install <package>\n`
+        );
+      }
+
+      Object.assign(result, retry);
+    } else if (isNotFound) {
+      process.stderr.write(
+        `[pk] "${toolName}" not found in ${local ? "host" : container}. ` +
+        `Install it with: ${local ? "apt-get install <package>" : "pk exec -- apt-get install <package>"}\n`
+      );
+    }
 
     await repo.logActivity({
       engagementId: eid,
