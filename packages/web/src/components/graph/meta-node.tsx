@@ -30,13 +30,13 @@ export function MetaNode({ data }: NodeProps) {
   if (d.variant === "gate") {
     return (
       <div className="flex items-center justify-center w-[50px] h-[50px]">
-        <Handle type="target" position={Position.Top} id="top" className="!bg-border !w-2 !h-2" />
-        <Handle type="target" position={Position.Left} id="left" className="!bg-border !w-2 !h-2" />
+        <Handle type="target" position={Position.Top} id="top" className="pk-handle" />
+        <Handle type="target" position={Position.Left} id="left" className="pk-handle" />
         <div className={`w-[36px] h-[36px] border-2 flex items-center justify-center ${color} ${VARIANT_SHAPES.gate}`}>
           <span className="text-[10px] font-mono font-bold -rotate-45">?</span>
         </div>
-        <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-border !w-2 !h-2" />
-        <Handle type="source" position={Position.Right} id="right" className="!bg-border !w-2 !h-2" />
+        <Handle type="source" position={Position.Bottom} id="bottom" className="pk-handle" />
+        <Handle type="source" position={Position.Right} id="right" className="pk-handle" />
       </div>
     );
   }

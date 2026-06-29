@@ -134,3 +134,19 @@
     @apply font-sans;
   }
 }
+
+/* React-flow handle: invisible by default, visible when connecting or hovering node */
+.pk-handle {
+  background: transparent !important;
+  border: none !important;
+  width: 12px !important;
+  height: 12px !important;
+  transition: all 0.15s !important;
+}
+.react-flow__node:hover .pk-handle,
+.react-flow__handle-connecting .pk-handle,
+.react-flow .connectionline ~ .pk-handle {
+  background: oklch(0.75 0.15 75 / 0.5) !important;
+  border: 1px solid oklch(0.75 0.15 75 / 0.3) !important;
+  border-radius: 50% !important;
+}
