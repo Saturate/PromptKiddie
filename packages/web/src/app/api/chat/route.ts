@@ -43,6 +43,7 @@ import {
   skipStep,
   listPorts as listPortsForTarget,
   findReadyNodes,
+  findAutoSkips,
   getProgress,
   type GraphState,
   getSetting,
@@ -275,9 +276,27 @@ const pkTools = {
         artifacts: artifacts.map((a) => ({ id: a.id, type: a.type })),
       };
 
+      // Auto-skip steps whose conditions are false (e.g., no SMB ports found)
+      const autoSkips = findAutoSkips(state);
+      for (const skip of autoSkips) {
+        await skipStep(engagementId, skip.stepKey, `Condition not met: ${skip.condition}`);
+      }
+
+      // Re-evaluate after skips
+      if (autoSkips.length > 0) {
+        const refreshed = await listEngagementSteps(engagementId);
+        state.steps = refreshed.map((s) => ({
+          id: s.id, stepKey: s.stepKey, title: s.title,
+          status: s.status as "pending" | "running" | "done" | "skipped",
+          nodeType: s.nodeType ?? "action", dependsOn: s.dependsOn ?? [],
+          priority: s.priority ?? 50, condition: s.condition,
+          agentId: s.agentId, phase: s.phase,
+        }));
+      }
+
       const ready = findReadyNodes(state).slice(0, maxSteps ?? 5);
       const progress = getProgress(state);
-      return { ready, progress };
+      return { ready, progress, autoSkipped: autoSkips.length };
     },
   }),
   completeStep: tool({

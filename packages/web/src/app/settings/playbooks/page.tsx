@@ -458,12 +458,15 @@ export default function PlaybooksPage() {
                   onConnect={onConnect}
                   onNodeClick={(_, node) => setSelectedNode(node.id)}
                   onPaneClick={() => setSelectedNode(null)}
+                  onNodesDelete={(deleted) => deleted.forEach((n) => deleteStep(n.id))}
                   nodeTypes={nodeTypes}
+                  deleteKeyCode="Backspace"
                   fitView
                   minZoom={0.2}
                   maxZoom={2}
                   proOptions={{ hideAttribution: true }}
                   defaultEdgeOptions={{ type: "smoothstep" }}
+                  nodesDraggable
                 >
                   <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#232a3f" />
                   <Controls className="!bg-card !border-border !rounded-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-muted-foreground" />
