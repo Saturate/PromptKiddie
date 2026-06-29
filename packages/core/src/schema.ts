@@ -134,14 +134,22 @@ export const playbooks = pgTable("playbooks", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export type NodeType = "action" | "sequence" | "selector" | "parallel" | "gate" | "block_ref";
+
 export interface PlaybookStep {
   key: string;
   title: string;
   description?: string;
   type: "mechanical" | "judgment";
+  nodeType?: NodeType;
   command?: string;
   condition?: string;
+  dependsOn?: string[];
+  priority?: number;
   optional?: boolean;
+  blockId?: string;
+  inputSchema?: Record<string, string>;
+  outputSchema?: Record<string, string>;
 }
 
 export interface PlaybookPhase {
@@ -150,6 +158,19 @@ export interface PlaybookPhase {
   steps: PlaybookStep[];
 }
 
+/** Reusable sub-graphs (like functions) for composing playbooks. */
+export const playbookBlocks = pgTable("playbook_blocks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  description: text("description"),
+  inputSchema: jsonb("input_schema").$type<Record<string, string>>(),
+  outputSchema: jsonb("output_schema").$type<Record<string, string>>(),
+  nodes: jsonb("nodes").notNull().$type<PlaybookStep[]>(),
+  isBuiltin: boolean("is_builtin").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const stepStatus = pgEnum("step_status", [
   "pending",
   "running",
@@ -157,7 +178,7 @@ export const stepStatus = pgEnum("step_status", [
   "skipped",
 ]);
 
-/** Per-engagement step progress tracking. */
+/** Per-engagement step progress tracking (behavior tree nodes). */
 export const engagementSteps = pgTable(
   "engagement_steps",
   {
@@ -169,9 +190,20 @@ export const engagementSteps = pgTable(
     stepKey: text("step_key").notNull(),
     title: text("title").notNull(),
     status: text("status").notNull().default("pending"),
+    nodeType: text("node_type").notNull().default("action"),
+    dependsOn: text("depends_on").array().default([]),
+    priority: integer("priority").notNull().default(50),
+    condition: text("condition"),
+    blockId: uuid("block_id"),
+    inputs: jsonb("inputs").$type<Record<string, unknown>>(),
+    outputs: jsonb("outputs").$type<Record<string, unknown>>(),
     skipReason: text("skip_reason"),
     resultType: text("result_type"),
     resultId: uuid("result_id"),
+    agentId: text("agent_id"),
+    costTokens: integer("cost_tokens").default(0),
+    positionX: doublePrecision("position_x").default(0),
+    positionY: doublePrecision("position_y").default(0),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
