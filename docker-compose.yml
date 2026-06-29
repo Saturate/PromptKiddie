@@ -75,27 +75,13 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
 
-  attackbox-enum:
+  attackbox-attack:
     build:
       context: packages/tooling/images
-      dockerfile: Dockerfile.enum
+      dockerfile: Dockerfile.attack
       args:
         BASE_IMAGE: pk-base
-    container_name: promptkiddie-enum
-    profiles: ["phase-containers"]
-    restart: unless-stopped
-    volumes:
-      - ./engagements:/workspace/engagements
-    cap_add:
-      - NET_RAW
-
-  attackbox-exploit:
-    build:
-      context: packages/tooling/images
-      dockerfile: Dockerfile.exploit
-      args:
-        BASE_IMAGE: pk-base
-    container_name: promptkiddie-exploit
+    container_name: promptkiddie-attack
     profiles: ["phase-containers"]
     restart: unless-stopped
     volumes:

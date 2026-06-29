@@ -12,10 +12,12 @@ const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
 const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
 
+const ATTACK_CONTAINER = process.env.PK_ATTACK_CONTAINER ?? "promptkiddie-attack";
 const PHASE_CONTAINERS: Record<string, string> = {
   recon: process.env.PK_RECON_CONTAINER ?? "promptkiddie-recon",
-  enum: process.env.PK_ENUM_CONTAINER ?? "promptkiddie-enum",
-  exploit: process.env.PK_EXPLOIT_CONTAINER ?? "promptkiddie-exploit",
+  enum: ATTACK_CONTAINER,
+  exploit: ATTACK_CONTAINER,
+  postexploit: ATTACK_CONTAINER,
 };
 
 function resolveContainer(phase?: string): string {
