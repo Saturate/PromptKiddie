@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ReactFlow,
   Background,
@@ -112,62 +113,88 @@ function playbookToFlow(pb: Playbook): { nodes: Node[]; edges: Edge[] } {
   return layoutGraph(rawNodes, rawEdges, "TB");
 }
 
-export default function PlaybooksPage() {
+import { Suspense } from "react";
+
+function PlaybooksInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [blocks, setBlocks] = useState<BlockDef[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<Playbook | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   // Block drill-down
   const [editingBlock, setEditingBlock] = useState<BlockDef | null>(null);
-  const [breadcrumb, setBreadcrumb] = useState<string[]>([]);
 
   const fetchPlaybooks = useCallback(async () => {
+    setLoading(true);
     const [pbRes, blRes] = await Promise.all([fetch("/api/playbooks"), fetch("/api/playbooks?blocks=1")]);
     if (pbRes.ok) setPlaybooks(await pbRes.json());
     if (blRes.ok) {
       const data = await blRes.json();
       if (Array.isArray(data)) setBlocks(data);
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => { fetchPlaybooks(); }, [fetchPlaybooks]);
+
+  // URL sync: load from ?id= and ?block= params
+  useEffect(() => {
+    if (loading || !playbooks.length) return;
+    const pbId = searchParams.get("id");
+    const blockName = searchParams.get("block");
+    if (blockName) {
+      const block = blocks.find((b) => b.name === blockName);
+      if (block && editingBlock?.id !== block.id) {
+        drillIntoBlock(blockName);
+      }
+    } else if (pbId) {
+      const pb = playbooks.find((p) => p.id === pbId);
+      if (pb && selected !== pbId) selectPlaybook(pb);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, playbooks, blocks, searchParams]);
 
   function selectPlaybook(pb: Playbook) {
     setSelected(pb.id);
     setEditing(JSON.parse(JSON.stringify(pb)));
     setEditingBlock(null);
-    setBreadcrumb([]);
     const flow = playbookToFlow(pb);
     setNodes(flow.nodes);
     setEdges(flow.edges);
     setSelectedNode(null);
+    router.push(`/settings/playbooks?id=${pb.id}`, { scroll: false });
   }
 
   function drillIntoBlock(blockName: string) {
     const block = blocks.find((b) => b.name === blockName);
     if (!block) { toast.error(`Block "${blockName}" not found`); return; }
     setEditingBlock(block);
-    setBreadcrumb((prev) => [...prev, editing?.name ?? "Playbook"]);
     const flow = stepsToFlow(block.nodes as PlaybookStep[]);
     setNodes(flow.nodes);
     setEdges(flow.edges);
     setSelectedNode(null);
+    const params = new URLSearchParams();
+    if (selected) params.set("id", selected);
+    params.set("block", blockName);
+    router.push(`/settings/playbooks?${params}`, { scroll: false });
   }
 
   function navigateBack() {
     if (editingBlock && editing) {
       setEditingBlock(null);
-      setBreadcrumb([]);
       const flow = playbookToFlow(editing);
       setNodes(flow.nodes);
       setEdges(flow.edges);
       setSelectedNode(null);
+      router.push(`/settings/playbooks?id=${editing.id}`, { scroll: false });
     }
   }
 
@@ -359,6 +386,12 @@ export default function PlaybooksPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_1fr_220px]">
         {/* File tree */}
         <div className="font-mono text-xs">
+          {loading && (
+            <div className="flex items-center gap-2 px-2 py-4 text-muted-foreground">
+              <span className="h-3 w-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+              <span className="text-[10px]">Loading...</span>
+            </div>
+          )}
           <div className="flex items-center justify-between px-2 mb-1">
             <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider">Playbooks</span>
             <button
@@ -429,12 +462,12 @@ export default function PlaybooksPage() {
                   </Button>
                 )}
                 <div className="flex items-center gap-1 text-xs font-mono text-muted-foreground">
-                  {breadcrumb.map((b, i) => (
-                    <span key={i} className="flex items-center gap-1">
-                      <button onClick={navigateBack} className="hover:text-foreground">{b}</button>
+                  {editingBlock && editing && (
+                    <>
+                      <button onClick={navigateBack} className="hover:text-foreground">{editing.name}</button>
                       <ChevronRight className="size-3" />
-                    </span>
-                  ))}
+                    </>
+                  )}
                   <span className="text-foreground font-semibold">
                     {editingBlock?.name ?? editing?.name}
                   </span>
@@ -611,5 +644,13 @@ export default function PlaybooksPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PlaybooksPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-64 font-mono text-xs text-muted-foreground"><span className="h-4 w-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin mr-2" />Loading playbooks...</div>}>
+      <PlaybooksInner />
+    </Suspense>
   );
 }
