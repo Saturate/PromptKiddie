@@ -41,6 +41,10 @@ import {
   listEngagementSteps,
   completeStep,
   skipStep,
+  listPorts as listPortsForTarget,
+  findReadyNodes,
+  getProgress,
+  type GraphState,
   getSetting,
 } from "@promptkiddie/core";
 
@@ -235,6 +239,46 @@ const pkTools = {
     description: 'List playbook steps for an engagement. Shows what to do next. Example: {"engagementId": "uuid"}',
     inputSchema: z.object({ engagementId: z.string().describe("Engagement UUID") }),
     execute: async ({ engagementId }) => listEngagementSteps(engagementId),
+  }),
+  getNextSteps: tool({
+    description: 'Get the next steps to execute based on the playbook graph. Evaluates dependencies, conditions (ports/findings), and priority. Returns ready nodes sorted by priority. Use this to decide what to do next.',
+    inputSchema: z.object({
+      engagementId: z.string().describe("Engagement UUID"),
+      maxSteps: z.number().optional().describe("Max steps to return (default 5)"),
+    }),
+    execute: async ({ engagementId, maxSteps }) => {
+      const steps = await listEngagementSteps(engagementId);
+      const targets = await listTargets(engagementId);
+      const allPorts = [];
+      for (const t of targets) {
+        const ports = await listPortsForTarget(t.id);
+        allPorts.push(...ports);
+      }
+      const findings = await listFindings(engagementId);
+      const artifacts = await listArtifacts(engagementId);
+
+      const state: GraphState = {
+        steps: steps.map((s) => ({
+          id: s.id,
+          stepKey: s.stepKey,
+          title: s.title,
+          status: s.status as "pending" | "running" | "done" | "skipped",
+          nodeType: s.nodeType ?? "action",
+          dependsOn: s.dependsOn ?? [],
+          priority: s.priority ?? 50,
+          condition: s.condition,
+          agentId: s.agentId,
+          phase: s.phase,
+        })),
+        ports: allPorts.map((p) => ({ port: p.port, service: p.service, state: p.state })),
+        findings: findings.map((f) => ({ id: f.id, severity: f.severity, title: f.title })),
+        artifacts: artifacts.map((a) => ({ id: a.id, type: a.type })),
+      };
+
+      const ready = findReadyNodes(state).slice(0, maxSteps ?? 5);
+      const progress = getProgress(state);
+      return { ready, progress };
+    },
   }),
   completeStep: tool({
     description: 'Mark a playbook step as done. Example: {"engagementId": "uuid", "stepKey": "recon.full_port_scan"}',
