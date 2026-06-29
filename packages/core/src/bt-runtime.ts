@@ -67,6 +67,34 @@ export function findReadyNodes(state: GraphState): ReadyNode[] {
 }
 
 /**
+ * Find steps whose dependencies are met but whose conditions evaluate false.
+ * These should be auto-skipped so downstream nodes aren't blocked forever.
+ */
+export function findAutoSkips(state: GraphState): StepNode[] {
+  const { steps } = state;
+  const statusMap = new Map(steps.map((s) => [s.stepKey, s.status]));
+  const skips: StepNode[] = [];
+
+  for (const step of steps) {
+    if (step.status !== "pending") continue;
+    if (!step.condition) continue;
+
+    const depsResolved = (step.dependsOn ?? []).every((dep) => {
+      const depStatus = statusMap.get(dep);
+      return depStatus === "done" || depStatus === "skipped";
+    });
+
+    if (!depsResolved) continue;
+
+    if (!evaluateCondition(step.condition, state)) {
+      skips.push(step);
+    }
+  }
+
+  return skips;
+}
+
+/**
  * Get the next single node to execute (highest priority ready node).
  */
 export function getNextNode(state: GraphState): ReadyNode | null {

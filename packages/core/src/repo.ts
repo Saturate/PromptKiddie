@@ -17,6 +17,7 @@ import {
   findings,
   messages,
   objectives,
+  playbookBlocks,
   playbooks,
   ports,
   settings,
@@ -24,6 +25,7 @@ import {
   type PlaybookPhase,
 } from "./schema.js";
 import { DEFAULT_PLAYBOOKS } from "./playbooks.js";
+import { BUILTIN_BLOCKS } from "./blocks.js";
 
 /** Turn a name into a filesystem/url-safe slug. */
 export function slugify(name: string): string {
@@ -737,6 +739,22 @@ export async function seedPlaybooks() {
       });
     }
   }
+
+  // Seed built-in blocks
+  for (const block of BUILTIN_BLOCKS) {
+    const existing = await db.select().from(playbookBlocks)
+      .where(and(eq(playbookBlocks.name, block.name), eq(playbookBlocks.isBuiltin, true)));
+    if (existing.length === 0) {
+      await db.insert(playbookBlocks).values({
+        name: block.name,
+        description: block.description,
+        inputSchema: block.inputSchema,
+        outputSchema: block.outputSchema,
+        nodes: block.nodes,
+        isBuiltin: true,
+      });
+    }
+  }
 }
 
 export async function getPlaybook(id: string) {
@@ -771,6 +789,10 @@ export async function initEngagementSteps(engagementId: string, playbookId: stri
         phase: phase.phase,
         stepKey: step.key,
         title: step.title,
+        nodeType: step.nodeType ?? "action",
+        dependsOn: step.dependsOn ?? [],
+        priority: step.priority ?? 50,
+        condition: step.condition ?? null,
       }).onConflictDoNothing().returning();
       if (row) rows.push(row);
     }

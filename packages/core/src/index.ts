@@ -7,7 +7,7 @@ export { getRepo, type Repo } from "./client.js";
 export { parseNmapOutput, ingestPorts, looksLikeNmapOutput } from "./port-parser.js";
 export { DEFAULT_PLAYBOOKS, CTF_PLAYBOOK, BLACKBOX_PLAYBOOK } from "./playbooks.js";
 export { BUILTIN_BLOCKS, type BlockDef } from "./blocks.js";
-export { findReadyNodes, getNextNode, getParallelNodes, isPhaseComplete, getProgress, evaluateCondition, type StepNode, type ReadyNode, type GraphState } from "./bt-runtime.js";
+export { findReadyNodes, findAutoSkips, getNextNode, getParallelNodes, isPhaseComplete, getProgress, evaluateCondition, type StepNode, type ReadyNode, type GraphState } from "./bt-runtime.js";
 export {
   getEmbeddingProvider,
   setEmbeddingProvider,
