@@ -23,6 +23,7 @@ import {
   settings,
   targets,
   type PlaybookPhase,
+  type PlaybookStep,
 } from "./schema.js";
 import { DEFAULT_PLAYBOOKS } from "./playbooks.js";
 import { BUILTIN_BLOCKS } from "./blocks.js";
@@ -780,21 +781,50 @@ export async function initEngagementSteps(engagementId: string, playbookId: stri
   const pb = await getPlaybook(playbookId);
   if (!pb) return [];
 
+  const allBlocks = await db.select().from(playbookBlocks);
+  const blockMap = new Map(allBlocks.map((b) => [b.name, b]));
+
   const phases = pb.phases as PlaybookPhase[];
   const rows = [];
   for (const phase of phases) {
     for (const step of phase.steps) {
-      const [row] = await db.insert(engagementSteps).values({
-        engagementId,
-        phase: phase.phase,
-        stepKey: step.key,
-        title: step.title,
-        nodeType: step.nodeType ?? "action",
-        dependsOn: step.dependsOn ?? [],
-        priority: step.priority ?? 50,
-        condition: step.condition ?? null,
-      }).onConflictDoNothing().returning();
-      if (row) rows.push(row);
+      if (step.blockRef && blockMap.has(step.blockRef)) {
+        const block = blockMap.get(step.blockRef)!;
+        const blockNodes = block.nodes as PlaybookStep[];
+        const suffix = `_${step.key.replace(/\./g, "_")}`;
+        const keyMap = new Map(blockNodes.map((n) => [n.key, `${n.key}${suffix}`]));
+        for (const node of blockNodes) {
+          const mappedKey = keyMap.get(node.key)!;
+          const mappedDeps = (node.dependsOn ?? []).map((d) => keyMap.get(d) ?? d);
+          if (!node.dependsOn?.length && step.dependsOn?.length) {
+            mappedDeps.push(...step.dependsOn);
+          }
+          const [row] = await db.insert(engagementSteps).values({
+            engagementId,
+            phase: phase.phase,
+            stepKey: mappedKey,
+            title: node.title,
+            nodeType: node.nodeType ?? "action",
+            dependsOn: mappedDeps,
+            priority: node.priority ?? 50,
+            condition: node.condition ?? step.condition ?? null,
+            blockId: block.id,
+          }).onConflictDoNothing().returning();
+          if (row) rows.push(row);
+        }
+      } else {
+        const [row] = await db.insert(engagementSteps).values({
+          engagementId,
+          phase: phase.phase,
+          stepKey: step.key,
+          title: step.title,
+          nodeType: step.nodeType ?? "action",
+          dependsOn: step.dependsOn ?? [],
+          priority: step.priority ?? 50,
+          condition: step.condition ?? null,
+        }).onConflictDoNothing().returning();
+        if (row) rows.push(row);
+      }
     }
   }
 

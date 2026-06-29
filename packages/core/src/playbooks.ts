@@ -25,14 +25,13 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       // Port discovery
       { key: "recon.port_scan", title: "Full port scan (all 65535)", type: "mechanical", command: "pk exec -- rustscan -a {target} -- -sV", dependsOn: ["recon.start"], priority: 5 },
 
-      // Service identification (parallel after ports found)
+      // Service identification
       { key: "recon.nmap_svc", title: "Nmap service + script scan", type: "mechanical", command: "pk exec -- nmap -sV -sC -p {ports} {target}", dependsOn: ["recon.port_scan"], priority: 10 },
-      { key: "recon.web_tech", title: "Web stack fingerprint", type: "mechanical", command: "pk exec -- whatweb http://{target}:{port} --color=never", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 10, description: "Identifies CMS, framework, language, server, plugins. Goes deeper than nmap banner grabbing." },
-      { key: "recon.waf_detect", title: "WAF detection", type: "mechanical", command: "pk exec -- wafw00f http://{target}:{port}", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 12, description: "Detect WAF/CDN that may block scanning. Adjust techniques if found." },
-      { key: "recon.http_headers", title: "Inspect HTTP headers", type: "mechanical", command: "pk exec -- curl -sI http://{target}:{port}", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 11, description: "Check Server, X-Powered-By, cookies (PHPSESSID=PHP, JSESSIONID=Java), security headers." },
-      { key: "recon.favicon_hash", title: "Favicon hash lookup", type: "mechanical", command: "pk exec -- python3 -c \"import hashlib,codecs,requests;r=requests.get('http://{target}:{port}/favicon.ico');print('mmh3:',hashlib.md5(codecs.encode(r.content,'base64')).hexdigest())\" 2>/dev/null || pk exec -- curl -s http://{target}:{port}/favicon.ico | md5sum", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 13, description: "Hash the favicon to identify the product. Look up on Shodan (http.favicon.hash) or FOFA." },
 
-      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.nmap_svc", "recon.web_tech", "recon.waf_detect", "recon.http_headers", "recon.favicon_hash"], priority: 99 },
+      // Web recon (block reference - expands to whatweb, wafw00f, headers, favicon)
+      { key: "recon.web", title: "Web Recon", type: "mechanical", nodeType: "block_ref", blockRef: "Web Recon", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 10 },
+
+      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.nmap_svc", "recon.web"], priority: 99 },
     ],
   },
   {
@@ -46,14 +45,13 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       { key: "enum.default_creds", title: "Try default/anonymous access", type: "judgment", description: "For each service: try anonymous access (FTP, SMB null session) and default credentials (admin:admin, root:root, service-specific defaults). Record what works.", dependsOn: ["enum.start"], priority: 5 },
       { key: "enum.nuclei", title: "Automated vulnerability scan", type: "mechanical", command: "pk exec -- nuclei -u http://{target} -tags cve,misconfig,exposure,default-login", dependsOn: ["enum.start"], condition: "ports.service contains http", priority: 10 },
 
-      // Service-specific deep enumeration (parallel)
-      { key: "enum.web_content", title: "Web content discovery", type: "mechanical", command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200,301,302,403", dependsOn: ["enum.default_creds"], condition: "ports.service contains http", priority: 15 },
-      { key: "enum.web_source", title: "Analyze web pages", type: "judgment", description: "Check robots.txt, sitemap.xml, page source for comments/hidden forms/JS/API endpoints. View interesting directories found by fuzzing.", dependsOn: ["enum.web_content"], priority: 20 },
-      { key: "enum.smb_shares", title: "Enumerate SMB shares + files", type: "mechanical", command: "pk exec -- enum4linux -a {target} && smbclient -L //{target} -N", dependsOn: ["enum.default_creds"], condition: "ports.port in [139,445]", priority: 15 },
-      { key: "enum.ftp_files", title: "List and download FTP files", type: "judgment", description: "List FTP contents. Download configs, backups, source code, anything interesting.", dependsOn: ["enum.default_creds"], condition: "ports.port = 21", priority: 15 },
+      // Service-specific deep enumeration (block references)
+      { key: "enum.web", title: "HTTP Enumeration", type: "mechanical", nodeType: "block_ref", blockRef: "HTTP Enumeration", dependsOn: ["enum.default_creds"], condition: "ports.service contains http", priority: 15 },
+      { key: "enum.smb", title: "SMB Enumeration", type: "mechanical", nodeType: "block_ref", blockRef: "SMB Enumeration", dependsOn: ["enum.default_creds"], condition: "ports.port in [139,445]", priority: 15 },
+      { key: "enum.ftp", title: "FTP Check", type: "mechanical", nodeType: "block_ref", blockRef: "FTP Check", dependsOn: ["enum.default_creds"], condition: "ports.port = 21", priority: 15 },
 
       // Consolidate
-      { key: "enum.harvest_creds", title: "Harvest credentials from findings", type: "judgment", description: "Collect all credentials found: default creds that worked, keys in files, passwords in configs, hashes in databases. Record each as an artifact.", dependsOn: ["enum.web_source", "enum.smb_shares", "enum.ftp_files", "enum.known_cves", "enum.nuclei"], priority: 30 },
+      { key: "enum.harvest_creds", title: "Harvest credentials from findings", type: "judgment", description: "Collect all credentials found: default creds, keys, passwords in configs, hashes. Record each as an artifact.", dependsOn: ["enum.web", "enum.smb", "enum.ftp", "enum.known_cves", "enum.nuclei"], priority: 30 },
 
       { key: "enum.end", title: "Enumeration Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["enum.harvest_creds"], priority: 99 },
     ],
@@ -81,20 +79,13 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
 
       { key: "post.sysinfo", title: "System information", type: "mechanical", command: "pk exec -- id && whoami && uname -a && cat /etc/os-release && hostname", dependsOn: ["post.start"], priority: 5 },
 
-      // Parallel privesc checks
-      { key: "post.sudo", title: "Check sudo permissions", type: "mechanical", command: "pk exec -- sudo -l 2>/dev/null", dependsOn: ["post.sysinfo"], priority: 10 },
-      { key: "post.suid", title: "Find SUID binaries", type: "mechanical", command: "pk exec -- find / -perm -4000 -type f 2>/dev/null", dependsOn: ["post.sysinfo"], priority: 10 },
-      { key: "post.cron", title: "Check cron jobs", type: "mechanical", command: "pk exec -- cat /etc/crontab && ls -la /etc/cron.* 2>/dev/null && crontab -l 2>/dev/null", dependsOn: ["post.sysinfo"], priority: 15 },
-      { key: "post.writable", title: "Writable files/dirs", type: "mechanical", command: "pk exec -- find / -writable -type f 2>/dev/null | grep -v proc | head -30", dependsOn: ["post.sysinfo"], priority: 20 },
-      { key: "post.configs", title: "Search for credentials", type: "mechanical", command: "pk exec -- find / -name '*.conf' -o -name '*.cfg' -o -name '.env' -o -name 'wp-config*' 2>/dev/null | head -20", dependsOn: ["post.sysinfo"], priority: 15 },
+      // Privesc (block reference - expands to SUID, sudo, cron, writable, kernel, exploit)
+      { key: "post.privesc", title: "Linux Privilege Escalation", type: "mechanical", nodeType: "block_ref", blockRef: "Linux Privilege Escalation", dependsOn: ["post.sysinfo"], priority: 10 },
+      { key: "post.configs", title: "Search for credentials in files", type: "mechanical", command: "pk exec -- find / -name '*.conf' -o -name '*.cfg' -o -name '.env' -o -name 'wp-config*' 2>/dev/null | head -20", dependsOn: ["post.sysinfo"], priority: 15 },
       { key: "post.network", title: "Internal network recon", type: "mechanical", command: "pk exec -- ip addr && ip route && ss -tlnp", dependsOn: ["post.sysinfo"], priority: 25 },
+      { key: "post.root_flag", title: "Capture root flag", type: "mechanical", command: "pk exec -- cat /root/root.txt || find / -name root.txt 2>/dev/null", dependsOn: ["post.privesc"], priority: 40 },
 
-      // Escalation
-      { key: "post.choose_vector", title: "Choose privesc vector", type: "judgment", description: "Evaluate sudo/SUID/cron/writable findings. Use GTFOBins for SUID/sudo exploits. Prefer reliable methods over kernel exploits.", dependsOn: ["post.sudo", "post.suid", "post.cron", "post.writable", "post.configs"], priority: 30 },
-      { key: "post.escalate", title: "Escalate to root", type: "judgment", description: "Execute the chosen privesc vector. Capture evidence of root access.", dependsOn: ["post.choose_vector"], priority: 35 },
-      { key: "post.root_flag", title: "Capture root flag", type: "mechanical", command: "pk exec -- cat /root/root.txt || find / -name root.txt 2>/dev/null", dependsOn: ["post.escalate"], priority: 40 },
-
-      { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag"], priority: 99 },
+      { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag", "post.network"], priority: 99 },
     ],
   },
   {
@@ -116,12 +107,13 @@ export const BLACKBOX_PLAYBOOK: PlaybookPhaseTemplate[] = [
     title: "Reconnaissance",
     steps: [
       { key: "recon.start", title: "Start Recon", type: "mechanical", nodeType: "sequence", priority: 0 },
-      { key: "recon.passive", title: "Passive OSINT", type: "judgment", description: "DNS records, WHOIS, certificate transparency, Shodan, wayback machine. No direct contact.", dependsOn: ["recon.start"], priority: 5 },
-      { key: "recon.dns", title: "DNS enumeration", type: "mechanical", command: "pk exec -- dig {target} ANY && dig {target} AXFR", dependsOn: ["recon.start"], priority: 10 },
-      { key: "recon.port_scan", title: "Full port scan", type: "mechanical", command: "pk exec -- rustscan -a {target} -- -sV -sC", dependsOn: ["recon.passive"], priority: 15 },
-      { key: "recon.waf", title: "WAF detection", type: "mechanical", command: "pk exec -- wafw00f {target}", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 20 },
-      { key: "recon.tech", title: "Tech stack fingerprint", type: "mechanical", command: "pk exec -- whatweb {target}", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 20 },
-      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.waf", "recon.tech", "recon.dns"], priority: 99 },
+      { key: "recon.passive", title: "Passive OSINT", type: "judgment", description: "Certificate transparency, Shodan, Wayback Machine, Google dorks. No direct target contact.", dependsOn: ["recon.start"], priority: 5 },
+      { key: "recon.dns", title: "DNS Recon", type: "mechanical", nodeType: "block_ref", blockRef: "DNS Recon", dependsOn: ["recon.start"], priority: 8 },
+      { key: "recon.port_scan", title: "Full port scan", type: "mechanical", command: "pk exec -- rustscan -a {target} -- -sV", dependsOn: ["recon.passive"], priority: 15 },
+      { key: "recon.nmap_svc", title: "Nmap service detection", type: "mechanical", command: "pk exec -- nmap -sV -sC -p {ports} {target}", dependsOn: ["recon.port_scan"], priority: 18 },
+      { key: "recon.web", title: "Web Recon", type: "mechanical", nodeType: "block_ref", blockRef: "Web Recon", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 18 },
+      { key: "recon.ssl", title: "SSL/TLS Inspection", type: "mechanical", nodeType: "block_ref", blockRef: "SSL/TLS Inspection", dependsOn: ["recon.port_scan"], condition: "ports.port in [443,8443]", priority: 20 },
+      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.nmap_svc", "recon.web", "recon.dns", "recon.ssl"], priority: 99 },
     ],
   },
   {

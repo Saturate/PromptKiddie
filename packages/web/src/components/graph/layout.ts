@@ -5,10 +5,10 @@
 import Dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "@xyflow/react";
 
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 60;
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 80;
 const META_WIDTH = 260;
-const META_HEIGHT = 40;
+const META_HEIGHT = 44;
 
 export function layoutGraph(
   nodes: Node[],
@@ -18,11 +18,11 @@ export function layoutGraph(
   const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: direction,
-    nodesep: 60,
-    ranksep: 80,
-    edgesep: 30,
-    marginx: 40,
-    marginy: 40,
+    nodesep: 80,
+    ranksep: 120,
+    edgesep: 40,
+    marginx: 50,
+    marginy: 50,
   });
 
   for (const node of nodes) {
