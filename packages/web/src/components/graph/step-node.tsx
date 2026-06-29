@@ -45,8 +45,8 @@ export function StepNode({ data }: NodeProps) {
 
   return (
     <div className={`rounded-lg border px-3 py-2 min-w-[180px] max-w-[240px] font-mono ${statusStyle} transition-all duration-300`}>
-      <Handle type="target" position={Position.Top} id="top" className="!bg-border !w-2 !h-2" />
-      <Handle type="target" position={Position.Left} id="left" className="!bg-border !w-2 !h-2" />
+      <Handle type="target" position={Position.Top} id="top" className="pk-handle" />
+      <Handle type="target" position={Position.Left} id="left" className="pk-handle" />
 
       <div className="flex items-center gap-1.5 mb-1">
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${phaseColor}`} />
@@ -77,8 +77,8 @@ export function StepNode({ data }: NodeProps) {
         )}
       </div>
 
-      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-border !w-2 !h-2" />
-      <Handle type="source" position={Position.Right} id="right" className="!bg-border !w-2 !h-2" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="pk-handle" />
+      <Handle type="source" position={Position.Right} id="right" className="pk-handle" />
     </div>
   );
 }
