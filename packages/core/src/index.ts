@@ -5,6 +5,7 @@ export { generateReport, type GenerateReportResult } from "./report.js";
 export { loadConfig, resetConfig, type PkConfig } from "./config.js";
 export { getRepo, type Repo } from "./client.js";
 export { parseNmapOutput, ingestPorts, looksLikeNmapOutput } from "./port-parser.js";
+export { DEFAULT_PLAYBOOKS, CTF_PLAYBOOK, BLACKBOX_PLAYBOOK } from "./playbooks.js";
 export {
   getEmbeddingProvider,
   setEmbeddingProvider,
