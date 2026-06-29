@@ -1,336 +1,124 @@
 /**
- * Default playbook templates per engagement type.
- * Seeded on first run. Users can customize or create their own.
+ * Default CTF playbook. Reviewed and tuned by adversarial evaluation.
  */
-import type { PlaybookPhase } from "./schema.js";
+import type { PlaybookStep } from "./schema.js";
 
-export const CTF_PLAYBOOK: PlaybookPhase[] = [
+export interface PlaybookPhaseTemplate {
+  phase: string;
+  title: string;
+  steps: PlaybookStep[];
+}
+
+export type PlaybookPhase = PlaybookPhaseTemplate;
+
+export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
   {
     phase: "recon",
     title: "Reconnaissance",
     steps: [
-      {
-        key: "recon.full_port_scan",
-        title: "Full port scan",
-        type: "mechanical",
-        command: "pk exec -- rustscan -a {target} -- -sV -sC",
-        description: "Discover all open ports and identify services. Results auto-populate the ports table.",
-      },
-      {
-        key: "recon.service_versions",
-        title: "Service version detection",
-        type: "mechanical",
-        command: "pk exec -- nmap -sV -sC -p {ports} {target}",
-        description: "Detailed service/version scan on discovered open ports.",
-        condition: "ports.count > 0",
-      },
-      {
-        key: "recon.web_tech",
-        title: "Web technology fingerprint",
-        type: "mechanical",
-        command: "pk exec -- whatweb {target}:{port}",
-        description: "Identify CMS, frameworks, server software on HTTP services.",
-        condition: "ports.service contains http",
-      },
-      {
-        key: "recon.check_robots",
-        title: "Check robots.txt and common files",
-        type: "mechanical",
-        command: "pk exec -- curl -s {target}/robots.txt",
-        condition: "ports.service contains http",
-      },
-      {
-        key: "recon.view_source",
-        title: "View page source for comments/hints",
-        type: "judgment",
-        description: "Check HTML source for hidden comments, JS files, API endpoints, version info.",
-        condition: "ports.service contains http",
-      },
+      { key: "recon.start", title: "Start Recon", type: "mechanical", nodeType: "sequence", priority: 0 },
+
+      // Port discovery - TCP and UDP in parallel
+      { key: "recon.tcp_scan", title: "TCP port scan (all ports)", type: "mechanical", command: "pk exec -- rustscan -a {target}", dependsOn: ["recon.start"], priority: 5 },
+      { key: "recon.udp_scan", title: "UDP top ports scan", type: "mechanical", command: "pk exec -- nmap -sU --top-ports 20 --open {target}", dependsOn: ["recon.start"], priority: 8 },
+
+      // Service identification (after TCP ports found)
+      { key: "recon.nmap_svc", title: "Nmap service + script scan", type: "mechanical", command: "pk exec -- nmap -sV -sC -p {ports} {target}", dependsOn: ["recon.tcp_scan"], priority: 10 },
+
+      // Web recon (depends on nmap_svc so we know the actual service)
+      { key: "recon.web", title: "Web Recon", type: "mechanical", nodeType: "block_ref", blockRef: "Web Recon", dependsOn: ["recon.nmap_svc"], condition: "ports.service contains http", priority: 12 },
+
+      // SSL cert check for hostnames
+      { key: "recon.ssl_names", title: "Extract hostnames from SSL certs", type: "mechanical", command: "pk exec -- echo | openssl s_client -connect {target}:443 2>/dev/null | openssl x509 -noout -ext subjectAltName -subject 2>/dev/null || echo 'no SSL'", dependsOn: ["recon.nmap_svc"], condition: "ports.port in [443,8443]", priority: 12 },
+
+      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.nmap_svc", "recon.web", "recon.udp_scan", "recon.ssl_names"], priority: 99 },
     ],
   },
   {
     phase: "enum",
     title: "Enumeration",
     steps: [
-      {
-        key: "enum.dir_fuzz",
-        title: "Directory fuzzing",
-        type: "mechanical",
-        command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200,301,302,403",
-        description: "Discover hidden directories and files on each HTTP service.",
-        condition: "ports.service contains http",
-      },
-      {
-        key: "enum.subdomain_fuzz",
-        title: "Subdomain/vhost fuzzing",
-        type: "mechanical",
-        command: "pk exec -- ffuf -u http://{target} -H 'Host: FUZZ.{target}' -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt -mc 200,301,302",
-        condition: "ports.service contains http",
-        optional: true,
-      },
-      {
-        key: "enum.smb_enum",
-        title: "SMB enumeration",
-        type: "mechanical",
-        command: "pk exec -- enum4linux -a {target}",
-        description: "Enumerate users, shares, groups from SMB/NetBIOS.",
-        condition: "ports.service contains smb or ports.port in [139,445]",
-      },
-      {
-        key: "enum.ftp_anon",
-        title: "Check FTP anonymous login",
-        type: "mechanical",
-        command: "pk exec -- curl -s ftp://{target}/",
-        condition: "ports.port = 21",
-      },
-      {
-        key: "enum.ssh_version",
-        title: "Note SSH version for known vulns",
-        type: "judgment",
-        description: "Check if the SSH version has known CVEs (e.g. user enumeration in OpenSSH < 7.7).",
-        condition: "ports.port = 22",
-      },
-      {
-        key: "enum.vuln_scan",
-        title: "Vulnerability scan",
-        type: "mechanical",
-        command: "pk exec -- nuclei -u http://{target}:{port} -tags cve,misconfig",
-        description: "Run nuclei templates against discovered services.",
-        condition: "ports.service contains http",
-      },
-      {
-        key: "enum.default_creds",
-        title: "Try default credentials",
-        type: "judgment",
-        description: "Check for default/common credentials on login forms, SSH, FTP, databases. Research the specific service.",
-      },
+      { key: "enum.start", title: "Start Enumeration", type: "mechanical", nodeType: "sequence", priority: 0 },
+
+      // /etc/hosts setup - critical for THM/HTB
+      { key: "enum.hosts_file", title: "Add target to /etc/hosts", type: "judgment", description: "Add the target hostname to /etc/hosts if the box has a domain name (from SSL certs, nmap scripts, or room description). Required for vhosts and web apps.", dependsOn: ["enum.start"], priority: 2 },
+
+      // Universal per-service checks (parallel)
+      { key: "enum.fork", title: "Per-service checks", type: "mechanical", nodeType: "parallel", dependsOn: ["enum.hosts_file"], priority: 5 },
+      { key: "enum.known_cves", title: "Search CVEs per service version", type: "judgment", description: "For each service+version: search searchsploit, NVD, exploit-db for known CVEs.", dependsOn: ["enum.fork"], priority: 8 },
+      { key: "enum.default_creds", title: "Try default/anonymous access", type: "judgment", description: "For each service: try anonymous access (FTP, SMB null session) and default credentials (admin:admin, root:root, service-specific).", dependsOn: ["enum.fork"], priority: 8 },
+
+      // Web enumeration (parallel with CVE/cred checks)
+      { key: "enum.dir_fuzz", title: "Directory fuzzing", type: "mechanical", command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200,301,302,403", dependsOn: ["enum.fork"], condition: "ports.service contains http", priority: 10 },
+      { key: "enum.nuclei", title: "Nuclei CVE + misconfig scan", type: "mechanical", command: "pk exec -- nuclei -u http://{target} -tags cve,misconfig,exposure,default-login", dependsOn: ["enum.fork"], condition: "ports.service contains http", priority: 10 },
+      { key: "enum.vhost_fuzz", title: "Vhost/subdomain fuzzing", type: "mechanical", command: "pk exec -- ffuf -u http://{target} -H 'Host: FUZZ.{target}' -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt -mc 200,301,302 -fs 0", dependsOn: ["enum.hosts_file"], condition: "ports.service contains http", priority: 12, optional: true },
+      { key: "enum.web_source", title: "Analyze web pages + source", type: "judgment", description: "Check robots.txt, sitemap, page source for comments, hidden forms, JS, API endpoints. Look for LFI/RFI/SQLi entry points.", dependsOn: ["enum.dir_fuzz"], priority: 15 },
+
+      // Injection testing
+      { key: "enum.sqli_test", title: "Test for SQL injection", type: "judgment", description: "Test login forms and URL parameters for SQLi. Try manual payloads first, then sqlmap if promising.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 18 },
+      { key: "enum.lfi_test", title: "Test for LFI/RFI", type: "judgment", description: "Test file parameters for local/remote file inclusion: ../../etc/passwd, php://filter, etc.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 18 },
+
+      // SMB/FTP if present
+      { key: "enum.smb", title: "SMB shares + users", type: "mechanical", command: "pk exec -- enum4linux -a {target}", dependsOn: ["enum.default_creds"], condition: "ports.port in [139,445]", priority: 12 },
+      { key: "enum.ftp", title: "FTP file listing + download", type: "judgment", description: "List FTP contents, download configs/backups/source code.", dependsOn: ["enum.default_creds"], condition: "ports.port = 21", priority: 12 },
+
+      // Credential harvesting
+      { key: "enum.cewl", title: "Generate wordlist from site", type: "mechanical", command: "pk exec -- cewl http://{target} -d 2 -m 5 -w /tmp/cewl.txt", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 20, optional: true },
+      { key: "enum.harvest", title: "Harvest credentials + loot", type: "judgment", description: "Collect all credentials, keys, passwords, hashes found. Record each as an artifact.", dependsOn: ["enum.known_cves", "enum.nuclei", "enum.web_source", "enum.smb", "enum.ftp", "enum.sqli_test", "enum.lfi_test"], priority: 30 },
+
+      { key: "enum.end", title: "Enumeration Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["enum.harvest"], priority: 99 },
     ],
   },
   {
     phase: "exploit",
     title: "Exploitation",
     steps: [
-      {
-        key: "exploit.validate_findings",
-        title: "Validate triage findings",
-        type: "judgment",
-        description: "For each triage finding, build a minimal PoC that proves the vulnerability. Promote to confirmed or reject as false positive.",
-      },
-      {
-        key: "exploit.initial_access",
-        title: "Gain initial access",
-        type: "judgment",
-        description: "Use a confirmed finding to get a shell or authenticated session. Prefer the lowest-impact path.",
-      },
-      {
-        key: "exploit.capture_user_flag",
-        title: "Capture user flag",
-        type: "mechanical",
-        command: "pk exec -- cat /home/*/user.txt",
-        description: "Read the user flag. Common locations: /home/*/user.txt, ~/flag.txt, desktop.",
-        optional: true,
-      },
+      { key: "exploit.start", title: "Start Exploitation", type: "mechanical", nodeType: "sequence", priority: 0 },
+      { key: "exploit.pick", title: "Pick best attack path", type: "judgment", description: "Review findings by severity and exploitability. Pick the most promising. If previous attempt failed, exclude it and pick next.", dependsOn: ["exploit.start"], priority: 5 },
+      { key: "exploit.poc", title: "Build minimal PoC", type: "judgment", description: "Create the simplest proof that works. Read-only over destructive.", dependsOn: ["exploit.pick"], priority: 10 },
+      { key: "exploit.verify", title: "Adversarial verify", type: "judgment", description: "Try to disprove the finding. Check for WAF, input validation, mitigations. If false positive, go back to pick.", dependsOn: ["exploit.poc"], priority: 15 },
+      { key: "exploit.shell", title: "Get initial access", type: "judgment", description: "Use the confirmed finding to get a shell or session. If this fails, loop back to pick another path.", dependsOn: ["exploit.verify"], priority: 20 },
+      { key: "exploit.user_flag", title: "Capture user flag", type: "mechanical", command: "pk exec -- find / -name user.txt -o -name user.txt 2>/dev/null | head -5 && cat /home/*/user.txt 2>/dev/null || dir C:\\Users\\*\\Desktop\\user.txt 2>nul", dependsOn: ["exploit.shell"], priority: 25 },
+      { key: "exploit.end", title: "Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["exploit.user_flag"], priority: 99 },
     ],
   },
   {
     phase: "postexploit",
     title: "Post-Exploitation",
     steps: [
-      {
-        key: "postexploit.local_enum",
-        title: "Local enumeration",
-        type: "mechanical",
-        command: "pk exec -- id && whoami && uname -a && cat /etc/os-release",
-        description: "Gather system info: user, groups, OS, kernel version.",
-      },
-      {
-        key: "postexploit.privesc_check",
-        title: "Privilege escalation vectors",
-        type: "judgment",
-        description: "Check SUID binaries, sudo -l, cron jobs, writable paths, kernel exploits, service misconfigs. Use GTFOBins for SUID/sudo exploits.",
-      },
-      {
-        key: "postexploit.escalate",
-        title: "Escalate privileges",
-        type: "judgment",
-        description: "Exploit the identified privesc vector to get root/admin.",
-      },
-      {
-        key: "postexploit.capture_root_flag",
-        title: "Capture root flag",
-        type: "mechanical",
-        command: "pk exec -- cat /root/root.txt",
-        description: "Read the root flag.",
-        optional: true,
-      },
+      { key: "post.start", title: "Start Post-Exploitation", type: "mechanical", nodeType: "sequence", priority: 0 },
+      { key: "post.sysinfo", title: "System info", type: "mechanical", command: "pk exec -- id && whoami && uname -a && hostname && cat /etc/os-release 2>/dev/null", dependsOn: ["post.start"], priority: 5 },
+
+      // Credential harvesting from compromised box
+      { key: "post.local_creds", title: "Harvest local credentials", type: "judgment", description: "Check bash_history, .ssh/*, database configs (wp-config.php, .env), browser saved passwords, /etc/shadow if readable.", dependsOn: ["post.sysinfo"], priority: 8 },
+
+      // Internal network check
+      { key: "post.internal_net", title: "Internal network recon", type: "mechanical", command: "pk exec -- ip addr && ip route && arp -a && ss -tlnp", dependsOn: ["post.sysinfo"], priority: 10 },
+
+      // Automated + manual privesc
+      { key: "post.privesc", title: "Privilege Escalation", type: "mechanical", nodeType: "block_ref", blockRef: "Privilege Escalation", dependsOn: ["post.local_creds"], priority: 12 },
+
+      { key: "post.root_flag", title: "Capture root flag", type: "mechanical", command: "pk exec -- find / -name root.txt 2>/dev/null | head -5 && cat /root/root.txt 2>/dev/null || dir C:\\Users\\Administrator\\Desktop\\root.txt 2>nul", dependsOn: ["post.privesc"], priority: 35 },
+      { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag", "post.internal_net"], priority: 99 },
     ],
   },
   {
     phase: "report",
     title: "Reporting",
     steps: [
-      {
-        key: "report.verify_findings",
-        title: "Verify all findings have evidence",
-        type: "judgment",
-        description: "Each confirmed finding should have at least one piece of evidence (screenshot, output, file).",
-      },
-      {
-        key: "report.generate",
-        title: "Generate report",
-        type: "mechanical",
-        command: "pk report generate",
-        description: "Produce the PDF deliverable from DB state.",
-      },
+      { key: "report.start", title: "Start Reporting", type: "mechanical", nodeType: "sequence", priority: 0 },
+      { key: "report.evidence", title: "Verify evidence coverage", type: "judgment", description: "Each finding needs evidence. Each flag needs a capture record.", dependsOn: ["report.start"], priority: 10 },
+      { key: "report.classify", title: "Tag findings (CWE, CVSS)", type: "judgment", description: "Add CWE, CVSS vectors, OWASP refs to each finding.", dependsOn: ["report.evidence"], priority: 20 },
+      { key: "report.generate", title: "Generate report", type: "mechanical", command: "pk report generate", dependsOn: ["report.classify"], priority: 30 },
+      { key: "report.end", title: "Engagement Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["report.generate"], priority: 99 },
     ],
   },
 ];
 
-export const BLACKBOX_PLAYBOOK: PlaybookPhase[] = [
-  {
-    phase: "recon",
-    title: "Reconnaissance",
-    steps: [
-      {
-        key: "recon.passive_osint",
-        title: "Passive OSINT",
-        type: "judgment",
-        description: "DNS records, WHOIS, certificate transparency, Shodan, wayback machine. No direct target contact.",
-      },
-      {
-        key: "recon.subdomain_enum",
-        title: "Subdomain enumeration",
-        type: "mechanical",
-        command: "pk exec -- dig {target} ANY && pk exec -- whois {target}",
-      },
-      {
-        key: "recon.full_port_scan",
-        title: "Full port scan",
-        type: "mechanical",
-        command: "pk exec -- rustscan -a {target} -- -sV -sC",
-      },
-      {
-        key: "recon.web_tech",
-        title: "Web technology fingerprint",
-        type: "mechanical",
-        command: "pk exec -- whatweb {target} && pk exec -- wafw00f {target}",
-        condition: "ports.service contains http",
-      },
-    ],
-  },
-  {
-    phase: "enum",
-    title: "Enumeration",
-    steps: [
-      {
-        key: "enum.dir_fuzz",
-        title: "Directory fuzzing (all HTTP services)",
-        type: "mechanical",
-        command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -mc 200,301,302,403",
-        condition: "ports.service contains http",
-      },
-      {
-        key: "enum.api_discovery",
-        title: "API endpoint discovery",
-        type: "judgment",
-        description: "Check /api, /swagger, /openapi, /graphql. Look for version endpoints, health checks, debug routes.",
-        condition: "ports.service contains http",
-      },
-      {
-        key: "enum.auth_testing",
-        title: "Authentication testing",
-        type: "judgment",
-        description: "Test login forms for SQLi, default creds, brute force (within RoE). Check password reset flows, session handling.",
-      },
-      {
-        key: "enum.smb_ldap",
-        title: "SMB/LDAP enumeration",
-        type: "mechanical",
-        command: "pk exec -- enum4linux -a {target}",
-        condition: "ports.port in [139,445,389,636]",
-      },
-      {
-        key: "enum.vuln_scan",
-        title: "Targeted vulnerability scan",
-        type: "mechanical",
-        command: "pk exec -- nuclei -u {target} -tags cve,misconfig,exposure",
-      },
-    ],
-  },
-  {
-    phase: "exploit",
-    title: "Exploitation",
-    steps: [
-      {
-        key: "exploit.validate",
-        title: "Validate and verify findings",
-        type: "judgment",
-        description: "Build minimal PoCs for each triage finding. Adversarial verification: assume wrong until proven.",
-      },
-      {
-        key: "exploit.demonstrate_impact",
-        title: "Demonstrate impact",
-        type: "judgment",
-        description: "Show what an attacker could achieve: data access, lateral movement, privilege escalation. Stay within RoE.",
-      },
-    ],
-  },
-  {
-    phase: "postexploit",
-    title: "Post-Exploitation",
-    steps: [
-      {
-        key: "postexploit.lateral",
-        title: "Lateral movement (if in scope)",
-        type: "judgment",
-        description: "Use captured credentials/sessions to access other systems. Check RoE before proceeding.",
-      },
-      {
-        key: "postexploit.data_access",
-        title: "Demonstrate data access",
-        type: "judgment",
-        description: "Show what sensitive data is reachable from the compromised position. Capture evidence, don't exfiltrate.",
-      },
-    ],
-  },
-  {
-    phase: "report",
-    title: "Reporting",
-    steps: [
-      {
-        key: "report.verify_evidence",
-        title: "Verify all findings have evidence",
-        type: "judgment",
-      },
-      {
-        key: "report.generate",
-        title: "Generate report",
-        type: "mechanical",
-        command: "pk report generate",
-      },
-    ],
-  },
-];
-
-export const DEFAULT_PLAYBOOKS: Record<string, { name: string; description: string; phases: PlaybookPhase[] }> = {
+export const DEFAULT_PLAYBOOKS: Record<string, { name: string; description: string; phases: PlaybookPhaseTemplate[] }> = {
   ctf: {
     name: "CTF Default",
-    description: "Capture-the-flag playbook. Scan, enumerate, exploit, escalate, capture flags.",
+    description: "Capture-the-flag: scan, enumerate per service, exploit, escalate, capture flags.",
     phases: CTF_PLAYBOOK,
-  },
-  blackbox: {
-    name: "Blackbox Default",
-    description: "External assessment. OSINT, scanning, enumeration, exploitation within RoE.",
-    phases: BLACKBOX_PLAYBOOK,
-  },
-  whitebox: {
-    name: "Whitebox Default",
-    description: "Assessment with source access. Same as blackbox plus code review steps.",
-    phases: BLACKBOX_PLAYBOOK,
-  },
-  bugbounty: {
-    name: "Bug Bounty Default",
-    description: "Bug bounty program. Focus on web vulns, stay in scope, report clearly.",
-    phases: BLACKBOX_PLAYBOOK,
   },
 };
