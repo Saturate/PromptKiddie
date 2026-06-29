@@ -147,7 +147,8 @@ export interface PlaybookStep {
   dependsOn?: string[];
   priority?: number;
   optional?: boolean;
-  blockId?: string;
+  blockRef?: string;
+  blockInputs?: Record<string, string>;
   inputSchema?: Record<string, string>;
   outputSchema?: Record<string, string>;
 }
