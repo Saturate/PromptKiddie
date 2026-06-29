@@ -21,9 +21,9 @@ import {
   BarChart3Icon,
   Settings2Icon,
   BookOpenIcon,
-  TerminalIcon,
   TargetIcon,
   MessageSquareIcon,
+  WrenchIcon,
 } from "lucide-react"
 
 const navMain = [
@@ -41,6 +41,11 @@ const navMain = [
     title: "Chat",
     url: "/chat",
     icon: <MessageSquareIcon />,
+  },
+  {
+    title: "Tools",
+    url: "/tools",
+    icon: <WrenchIcon />,
   },
   {
     title: "Stats",
@@ -106,8 +111,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="data-[slot=sidebar-menu-button]:p-1.5!"
               render={<a href="/" />}
             >
-              <TerminalIcon className="size-5!" />
-              <span className="text-base font-semibold">PromptKiddie</span>
+              <svg viewBox="0 0 36 36" fill="none" className="size-7! shrink-0">
+                <circle cx="18" cy="18" r="13" stroke="currentColor" strokeWidth="1.5" className="text-primary/30" />
+                <line x1="18" y1="2" x2="18" y2="10" stroke="currentColor" strokeWidth="1.2" className="text-primary/40" />
+                <line x1="18" y1="26" x2="18" y2="34" stroke="currentColor" strokeWidth="1.2" className="text-primary/40" />
+                <line x1="2" y1="18" x2="10" y2="18" stroke="currentColor" strokeWidth="1.2" className="text-primary/40" />
+                <line x1="26" y1="18" x2="34" y2="18" stroke="currentColor" strokeWidth="1.2" className="text-primary/40" />
+                <text x="10.5" y="22" fontFamily="inherit" fontSize="11" fontWeight="700" fill="currentColor" className="text-primary">pk</text>
+              </svg>
+              <span className="text-base">
+                <span className="font-light text-sidebar-foreground/70">Prompt</span>
+                <span className="font-bold">Kiddie</span>
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -150,8 +165,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <div className="px-2 py-1 text-xs text-muted-foreground font-mono">
-          promptkiddie v0.1.0
+        <div className="px-2 py-1 space-y-0.5">
+          <div className="text-[10px] text-muted-foreground/50 font-mono">v0.1.0</div>
+          <div className="text-[10px] text-primary/40 font-mono italic">definitely not a script kiddie</div>
         </div>
       </SidebarFooter>
     </Sidebar>

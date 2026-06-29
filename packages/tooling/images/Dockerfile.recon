@@ -1,0 +1,26 @@
+ARG BASE_IMAGE=pk-base
+FROM ${BASE_IMAGE}
+
+ENV PK_IMAGE_TYPE=recon
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nmap \
+    whatweb wafw00f \
+    traceroute \
+    && rm -rf /var/lib/apt/lists/*
+
+# rustscan (not in Debian repos)
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in amd64) RA=x86_64-linux;; arm64) RA=aarch64-linux;; *) RA=$ARCH;; esac \
+    && TAG=$(curl -fsSL https://api.github.com/repos/RustScan/RustScan/releases/latest | jq -r .tag_name) \
+    && curl -fsSL "https://github.com/bee-san/RustScan/releases/download/${TAG}/${RA}-rustscan.zip" -o /tmp/rustscan.zip \
+    && unzip /tmp/rustscan.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/rustscan && rm /tmp/rustscan.zip
+
+# httpx
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    httpx-toolkit \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY motd-recon.sh /etc/pk-motd.sh
+RUN chmod +x /etc/pk-motd.sh

@@ -1,4 +1,4 @@
-import { ToolLoopAgent, streamText, tool, isStepCount } from "ai";
+import { ToolLoopAgent, streamText, generateText, tool, isStepCount, type StopCondition, type ToolSet } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -32,10 +32,36 @@ import {
   updateTarget,
   updateFinding,
   updateEngagement,
+  addPort,
+  listPorts,
+  ingestPorts,
+  looksLikeNmapOutput,
   getSetting,
 } from "@promptkiddie/core";
 
 export const maxDuration = 300;
+
+const MAX_IDENTICAL_CALLS = 3;
+
+function isRepeatedToolCalls(maxRepeats = MAX_IDENTICAL_CALLS): StopCondition<ToolSet> {
+  const recentSignatures: string[] = [];
+  return ({ steps }) => {
+    const lastStep = steps[steps.length - 1];
+    if (!lastStep?.toolCalls?.length) return false;
+    for (const tc of lastStep.toolCalls) {
+      const sig = `${tc.toolName}:${JSON.stringify(tc.args)}`;
+      recentSignatures.push(sig);
+      if (recentSignatures.length > maxRepeats) recentSignatures.shift();
+      if (
+        recentSignatures.length >= maxRepeats &&
+        recentSignatures.every((s) => s === sig)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+}
 
 const langfuseExporter = process.env.LANGFUSE_PUBLIC_KEY ? new LangfuseExporter() : null;
 const telemetryConfig = langfuseExporter
@@ -177,14 +203,40 @@ const pkTools = {
     inputSchema: z.object({ id: z.string().describe("Target UUID"), inScope: z.boolean().optional(), notes: z.string().optional() }),
     execute: async ({ id, ...rest }) => updateTarget(id, rest),
   }),
+  addPort: tool({
+    description: 'Record an open port on a target. Upserts: if the port already exists, updates service/version. Example: {"targetId": "uuid", "port": 80, "service": "http", "version": "Apache/2.4.41"}',
+    inputSchema: z.object({
+      targetId: z.string().describe("Target UUID"),
+      port: z.number().describe("Port number"),
+      protocol: z.enum(["tcp", "udp"]).optional().describe("Protocol (default: tcp)"),
+      state: z.enum(["open", "closed", "filtered"]).optional().describe("Port state (default: open)"),
+      service: z.string().optional().describe("Service name, e.g. http, ssh, mysql"),
+      version: z.string().optional().describe("Version string, e.g. Apache/2.4.41, OpenSSH_8.2"),
+      banner: z.string().optional().describe("Raw banner text"),
+    }),
+    execute: async (params) => addPort(params),
+  }),
+  listPorts: tool({
+    description: 'List all ports for a target. Example: {"targetId": "uuid"}',
+    inputSchema: z.object({ targetId: z.string().describe("Target UUID") }),
+    execute: async ({ targetId }) => listPorts(targetId),
+  }),
   addFinding: tool({
-    description: 'Add a finding (vulnerability or flag). Example: {"engagementId": "uuid", "title": "SQL Injection", "severity": "high"}',
+    description: 'Add a finding. Include exploit_scenario and source/sink refs when possible. Example: {"engagementId": "uuid", "title": "SQL Injection on /login", "severity": "high", "exploitScenario": "POST user=admin\' OR 1=1-- to /login bypasses auth", "sourceRef": "/login POST parameter", "sinkRef": "SQL query in auth.py:42", "confidence": 0.9}',
     inputSchema: z.object({
       engagementId: z.string().describe("Engagement UUID"),
-      title: z.string().describe("Finding title"),
+      title: z.string().describe("Finding title (under 12 words)"),
       severity: z.string().optional().describe("One of: critical, high, medium, low, info"),
-      description: z.string().optional(),
+      description: z.string().optional().describe("Detailed description of the vulnerability"),
+      exploitScenario: z.string().optional().describe("Concrete exploit: specific input and resulting impact (max 5 sentences)"),
+      preconditions: z.array(z.string()).optional().describe("What must be true for exploitation"),
+      sourceRef: z.string().optional().describe("Where untrusted input enters (e.g. 'POST /login user parameter')"),
+      sinkRef: z.string().optional().describe("Where input is used unsafely (e.g. 'SQL query in auth.py:42')"),
+      confidence: z.number().optional().describe("0.0 to 1.0 confidence score"),
+      cvssVector: z.string().optional().describe("CVSS 3.1 vector string"),
+      cwe: z.string().optional().describe("CWE identifier, e.g. CWE-89"),
       status: z.string().optional().describe("One of: triage, confirmed, reported"),
+      remediation: z.string().optional().describe("How to fix"),
     }),
     execute: async (params) => {
       const p = { ...params, severity: ((params.severity || "info").toLowerCase()) as Parameters<typeof addFinding>[0]["severity"] };
@@ -240,14 +292,15 @@ const pkTools = {
     execute: async (params) => sendMessage(params),
   }),
   exec: tool({
-    description: "Run a command on the attackbox (Docker container with security tools: nmap, nikto, gobuster, sqlmap, etc). Use for recon, scanning, and exploitation.",
+    description: "Run a command on the attackbox. If running nmap/rustscan, provide targetId to auto-record discovered ports.",
     inputSchema: z.object({
       engagementId: z.string().uuid(),
       command: z.string().describe("Shell command to run"),
       phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]).optional(),
       reason: z.string().optional().describe("Why this command is being run"),
+      targetId: z.string().uuid().optional().describe("Target UUID - provide for nmap/rustscan to auto-record ports"),
     }),
-    execute: async ({ engagementId, command, phase, reason }) => {
+    execute: async ({ engagementId, command, phase, reason, targetId }) => {
       const { execFile } = await import("node:child_process");
       const { loadConfig } = await import("@promptkiddie/core");
       const config = loadConfig();
@@ -278,11 +331,20 @@ const pkTools = {
       });
 
       const output = result.stdout + result.stderr;
-      const maxLen = 8192;
-      if (output.length > maxLen) {
-        return { output: output.slice(0, maxLen), truncated: true, totalBytes: output.length, exitCode: result.code };
+
+      let portsIngested = 0;
+      if (targetId && looksLikeNmapOutput(output)) {
+        try {
+          portsIngested = await ingestPorts(targetId, output);
+        } catch { /* non-fatal */ }
       }
-      return { output, exitCode: result.code };
+
+      const maxLen = 8192;
+      const base = { exitCode: result.code, ...(portsIngested ? { portsIngested } : {}) };
+      if (output.length > maxLen) {
+        return { output: output.slice(0, maxLen), truncated: true, totalBytes: output.length, ...base };
+      }
+      return { output, ...base };
     },
   }),
 };
@@ -311,11 +373,17 @@ function buildSubAgentTool(
           model,
           instructions: systemPrompt,
           prompt: context,
-          stopWhen: isStepCount(15),
+          stopWhen: [isStepCount(15), isRepeatedToolCalls()],
           tools: pkTools,
           telemetry: telemetryConfig,
         });
-        return { summary: result.text, steps: result.steps.length };
+        const stuck = result.steps.length > 0 &&
+          result.steps[result.steps.length - 1]?.toolCalls?.length > 0;
+        return {
+          summary: result.text,
+          steps: result.steps.length,
+          ...(stuck ? { warning: "Agent stopped due to repeated identical tool calls" } : {}),
+        };
       } catch (err) {
         return { error: (err as Error).message };
       }
@@ -363,7 +431,10 @@ export async function POST(req: Request) {
     model: orchestratorModel,
     instructions: ORCHESTRATOR_SYSTEM,
     messages,
-    stopWhen: config.maxSteps ? isStepCount(config.maxSteps) : isStepCount(20),
+    stopWhen: [
+      config.maxSteps ? isStepCount(config.maxSteps) : isStepCount(20),
+      isRepeatedToolCalls(),
+    ],
     tools: { ...pkTools, ...subAgentTools },
     telemetry: telemetryConfig,
   });

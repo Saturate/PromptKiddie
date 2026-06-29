@@ -94,7 +94,7 @@ export function Inbox({ engagementId }: { engagementId: string }) {
         <div className="flex items-center gap-2">
           <CardTitle className="text-sm font-mono">Chat</CardTitle>
           <span
-            className={`h-2 w-2 rounded-full ${live ? "bg-pk-green" : "bg-muted-foreground"}`}
+            className={`h-2 w-2 rounded-full ${live ? "bg-pk-amber" : "bg-muted-foreground"}`}
             title={live ? "Live (streaming)" : "Polling"}
           />
         </div>
@@ -116,7 +116,7 @@ export function Inbox({ engagementId }: { engagementId: string }) {
                   max-w-[75%] rounded-lg px-3 py-2 text-sm font-mono whitespace-pre-wrap break-words
                   ${
                     m.direction === "inbound"
-                      ? "bg-pk-green/15 border border-pk-green/30 text-foreground"
+                      ? "bg-pk-amber/15 border border-pk-amber/30 text-foreground"
                       : "bg-muted border border-border text-foreground"
                   }
                 `}

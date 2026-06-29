@@ -16,6 +16,7 @@ import {
   findings,
   messages,
   objectives,
+  ports,
   settings,
   targets,
 } from "./schema.js";
@@ -196,6 +197,74 @@ export async function updateTarget(
   return row;
 }
 
+// --- Ports -------------------------------------------------------------------
+
+export async function addPort(input: {
+  targetId: string;
+  port: number;
+  protocol?: "tcp" | "udp";
+  state?: "open" | "closed" | "filtered";
+  service?: string;
+  version?: string;
+  banner?: string;
+  notes?: string;
+}) {
+  const db = getDb();
+  const [row] = await db
+    .insert(ports)
+    .values({
+      targetId: input.targetId,
+      port: input.port,
+      protocol: input.protocol ?? "tcp",
+      state: input.state ?? "open",
+      service: input.service,
+      version: input.version,
+      banner: input.banner,
+      notes: input.notes,
+    })
+    .onConflictDoUpdate({
+      target: [ports.targetId, ports.port, ports.protocol],
+      set: {
+        state: input.state ?? "open",
+        service: input.service,
+        version: input.version,
+        banner: input.banner,
+        notes: input.notes,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  return row;
+}
+
+export async function listPorts(targetId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(ports)
+    .where(eq(ports.targetId, targetId))
+    .orderBy(ports.port);
+}
+
+export async function updatePort(
+  id: string,
+  input: {
+    state?: "open" | "closed" | "filtered";
+    service?: string;
+    version?: string;
+    banner?: string;
+    notes?: string;
+  },
+) {
+  const db = getDb();
+  const [row] = await db
+    .update(ports)
+    .set({ ...input, updatedAt: new Date() })
+    .where(eq(ports.id, id))
+    .returning();
+  return row;
+}
+
 // --- Objectives (CTF tasks / flags) ----------------------------------------
 
 export async function addObjective(input: {
@@ -243,13 +312,23 @@ export async function addFinding(input: {
   title: string;
   severity?: "critical" | "high" | "medium" | "low" | "info";
   cvss?: number;
+  cvssVector?: string;
+  cwe?: string;
   status?: "triage" | "confirmed" | "reported" | "remediated";
   owasp?: string[];
   attackTechniques?: string[];
   cve?: string[];
   targetId?: string;
   description?: string;
+  exploitScenario?: string;
+  preconditions?: string[];
+  sourceRef?: string;
+  sinkRef?: string;
+  confidence?: number;
   remediation?: string;
+  verdict?: "true_positive" | "false_positive" | "unverified";
+  verdictConfidence?: number;
+  verdictReason?: string;
 }) {
   const db = getDb();
   const [row] = await db
@@ -259,13 +338,23 @@ export async function addFinding(input: {
       title: input.title,
       severity: input.severity ?? "info",
       cvss: input.cvss,
+      cvssVector: input.cvssVector,
+      cwe: input.cwe,
       status: input.status ?? "triage",
       owasp: input.owasp,
       attackTechniques: input.attackTechniques,
       cve: input.cve,
       targetId: input.targetId,
       description: input.description,
+      exploitScenario: input.exploitScenario,
+      preconditions: input.preconditions,
+      sourceRef: input.sourceRef,
+      sinkRef: input.sinkRef,
+      confidence: input.confidence,
       remediation: input.remediation,
+      verdict: input.verdict,
+      verdictConfidence: input.verdictConfidence,
+      verdictReason: input.verdictReason,
     })
     .returning();
   return row;
@@ -286,13 +375,23 @@ export async function updateFinding(
     title?: string;
     severity?: "critical" | "high" | "medium" | "low" | "info";
     cvss?: number;
+    cvssVector?: string;
+    cwe?: string;
     status?: "triage" | "confirmed" | "reported" | "remediated";
     owasp?: string[];
     attackTechniques?: string[];
     cve?: string[];
     targetId?: string;
     description?: string;
+    exploitScenario?: string;
+    preconditions?: string[];
+    sourceRef?: string;
+    sinkRef?: string;
+    confidence?: number;
     remediation?: string;
+    verdict?: "true_positive" | "false_positive" | "unverified";
+    verdictConfidence?: number;
+    verdictReason?: string;
   },
 ) {
   const db = getDb();
@@ -330,6 +429,19 @@ export async function listArtifacts(engagementId: string) {
     .orderBy(desc(artifacts.createdAt));
 }
 
+const MIME_MAP: Record<string, string> = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+  ".pdf": "application/pdf", ".txt": "text/plain", ".json": "application/json",
+  ".jsonl": "text/plain", ".xml": "application/xml", ".html": "text/html",
+  ".csv": "text/csv", ".log": "text/plain",
+};
+
+function guessMime(path: string): string {
+  const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
+  return MIME_MAP[ext] ?? "application/octet-stream";
+}
+
 export async function addEvidence(input: {
   engagementId: string;
   path: string;
@@ -337,15 +449,30 @@ export async function addEvidence(input: {
   findingId?: string;
   sha256?: string;
   sizeBytes?: number;
+  data?: Buffer;
   meta?: Record<string, unknown>;
 }) {
   const db = getDb();
   let hash = input.sha256;
   let size = input.sizeBytes;
-  if (!hash || size === undefined) {
-    const buf = await readFile(input.path);
-    hash = createHash("sha256").update(buf).digest("hex");
-    size = (await stat(input.path)).size;
+  let data = input.data;
+
+  if (!data) {
+    try {
+      data = await readFile(input.path);
+    } catch { /* file may not exist in remote/docker mode */ }
+  }
+
+  if (data) {
+    hash = hash ?? createHash("sha256").update(data).digest("hex");
+    size = size ?? data.length;
+  } else if (!hash || size === undefined) {
+    try {
+      const buf = await readFile(input.path);
+      hash = createHash("sha256").update(buf).digest("hex");
+      size = (await stat(input.path)).size;
+      data = buf;
+    } catch { /* non-fatal: evidence recorded without data */ }
   }
 
   const [row] = await db
@@ -357,9 +484,20 @@ export async function addEvidence(input: {
       path: input.path,
       sha256: hash,
       sizeBytes: size,
+      data: data,
+      mimeType: guessMime(input.path),
       meta: input.meta,
     })
     .returning();
+  return row;
+}
+
+export async function getEvidenceData(id: string) {
+  const db = getDb();
+  const [row] = await db
+    .select({ data: evidence.data, mimeType: evidence.mimeType, path: evidence.path })
+    .from(evidence)
+    .where(eq(evidence.id, id));
   return row;
 }
 

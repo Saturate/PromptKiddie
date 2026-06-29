@@ -37,7 +37,7 @@ import { SeverityPieChart, PhaseBarChart } from "@/components/dashboard-charts";
 export const dynamic = "force-dynamic";
 
 const statusColors: Record<string, string> = {
-  active: "bg-green-500/15 text-green-500 border-green-500/30",
+  active: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   done: "bg-blue-500/15 text-blue-500 border-blue-500/30",
   scoping: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
   paused: "bg-yellow-500/15 text-yellow-500 border-yellow-500/30",
@@ -50,7 +50,7 @@ const phaseColors: Record<string, string> = {
   enum: "bg-purple-500/15 text-purple-400 border-purple-500/30",
   exploit: "bg-red-500/15 text-red-400 border-red-500/30",
   postexploit: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  report: "bg-green-500/15 text-green-400 border-green-500/30",
+  report: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
 };
 
 export default async function Home() {
@@ -144,7 +144,7 @@ export default async function Home() {
         <Card className="@container/card">
           <CardHeader>
             <CardDescription>Critical + High</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums text-red-500 @[250px]/card:text-3xl">
+            <CardTitle className="text-2xl font-semibold tabular-nums text-destructive @[250px]/card:text-3xl">
               {severityCounts.critical + severityCounts.high}
             </CardTitle>
             <CardAction>
@@ -228,7 +228,10 @@ export default async function Home() {
           </CardHeader>
           <CardContent>
             {engagements.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono">No engagements yet.</p>
+              <div className="text-center py-8 space-y-1">
+                <p className="text-sm text-muted-foreground font-mono">No engagements yet.</p>
+                <p className="text-xs text-primary/40 italic font-mono">what are you, a script kiddie?</p>
+              </div>
             ) : (
               <Table>
                 <TableHeader>
@@ -248,7 +251,7 @@ export default async function Home() {
                       <TableCell>
                         <Link
                           href={`/engagements/${e.id}`}
-                          className="text-green-500 hover:underline font-mono text-sm"
+                          className="text-primary hover:underline font-mono text-sm"
                         >
                           {e.name}
                         </Link>
@@ -297,7 +300,10 @@ export default async function Home() {
           </CardHeader>
           <CardContent>
             {recentActivity.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono">No activity yet.</p>
+              <div className="text-center py-8 space-y-1">
+                <p className="text-sm text-muted-foreground font-mono">No activity yet.</p>
+                <p className="text-xs text-primary/40 italic font-mono">the logs are empty and that&apos;s suspicious</p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {recentActivity.map((a) => (
@@ -308,7 +314,7 @@ export default async function Home() {
                       </Badge>
                       <Link
                         href={`/engagements/${a.engagementId}`}
-                        className="text-green-500 hover:underline font-mono text-xs"
+                        className="text-primary hover:underline font-mono text-xs"
                       >
                         {a.engagementName}
                       </Link>
@@ -318,9 +324,10 @@ export default async function Home() {
                     </div>
                     <p className="text-sm font-mono text-foreground">{a.action}</p>
                     {a.command && (
-                      <div className="bg-muted/50 rounded px-3 py-1.5">
-                        <code className="text-green-500 font-mono text-xs">
-                          $ {a.command}
+                      <div className="bg-background border border-border rounded px-3 py-1.5 flex items-center gap-1.5">
+                        <span className="text-primary/50 font-mono text-xs">$</span>
+                        <code className="text-foreground font-mono text-xs">
+                          {a.command}
                         </code>
                       </div>
                     )}

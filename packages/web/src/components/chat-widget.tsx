@@ -33,7 +33,7 @@ function ChatWidgetInner() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 bg-pk-green text-black rounded-full p-3.5 shadow-lg hover:scale-105 transition-transform"
+        className="fixed bottom-6 right-6 z-50 bg-pk-amber text-black rounded-full p-3.5 shadow-lg hover:scale-105 transition-transform"
         title="Open chat"
       >
         <MessageSquare className="size-5" />
@@ -46,9 +46,9 @@ function ChatWidgetInner() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/30 shrink-0">
         <div className="flex items-center gap-2">
-          <MessageSquare className="size-4 text-pk-green" />
+          <MessageSquare className="size-4 text-pk-amber" />
           <span className="font-mono text-sm font-semibold">PromptKiddie</span>
-          {isLoading && <span className="h-2 w-2 rounded-full bg-pk-green animate-pulse" />}
+          {isLoading && <span className="h-2 w-2 rounded-full bg-pk-amber animate-pulse" />}
         </div>
         <div className="flex items-center gap-1">
           <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
@@ -82,7 +82,7 @@ function ChatWidgetInner() {
           <div key={m.id}>
             {m.role === "user" ? (
               <div className="flex justify-end">
-                <div className="bg-pk-green/15 border border-pk-green/30 rounded-lg px-3 py-1.5 max-w-[85%]">
+                <div className="bg-pk-amber/15 border border-pk-amber/30 rounded-lg px-3 py-1.5 max-w-[85%]">
                   {m.parts?.map((part, i) => {
                     if (part.type === "text") return <p key={i} className="whitespace-pre-wrap text-sm font-mono">{part.text}</p>;
                     return null;
@@ -159,7 +159,7 @@ function ChatWidgetInner() {
         <button
           type="submit"
           disabled={isLoading || !input.trim()}
-          className="bg-pk-green text-black rounded-lg px-4 py-1.5 text-sm font-mono font-medium disabled:opacity-50"
+          className="bg-pk-amber text-black rounded-lg px-4 py-1.5 text-sm font-mono font-medium disabled:opacity-50"
         >
           Send
         </button>
