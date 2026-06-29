@@ -181,20 +181,22 @@ function PlaybooksInner() {
     setNodes(flow.nodes);
     setEdges(flow.edges);
     setSelectedNode(null);
-    const params = new URLSearchParams();
-    if (selected) params.set("id", selected);
-    params.set("block", blockName);
-    router.push(`/settings/playbooks?${params}`, { scroll: false });
+    router.push(`/settings/playbooks?block=${encodeURIComponent(blockName)}`, { scroll: false });
   }
 
   function navigateBack() {
-    if (editingBlock && editing) {
-      setEditingBlock(null);
+    setEditingBlock(null);
+    if (editing) {
       const flow = playbookToFlow(editing);
       setNodes(flow.nodes);
       setEdges(flow.edges);
       setSelectedNode(null);
       router.push(`/settings/playbooks?id=${editing.id}`, { scroll: false });
+    } else {
+      setNodes([]);
+      setEdges([]);
+      setSelectedNode(null);
+      router.push("/settings/playbooks", { scroll: false });
     }
   }
 
@@ -462,9 +464,11 @@ function PlaybooksInner() {
                   </Button>
                 )}
                 <div className="flex items-center gap-1 text-xs font-mono text-muted-foreground">
-                  {editingBlock && editing && (
+                  {editingBlock && (
                     <>
-                      <button onClick={navigateBack} className="hover:text-foreground">{editing.name}</button>
+                      <button onClick={navigateBack} className="hover:text-foreground">
+                        {editing ? editing.name : "Shared"}
+                      </button>
                       <ChevronRight className="size-3" />
                     </>
                   )}
