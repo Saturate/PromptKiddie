@@ -9,6 +9,9 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  reconnectEdge,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
   type Connection,
@@ -206,20 +209,107 @@ export default function PlaybooksPage() {
   }
 
   function deleteStep(key: string) {
+    // Reconnect: find incoming and outgoing edges, bridge them
+    const incoming = edges.filter((e) => e.target === key).map((e) => e.source);
+    const outgoing = edges.filter((e) => e.source === key).map((e) => e.target);
+
+    const getSteps = () => editingBlock?.nodes ?? editing?.phases.flatMap((p) => p.steps) ?? [];
+
+    // Update data model: replace deps on children of deleted node with deleted node's parents
     if (editingBlock) {
       editingBlock.nodes = editingBlock.nodes.filter((s) => s.key !== key);
-      for (const s of editingBlock.nodes) s.dependsOn = (s.dependsOn ?? []).filter((d) => d !== key);
+      for (const s of editingBlock.nodes) {
+        if (s.dependsOn?.includes(key)) {
+          s.dependsOn = [...s.dependsOn.filter((d) => d !== key), ...incoming].filter((v, i, a) => a.indexOf(v) === i);
+        }
+      }
       setEditingBlock({ ...editingBlock });
     } else if (editing) {
       for (const phase of editing.phases) {
         phase.steps = phase.steps.filter((s) => s.key !== key);
-        for (const s of phase.steps) s.dependsOn = (s.dependsOn ?? []).filter((d) => d !== key);
+        for (const s of phase.steps) {
+          if (s.dependsOn?.includes(key)) {
+            s.dependsOn = [...s.dependsOn.filter((d) => d !== key), ...incoming].filter((v, i, a) => a.indexOf(v) === i);
+          }
+        }
       }
       setEditing({ ...editing });
     }
+
+    // Update react-flow: remove node + old edges, add bridging edges
     setNodes((nds) => nds.filter((n) => n.id !== key));
-    setEdges((eds) => eds.filter((e) => e.source !== key && e.target !== key));
+    setEdges((eds) => {
+      const filtered = eds.filter((e) => e.source !== key && e.target !== key);
+      const bridges: Edge[] = [];
+      for (const src of incoming) {
+        for (const tgt of outgoing) {
+          if (!filtered.some((e) => e.source === src && e.target === tgt)) {
+            bridges.push({ id: `${src}-${tgt}`, source: src, target: tgt, style: EDGE_STYLE, ...EDGE_DEFAULTS });
+          }
+        }
+      }
+      return [...filtered, ...bridges];
+    });
     setSelectedNode(null);
+  }
+
+  // Add node on edge drop: drag from handle into empty space
+  function onConnectEnd(event: MouseEvent | TouchEvent, connectionState: { fromNode?: { id: string }; fromHandle?: { id: string; type: string } }) {
+    if (!connectionState.fromNode || !connectionState.fromHandle) return;
+    if (connectionState.fromHandle.type !== "source") return;
+
+    const sourceId = connectionState.fromNode.id;
+    const phase = (editingBlock?.nodes ?? editing?.phases.flatMap((p) => p.steps) ?? [])
+      .find((s) => s.key === sourceId)?.key.split(".")[0] ?? "step";
+    const newKey = `${phase}.new_${Date.now().toString(36).slice(-5)}`;
+
+    const newStep: PlaybookStep = { key: newKey, title: "New step", type: "judgment", dependsOn: [sourceId], priority: 50 };
+
+    if (editingBlock) {
+      editingBlock.nodes.push(newStep);
+      setEditingBlock({ ...editingBlock });
+      const flow = stepsToFlow(editingBlock.nodes as PlaybookStep[]);
+      setNodes(flow.nodes);
+      setEdges(flow.edges);
+    } else if (editing) {
+      const targetPhase = editing.phases.find((p) => p.steps.some((s) => s.key === sourceId));
+      if (targetPhase) {
+        targetPhase.steps.push(newStep);
+        setEditing({ ...editing });
+        const flow = playbookToFlow(editing);
+        setNodes(flow.nodes);
+        setEdges(flow.edges);
+      }
+    }
+    setSelectedNode(newKey);
+    toast.success("Node added");
+  }
+
+  // Delete edge on reconnect drop to empty space
+  function onReconnect(oldEdge: Edge, newConnection: Connection) {
+    setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds));
+    // Update data model
+    if (newConnection.target && newConnection.source) {
+      const getSteps = () => editingBlock?.nodes ?? editing?.phases.flatMap((p) => p.steps) ?? [];
+      const oldTarget = getSteps().find((s) => s.key === oldEdge.target);
+      if (oldTarget) {
+        oldTarget.dependsOn = (oldTarget.dependsOn ?? []).filter((d) => d !== oldEdge.source);
+      }
+      const newTarget = getSteps().find((s) => s.key === newConnection.target);
+      if (newTarget) {
+        newTarget.dependsOn = [...(newTarget.dependsOn ?? []), newConnection.source!].filter((v, i, a) => a.indexOf(v) === i);
+      }
+    }
+  }
+
+  function onReconnectEnd(_: MouseEvent | TouchEvent, oldEdge: Edge, handleType: string) {
+    // If reconnect ends on empty space, delete the edge
+    const getSteps = () => editingBlock?.nodes ?? editing?.phases.flatMap((p) => p.steps) ?? [];
+    const target = getSteps().find((s) => s.key === oldEdge.target);
+    if (target) {
+      target.dependsOn = (target.dependsOn ?? []).filter((d) => d !== oldEdge.source);
+    }
+    setEdges((eds) => eds.filter((e) => e.id !== oldEdge.id));
   }
 
   async function save() {
@@ -363,6 +453,9 @@ export default function PlaybooksPage() {
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
                   onConnect={onConnect}
+                  onConnectEnd={(event, state) => onConnectEnd(event as MouseEvent, state as { fromNode?: { id: string }; fromHandle?: { id: string; type: string } })}
+                  onReconnect={onReconnect}
+                  onReconnectEnd={(event, oldEdge, handleType) => onReconnectEnd(event as MouseEvent, oldEdge, handleType)}
                   onNodeClick={(_, node) => setSelectedNode(node.id)}
                   onNodeDoubleClick={handleNodeDoubleClick}
                   onNodeMouseEnter={(_, node) => setHoveredNode(node.id)}
@@ -376,6 +469,7 @@ export default function PlaybooksPage() {
                   maxZoom={2}
                   proOptions={{ hideAttribution: true }}
                   nodesDraggable
+                  edgesReconnectable
                 >
                   <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#232a3f" />
                   <Controls className="!bg-card !border-border !rounded-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-muted-foreground" />
