@@ -15,11 +15,10 @@ import {
   Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Plus, Save, Trash2, ChevronRight, ArrowLeft } from "lucide-react";
+import { Save, Trash2, ChevronRight, ArrowLeft } from "lucide-react";
 import { StepNode, type StepNodeData } from "@/components/graph/step-node";
 import { MetaNode, type MetaNodeData } from "@/components/graph/meta-node";
 import { layoutGraph } from "@/components/graph/layout";
@@ -42,12 +41,6 @@ interface PlaybookPhase { phase: string; title: string; steps: PlaybookStep[]; }
 interface Playbook { id: string; name: string; engagementType: string; description: string | null; isDefault: boolean; phases: PlaybookPhase[]; }
 interface BlockDef { id: string; name: string; description: string | null; nodes: PlaybookStep[]; }
 
-const TYPE_COLORS: Record<string, string> = {
-  ctf: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  blackbox: "bg-red-500/15 text-red-400 border-red-500/30",
-  whitebox: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  bugbounty: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-};
 const PHASE_BG: Record<string, string> = {
   recon: "bg-blue-500", enum: "bg-purple-500", exploit: "bg-red-500",
   postexploit: "bg-orange-500", report: "bg-emerald-500",
@@ -260,37 +253,40 @@ export default function PlaybooksPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_1fr_220px]">
-        {/* Playbook list */}
-        <div className="space-y-1.5">
-          <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider px-1">Playbooks</p>
+        {/* File tree (Obsidian-style) */}
+        <div className="font-mono text-xs">
           {playbooks.map((pb) => (
             <button
               key={pb.id}
               onClick={() => selectPlaybook(pb)}
-              className={`w-full text-left border rounded-lg p-2 font-mono transition-colors ${
-                selected === pb.id ? "border-primary bg-primary/5" : "border-border hover:border-border/80 bg-card"
+              className={`w-full text-left flex items-center gap-1.5 px-2 py-[5px] rounded transition-colors ${
+                selected === pb.id && !editingBlock ? "bg-primary/10 text-primary" : "text-foreground/80 hover:bg-muted/50 hover:text-foreground"
               }`}
             >
-              <span className="text-xs font-semibold text-foreground block">{pb.name}</span>
-              <Badge className={`font-mono text-[8px] border mt-0.5 ${TYPE_COLORS[pb.engagementType] ?? ""}`}>
-                {pb.engagementType}
-              </Badge>
+              <svg viewBox="0 0 16 16" className="size-3.5 shrink-0 text-muted-foreground/50"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.879a1.5 1.5 0 011.06.44l1.122 1.12A1.5 1.5 0 009.62 4H13.5A1.5 1.5 0 0115 5.5v7a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" fill="currentColor"/></svg>
+              <span className="truncate">{pb.name}</span>
             </button>
           ))}
 
           {blocks.length > 0 && (
-            <>
-              <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider px-1 mt-3">Blocks</p>
+            <div className="mt-2">
+              <div className="flex items-center gap-1.5 px-2 py-[5px] text-muted-foreground/50">
+                <svg viewBox="0 0 16 16" className="size-3.5 shrink-0"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.879a1.5 1.5 0 011.06.44l1.122 1.12A1.5 1.5 0 009.62 4H13.5A1.5 1.5 0 0115 5.5v7a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" fill="currentColor"/></svg>
+                <span className="text-[10px]">Shared</span>
+              </div>
               {blocks.map((b) => (
                 <button
                   key={b.id}
                   onClick={() => drillIntoBlock(b.name)}
-                  className="w-full text-left border border-dashed border-border rounded-lg p-2 font-mono hover:border-primary/30 transition-colors"
+                  className={`w-full text-left flex items-center gap-1.5 pl-6 pr-2 py-[4px] rounded transition-colors ${
+                    editingBlock?.id === b.id ? "bg-primary/10 text-primary" : "text-foreground/60 hover:bg-muted/50 hover:text-foreground"
+                  }`}
                 >
-                  <span className="text-[10px] font-semibold text-foreground">{b.name}</span>
+                  <svg viewBox="0 0 16 16" className="size-3 shrink-0 text-muted-foreground/40"><rect x="2" y="2" width="12" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/><path d="M5 6h6M5 8h4M5 10h5" stroke="currentColor" strokeWidth="1"/></svg>
+                  <span className="truncate text-[11px]">{b.name}</span>
                 </button>
               ))}
-            </>
+            </div>
           )}
         </div>
 
