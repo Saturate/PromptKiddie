@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { Save, Trash2, ChevronRight, ArrowLeft } from "lucide-react";
 import { StepNode, type StepNodeData } from "@/components/graph/step-node";
 import { MetaNode, type MetaNodeData } from "@/components/graph/meta-node";
+import { ControlNode, type ControlNodeData } from "@/components/graph/control-node";
 import { layoutGraph } from "@/components/graph/layout";
 
 interface PlaybookStep {
@@ -46,21 +47,32 @@ const PHASE_BG: Record<string, string> = {
   postexploit: "bg-orange-500", report: "bg-emerald-500",
 };
 
-const nodeTypes = { step: StepNode, meta: MetaNode };
+const nodeTypes = { step: StepNode, meta: MetaNode, control: ControlNode };
+
+function resolveNodeType(step: PlaybookStep): string {
+  if (step.nodeType === "parallel" || step.nodeType === "selector") return "control";
+  if (step.nodeType === "sequence" || step.key.endsWith(".start") || step.key.endsWith(".end")) return "meta";
+  return "step";
+}
+
+const EDGE_STYLE = { stroke: "#3a4260", strokeWidth: 1.5 };
+const EDGE_DEFAULTS = { type: "smoothstep" as const, markerEnd: { type: "arrowclosed" as const, width: 12, height: 12, color: "#3a4260" } };
 
 function stepsToFlow(steps: PlaybookStep[], phase?: string): { nodes: Node[]; edges: Edge[] } {
   const rawNodes: Node[] = [];
   const rawEdges: Edge[] = [];
   for (const step of steps) {
-    const isMeta = step.nodeType === "sequence" || step.key.endsWith(".start") || step.key.endsWith(".end");
+    const nodeType = resolveNodeType(step);
     const isBlock = step.nodeType === "block_ref" || !!step.blockRef;
-    if (isMeta) {
+    if (nodeType === "meta") {
       rawNodes.push({ id: step.key, type: "meta", position: { x: 0, y: 0 }, data: { label: step.title, phase: phase ?? "recon", variant: step.key.endsWith(".start") ? "start" : "end", isMeta: true } satisfies MetaNodeData });
+    } else if (nodeType === "control") {
+      rawNodes.push({ id: step.key, type: "control", position: { x: 0, y: 0 }, data: { label: step.title, variant: step.nodeType as "parallel" | "selector", phase: phase ?? "recon", isMeta: true } satisfies ControlNodeData });
     } else {
-      rawNodes.push({ id: step.key, type: "step", position: { x: 0, y: 0 }, data: { title: step.title, stepKey: step.key, status: isBlock ? "pending" : "pending", nodeType: step.nodeType ?? (isBlock ? "block_ref" : "action"), type: step.type, priority: step.priority ?? 50, phase: phase ?? "recon" } satisfies StepNodeData });
+      rawNodes.push({ id: step.key, type: "step", position: { x: 0, y: 0 }, data: { title: step.title, stepKey: step.key, status: "pending", nodeType: isBlock ? "block_ref" : (step.nodeType ?? "action"), type: step.type, priority: step.priority ?? 50, phase: phase ?? "recon" } satisfies StepNodeData });
     }
     for (const dep of step.dependsOn ?? []) {
-      rawEdges.push({ id: `${dep}-${step.key}`, source: dep, target: step.key, style: { stroke: "#3a4260", strokeWidth: 1.5 }, type: "smoothstep" });
+      rawEdges.push({ id: `${dep}-${step.key}`, source: dep, target: step.key, style: EDGE_STYLE, ...EDGE_DEFAULTS });
     }
   }
   return layoutGraph(rawNodes, rawEdges, "TB");
@@ -74,22 +86,24 @@ function playbookToFlow(pb: Playbook): { nodes: Node[]; edges: Edge[] } {
   const sorted = pb.phases.sort((a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase));
 
   for (const step of allSteps) {
-    const isMeta = step.nodeType === "sequence" || step.key.endsWith(".start") || step.key.endsWith(".end");
+    const nodeType = resolveNodeType(step);
     const isBlock = step.nodeType === "block_ref" || !!step.blockRef;
-    if (isMeta) {
+    if (nodeType === "meta") {
       rawNodes.push({ id: step.key, type: "meta", position: { x: 0, y: 0 }, data: { label: step.title, phase: step.phase, variant: step.key.endsWith(".start") ? "start" : "end", isMeta: true } satisfies MetaNodeData });
+    } else if (nodeType === "control") {
+      rawNodes.push({ id: step.key, type: "control", position: { x: 0, y: 0 }, data: { label: step.title, variant: step.nodeType as "parallel" | "selector", phase: step.phase, isMeta: true } satisfies ControlNodeData });
     } else {
       rawNodes.push({ id: step.key, type: "step", position: { x: 0, y: 0 }, data: { title: step.title, stepKey: step.key, status: "pending", nodeType: isBlock ? "block_ref" : (step.nodeType ?? "action"), type: step.type, priority: step.priority ?? 50, phase: step.phase } satisfies StepNodeData });
     }
     for (const dep of step.dependsOn ?? []) {
-      rawEdges.push({ id: `${dep}-${step.key}`, source: dep, target: step.key, style: { stroke: "#3a4260", strokeWidth: 1.5 }, type: "smoothstep" });
+      rawEdges.push({ id: `${dep}-${step.key}`, source: dep, target: step.key, style: EDGE_STYLE, ...EDGE_DEFAULTS });
     }
   }
   for (let i = 0; i < sorted.length - 1; i++) {
     const endKey = sorted[i].steps.find((s) => s.key.endsWith(".end"))?.key;
     const startKey = sorted[i + 1].steps.find((s) => s.key.endsWith(".start"))?.key;
     if (endKey && startKey) {
-      rawEdges.push({ id: `${endKey}-${startKey}`, source: endKey, target: startKey, style: { stroke: "#e8a040", strokeWidth: 2, strokeDasharray: "6 3" }, type: "smoothstep" });
+      rawEdges.push({ id: `${endKey}-${startKey}`, source: endKey, target: startKey, style: { stroke: "#e8a040", strokeWidth: 2, strokeDasharray: "6 3" }, ...EDGE_DEFAULTS, markerEnd: { type: "arrowclosed" as const, width: 14, height: 14, color: "#e8a040" } });
     }
   }
   return layoutGraph(rawNodes, rawEdges, "TB");
