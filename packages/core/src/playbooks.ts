@@ -22,12 +22,17 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       // Meta: phase start
       { key: "recon.start", title: "Start Recon", type: "mechanical", nodeType: "sequence", priority: 0 },
 
-      // Core discovery
+      // Port discovery
       { key: "recon.port_scan", title: "Full port scan (all 65535)", type: "mechanical", command: "pk exec -- rustscan -a {target} -- -sV", dependsOn: ["recon.start"], priority: 5 },
-      { key: "recon.service_id", title: "Service version detection", type: "mechanical", command: "pk exec -- nmap -sV -sC -p {ports} {target}", dependsOn: ["recon.port_scan"], priority: 10 },
 
-      // Recon is discovery only - what's running, what version
-      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.service_id"], priority: 99 },
+      // Service identification (parallel after ports found)
+      { key: "recon.nmap_svc", title: "Nmap service + script scan", type: "mechanical", command: "pk exec -- nmap -sV -sC -p {ports} {target}", dependsOn: ["recon.port_scan"], priority: 10 },
+      { key: "recon.web_tech", title: "Web stack fingerprint", type: "mechanical", command: "pk exec -- whatweb http://{target}:{port} --color=never", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 10, description: "Identifies CMS, framework, language, server, plugins. Goes deeper than nmap banner grabbing." },
+      { key: "recon.waf_detect", title: "WAF detection", type: "mechanical", command: "pk exec -- wafw00f http://{target}:{port}", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 12, description: "Detect WAF/CDN that may block scanning. Adjust techniques if found." },
+      { key: "recon.http_headers", title: "Inspect HTTP headers", type: "mechanical", command: "pk exec -- curl -sI http://{target}:{port}", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 11, description: "Check Server, X-Powered-By, cookies (PHPSESSID=PHP, JSESSIONID=Java), security headers." },
+      { key: "recon.favicon_hash", title: "Favicon hash lookup", type: "mechanical", command: "pk exec -- python3 -c \"import hashlib,codecs,requests;r=requests.get('http://{target}:{port}/favicon.ico');print('mmh3:',hashlib.md5(codecs.encode(r.content,'base64')).hexdigest())\" 2>/dev/null || pk exec -- curl -s http://{target}:{port}/favicon.ico | md5sum", dependsOn: ["recon.port_scan"], condition: "ports.service contains http", priority: 13, description: "Hash the favicon to identify the product. Look up on Shodan (http.favicon.hash) or FOFA." },
+
+      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.nmap_svc", "recon.web_tech", "recon.waf_detect", "recon.http_headers", "recon.favicon_hash"], priority: 99 },
     ],
   },
   {
