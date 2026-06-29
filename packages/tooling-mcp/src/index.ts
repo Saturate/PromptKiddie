@@ -7,10 +7,23 @@ import { z } from "zod";
 import { parseNmapXml } from "./parsers/nmap.js";
 import { parseNucleiJsonl } from "./parsers/nuclei.js";
 
-const CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-attackbox";
+const DEFAULT_CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-attackbox";
 const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
 const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
+
+const PHASE_CONTAINERS: Record<string, string> = {
+  recon: process.env.PK_RECON_CONTAINER ?? "promptkiddie-recon",
+  enum: process.env.PK_ENUM_CONTAINER ?? "promptkiddie-enum",
+  exploit: process.env.PK_EXPLOIT_CONTAINER ?? "promptkiddie-exploit",
+};
+
+function resolveContainer(phase?: string): string {
+  if (!phase) return DEFAULT_CONTAINER;
+  return PHASE_CONTAINERS[phase] ?? DEFAULT_CONTAINER;
+}
+
+const CONTAINER = DEFAULT_CONTAINER;
 
 try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
@@ -38,12 +51,14 @@ function hostExec(cmd: string, args: string[]): Promise<{ stdout: string; stderr
   });
 }
 
-function dockerExec(cmd: string[], toolName?: string): Promise<{ stdout: string; stderr: string; code: number }> {
+function dockerExec(cmd: string[], toolName?: string, container?: string): Promise<{ stdout: string; stderr: string; code: number }> {
+  const target = container ?? CONTAINER;
   const start = Date.now();
+  const env = ["-e", "PK_EXEC=1"];
   return new Promise((resolve) => {
     const proc = execFile(
       "docker",
-      ["exec", CONTAINER, ...cmd],
+      ["exec", ...env, target, ...cmd],
       { maxBuffer: 10 * 1024 * 1024, timeout: TIMEOUT },
       (err, stdout, stderr) => {
         const r = {
@@ -51,12 +66,12 @@ function dockerExec(cmd: string[], toolName?: string): Promise<{ stdout: string;
           stderr: stderr ?? "",
           code: err && "code" in err ? (err.code as number) : err ? 1 : 0,
         };
-        if (toolName) logToolCall(toolName, { cmd }, r.code, Date.now() - start);
+        if (toolName) logToolCall(toolName, { cmd, container: target }, r.code, Date.now() - start);
         resolve(r);
       },
     );
     proc.on("error", (err) => {
-      if (toolName) logToolCall(toolName, { cmd }, 1, Date.now() - start);
+      if (toolName) logToolCall(toolName, { cmd, container: target }, 1, Date.now() - start);
       resolve({ stdout: "", stderr: err.message, code: 1 });
     });
   });
@@ -251,11 +266,15 @@ server.tool(
 
 server.tool(
   "tooling_exec",
-  "Run an arbitrary command inside the tooling container. Use for tools not covered by dedicated commands.",
+  "Run an arbitrary command inside the tooling container. Use for tools not covered by dedicated commands. Optionally route to a phase-specific container.",
   {
     command: z.string().describe("Shell command to execute"),
+    phase: z.string().optional().describe("Route to phase container: recon, enum, exploit (default: full attackbox)"),
   },
-  async ({ command }: { command: string }) => result(await dockerExec(["sh", "-c", command], "tooling_exec")),
+  async ({ command, phase }: { command: string; phase?: string }) => {
+    const container = resolveContainer(phase);
+    return result(await dockerExec(["sh", "-c", command], "tooling_exec", container));
+  },
 );
 
 // --- Network isolation per engagement --------------------------------------

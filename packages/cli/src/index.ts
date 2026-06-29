@@ -176,6 +176,39 @@ target
     out(await repo.updateTarget(id, updates));
   });
 
+// --- port ------------------------------------------------------------------
+const port = program.command("port").description("Manage ports on targets");
+
+port
+  .command("add")
+  .requiredOption("--target <id>", "target UUID")
+  .requiredOption("--port <number>", "port number", parseInt)
+  .option("--protocol <proto>", "tcp | udp", "tcp")
+  .option("--state <state>", "open | closed | filtered", "open")
+  .option("--service <name>", "service name, e.g. http, ssh")
+  .option("--version <version>", "version string")
+  .option("--banner <text>", "raw banner")
+  .option("--notes <text>")
+  .action(async (o) => {
+    out(
+      await repo.addPort({
+        targetId: o.target,
+        port: o.port,
+        protocol: o.protocol,
+        state: o.state,
+        service: o.service,
+        version: o.version,
+        banner: o.banner,
+        notes: o.notes,
+      }),
+    );
+  });
+
+port
+  .command("list")
+  .requiredOption("--target <id>", "target UUID")
+  .action(async (o) => out(await repo.listPorts(o.target)));
+
 // --- finding ---------------------------------------------------------------
 const finding = program.command("finding").description("Manage findings");
 
@@ -184,12 +217,18 @@ finding
   .requiredOption("--title <title>")
   .option("--severity <severity>", "critical | high | medium | low | info", "info")
   .option("--cvss <score>", "CVSS v3.1 base score", parseFloat)
+  .option("--cvss-vector <vector>", "CVSS 3.1 vector string")
+  .option("--cwe <id>", "CWE identifier, e.g. CWE-89")
   .option("--status <status>", "triage | confirmed | reported | remediated", "triage")
   .option("--owasp <refs>", "comma-separated OWASP refs, e.g. A03:2021")
   .option("--attack <ids>", "comma-separated ATT&CK ids, e.g. T1190")
   .option("--cve <ids>", "comma-separated CVE ids")
   .option("--target <id>", "affected target id")
   .option("--desc <description>")
+  .option("--exploit-scenario <text>", "concrete exploit: input and impact")
+  .option("--source-ref <ref>", "where untrusted input enters")
+  .option("--sink-ref <ref>", "where input is used unsafely")
+  .option("--confidence <score>", "0.0-1.0 confidence", parseFloat)
   .option("--remediation <text>")
   .option("--engagement <id>")
   .action(async (o) => {
@@ -200,12 +239,18 @@ finding
         title: o.title,
         severity: o.severity,
         cvss: o.cvss,
+        cvssVector: o.cvssVector,
+        cwe: o.cwe,
         status: o.status,
         owasp: list(o.owasp),
         attackTechniques: list(o.attack),
         cve: list(o.cve),
         targetId: o.target,
         description: o.desc,
+        exploitScenario: o.exploitScenario,
+        sourceRef: o.sourceRef,
+        sinkRef: o.sinkRef,
+        confidence: o.confidence,
         remediation: o.remediation,
       }),
     );
@@ -222,25 +267,43 @@ finding
   .option("--title <title>")
   .option("--severity <severity>", "critical | high | medium | low | info")
   .option("--cvss <score>", "CVSS v3.1 base score", parseFloat)
+  .option("--cvss-vector <vector>", "CVSS 3.1 vector string")
+  .option("--cwe <id>", "CWE identifier")
   .option("--status <status>", "triage | confirmed | reported | remediated")
   .option("--owasp <refs>", "comma-separated OWASP refs")
   .option("--attack <ids>", "comma-separated ATT&CK ids")
   .option("--cve <ids>", "comma-separated CVE ids")
   .option("--target <id>", "affected target id")
   .option("--desc <description>")
+  .option("--exploit-scenario <text>")
+  .option("--source-ref <ref>")
+  .option("--sink-ref <ref>")
+  .option("--confidence <score>", "0.0-1.0", parseFloat)
   .option("--remediation <text>")
+  .option("--verdict <verdict>", "true_positive | false_positive | unverified")
+  .option("--verdict-confidence <score>", "0-10 confidence in verdict", parseInt)
+  .option("--verdict-reason <text>")
   .action(async (id: string, o) => {
     const updates: Record<string, unknown> = {};
     if (o.title !== undefined) updates.title = o.title;
     if (o.severity !== undefined) updates.severity = o.severity;
     if (o.cvss !== undefined) updates.cvss = o.cvss;
+    if (o.cvssVector !== undefined) updates.cvssVector = o.cvssVector;
+    if (o.cwe !== undefined) updates.cwe = o.cwe;
     if (o.status !== undefined) updates.status = o.status;
     if (o.owasp !== undefined) updates.owasp = list(o.owasp);
     if (o.attack !== undefined) updates.attackTechniques = list(o.attack);
     if (o.cve !== undefined) updates.cve = list(o.cve);
     if (o.target !== undefined) updates.targetId = o.target;
     if (o.desc !== undefined) updates.description = o.desc;
+    if (o.exploitScenario !== undefined) updates.exploitScenario = o.exploitScenario;
+    if (o.sourceRef !== undefined) updates.sourceRef = o.sourceRef;
+    if (o.sinkRef !== undefined) updates.sinkRef = o.sinkRef;
+    if (o.confidence !== undefined) updates.confidence = o.confidence;
     if (o.remediation !== undefined) updates.remediation = o.remediation;
+    if (o.verdict !== undefined) updates.verdict = o.verdict;
+    if (o.verdictConfidence !== undefined) updates.verdictConfidence = o.verdictConfidence;
+    if (o.verdictReason !== undefined) updates.verdictReason = o.verdictReason;
     out(await repo.updateFinding(id, updates));
   });
 

@@ -71,6 +71,91 @@ function ToggleGroup({
   );
 }
 
+// --- Observability (Langfuse) ------------------------------------------------
+
+function OtelSettings() {
+  const [publicKey, setPublicKey] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("https://cloud.langfuse.com");
+  const [saving, setSaving] = useState(false);
+  const [envConfigured, setEnvConfigured] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => {
+        if (s["langfuse.public_key"]) setPublicKey(s["langfuse.public_key"]);
+        if (s["langfuse.secret_key"]) setSecretKey("••••••••");
+        if (s["langfuse.base_url"]) setBaseUrl(s["langfuse.base_url"]);
+        setEnvConfigured(!!s["langfuse.env_configured"]);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    const body: Record<string, string> = {
+      "langfuse.public_key": publicKey,
+      "langfuse.base_url": baseUrl,
+    };
+    if (secretKey && !secretKey.startsWith("••")) {
+      body["langfuse.secret_key"] = secretKey;
+    }
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    setSaving(false);
+    toast.success("Langfuse config saved", { description: "Restart the server to apply" });
+  }
+
+  return (
+    <>
+      {envConfigured && (
+        <p className="text-[11px] text-primary font-mono">
+          Langfuse is configured via environment variables. Settings below are overrides.
+        </p>
+      )}
+      <div className="space-y-2">
+        <Label className="font-mono text-xs uppercase tracking-wider">Public Key</Label>
+        <Input
+          value={publicKey}
+          onChange={(e) => setPublicKey(e.target.value)}
+          placeholder="pk-lf-..."
+          className="font-mono text-sm"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label className="font-mono text-xs uppercase tracking-wider">Secret Key</Label>
+        <Input
+          value={secretKey}
+          onChange={(e) => setSecretKey(e.target.value)}
+          placeholder="sk-lf-..."
+          type="password"
+          className="font-mono text-sm"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label className="font-mono text-xs uppercase tracking-wider">Base URL</Label>
+        <Input
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          className="font-mono text-sm"
+        />
+        <p className="text-[11px] text-muted-foreground font-mono">
+          Default: https://cloud.langfuse.com. Change for self-hosted.
+        </p>
+      </div>
+      <div className="pt-2">
+        <Button onClick={save} disabled={saving} className="font-mono text-sm">
+          {saving ? "Saving..." : "Save"}
+        </Button>
+      </div>
+    </>
+  );
+}
+
 // --- Chat / AI configuration -----------------------------------------------
 
 type Provider = "anthropic" | "openai" | "google" | "custom";
@@ -298,7 +383,7 @@ export default function SettingsPage() {
                     {HARNESS_INFO[chat.harness].desc}
                   </p>
                   <p className="text-[11px] text-muted-foreground font-mono">
-                    Run <code className="bg-background px-1.5 py-0.5 rounded text-pk-green">{HARNESS_INFO[chat.harness].init}</code> in your project directory, then:
+                    Run <code className="bg-background px-1.5 py-0.5 rounded text-pk-amber">{HARNESS_INFO[chat.harness].init}</code> in your project directory, then:
                   </p>
                   <pre className="text-[11px] font-mono bg-background rounded p-2 text-muted-foreground">
 {`pk msg poll          # read new messages
@@ -436,6 +521,19 @@ pk engagement show   # get full context`}
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Observability */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-mono">Observability</CardTitle>
+          <CardDescription className="text-xs font-mono">
+            Trace LLM calls and tool executions with Langfuse. Set keys here or via environment variables.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <OtelSettings />
         </CardContent>
       </Card>
 

@@ -15,7 +15,12 @@ import {
   jsonb,
   timestamp,
   index,
+  customType,
 } from "drizzle-orm/pg-core";
+
+const bytea = customType<{ data: Buffer }>({
+  dataType() { return "bytea"; },
+});
 
 // --- Enums -----------------------------------------------------------------
 
@@ -161,6 +166,39 @@ export const targets = pgTable(
   (t) => [index("targets_engagement_idx").on(t.engagementId)],
 );
 
+export const portProtocol = pgEnum("port_protocol", ["tcp", "udp"]);
+export const portState = pgEnum("port_state", ["open", "closed", "filtered"]);
+
+/** Open ports discovered on targets. First-class entity for CTF and pentest engagements. */
+export const ports = pgTable(
+  "ports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    targetId: uuid("target_id")
+      .notNull()
+      .references(() => targets.id, { onDelete: "cascade" }),
+    port: integer("port").notNull(),
+    protocol: portProtocol("protocol").notNull().default("tcp"),
+    state: portState("state").notNull().default("open"),
+    service: text("service"),
+    version: text("version"),
+    banner: text("banner"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ports_target_idx").on(t.targetId),
+    index("ports_unique").on(t.targetId, t.port, t.protocol),
+  ],
+);
+
+export const findingVerdict = pgEnum("finding_verdict", [
+  "true_positive",
+  "false_positive",
+  "unverified",
+]);
+
 /** Vulnerabilities / flags with severity, CVSS, and framework mappings. */
 export const findings = pgTable(
   "findings",
@@ -172,9 +210,14 @@ export const findings = pgTable(
     targetId: uuid("target_id").references(() => targets.id, {
       onDelete: "set null",
     }),
+    portId: uuid("port_id").references(() => ports.id, {
+      onDelete: "set null",
+    }),
     title: text("title").notNull(),
     severity: severity("severity").notNull().default("info"),
     cvss: doublePrecision("cvss"),
+    cvssVector: text("cvss_vector"),
+    cwe: text("cwe"),
     status: findingStatus("status").notNull().default("triage"),
     /** OWASP refs, e.g. "A03:2021" or "WSTG-INPV-05". */
     owasp: text("owasp").array(),
@@ -183,7 +226,15 @@ export const findings = pgTable(
     /** CVE ids, e.g. "CVE-2024-1234". */
     cve: text("cve").array(),
     description: text("description"),
+    exploitScenario: text("exploit_scenario"),
+    preconditions: text("preconditions").array(),
+    sourceRef: text("source_ref"),
+    sinkRef: text("sink_ref"),
+    confidence: doublePrecision("confidence"),
     remediation: text("remediation"),
+    verdict: findingVerdict("verdict").default("unverified"),
+    verdictConfidence: integer("verdict_confidence"),
+    verdictReason: text("verdict_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -202,10 +253,13 @@ export const evidence = pgTable(
       onDelete: "set null",
     }),
     type: evidenceType("type").notNull(),
-    /** Path on disk under engagements/<slug>/. */
+    /** Original path (kept for display/backwards compat). */
     path: text("path").notNull(),
     sha256: text("sha256"),
     sizeBytes: integer("size_bytes"),
+    /** File contents stored in DB. */
+    data: bytea("data"),
+    mimeType: text("mime_type"),
     meta: jsonb("meta").$type<Record<string, unknown>>(),
     capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -313,4 +367,31 @@ export const messages = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("messages_engagement_idx").on(t.engagementId)],
+);
+
+export const embeddingSourceType = pgEnum("embedding_source_type", [
+  "finding",
+  "exec_output",
+  "activity",
+  "brief",
+]);
+
+/** Vector embeddings for semantic search across engagements (requires pgvector). */
+export const embeddings = pgTable(
+  "embeddings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id").references(() => engagements.id, {
+      onDelete: "cascade",
+    }),
+    sourceType: embeddingSourceType("source_type").notNull(),
+    sourceId: uuid("source_id"),
+    content: text("content").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("embeddings_engagement_idx").on(t.engagementId),
+    index("embeddings_source_type_idx").on(t.sourceType),
+  ],
 );

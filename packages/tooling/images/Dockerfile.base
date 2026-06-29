@@ -1,0 +1,23 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl wget git jq unzip \
+    python3 python3-pip \
+    openssh-client sshpass \
+    netcat-openbsd iproute2 iputils-ping dnsutils whois \
+    openvpn procps \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY exec-logger.sh /usr/local/bin/pk-shell
+RUN chmod +x /usr/local/bin/pk-shell
+
+COPY motd-base.sh /etc/pk-motd.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /etc/pk-motd.sh
+
+# Set pk-shell as default shell for docker exec
+ENV SHELL=/usr/local/bin/pk-shell
+SHELL ["/usr/local/bin/pk-shell", "-c"]
+
+WORKDIR /workspace
+ENTRYPOINT ["/entrypoint.sh"]

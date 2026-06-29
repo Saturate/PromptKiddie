@@ -21,7 +21,7 @@ import { ExternalLinkIcon } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 const statusColors: Record<string, string> = {
-  active: "bg-green-500/15 text-green-500 border-green-500/30",
+  active: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   done: "bg-blue-500/15 text-blue-500 border-blue-500/30",
   scoping: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
   paused: "bg-yellow-500/15 text-yellow-500 border-yellow-500/30",
@@ -34,7 +34,7 @@ const phaseColors: Record<string, string> = {
   enum: "bg-purple-500/15 text-purple-400 border-purple-500/30",
   exploit: "bg-red-500/15 text-red-400 border-red-500/30",
   postexploit: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  report: "bg-green-500/15 text-green-400 border-green-500/30",
+  report: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
 };
 
 const typeColors: Record<string, string> = {
@@ -101,7 +101,7 @@ export default async function EngagementsPage() {
         <Card>
           <CardContent className="p-4">
             <p className="text-[10px] font-mono uppercase text-muted-foreground">Active</p>
-            <p className="text-2xl font-bold font-mono text-green-500">{activeCount}</p>
+            <p className="text-2xl font-bold font-mono text-primary">{activeCount}</p>
           </CardContent>
         </Card>
         <Card>
@@ -176,7 +176,7 @@ export default async function EngagementsPage() {
                     <TableCell>
                       <Link
                         href={`/engagements/${e.id}`}
-                        className="text-green-500 hover:underline font-mono text-sm"
+                        className="text-primary hover:underline font-mono text-sm"
                       >
                         {e.name}
                       </Link>

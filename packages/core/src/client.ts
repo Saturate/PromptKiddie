@@ -18,6 +18,10 @@ export interface Repo {
   listTargets(engagementId: string): Promise<unknown[]>;
   updateTarget(id: string, input: Record<string, unknown>): Promise<unknown>;
 
+  addPort(input: { targetId: string; port: number; protocol?: string; state?: string; service?: string; version?: string; banner?: string; notes?: string }): Promise<unknown>;
+  listPorts(targetId: string): Promise<unknown[]>;
+  updatePort(id: string, input: Record<string, unknown>): Promise<unknown>;
+
   addFinding(input: Record<string, unknown>): Promise<unknown>;
   listFindings(engagementId: string): Promise<unknown[]>;
   updateFinding(id: string, input: Record<string, unknown>): Promise<unknown>;
@@ -62,6 +66,9 @@ function createLocalRepo(): Repo {
     addTarget: async (i) => (await r).addTarget(i as Parameters<Awaited<typeof r>["addTarget"]>[0]),
     listTargets: async (eid) => (await r).listTargets(eid),
     updateTarget: async (id, i) => (await r).updateTarget(id, i),
+    addPort: async (i) => (await r).addPort(i as Parameters<Awaited<typeof r>["addPort"]>[0]),
+    listPorts: async (tid) => (await r).listPorts(tid),
+    updatePort: async (id, i) => (await r).updatePort(id, i as Parameters<Awaited<typeof r>["updatePort"]>[1]),
     addFinding: async (i) => (await r).addFinding(i as Parameters<Awaited<typeof r>["addFinding"]>[0]),
     listFindings: async (eid) => (await r).listFindings(eid),
     updateFinding: async (id, i) => (await r).updateFinding(id, i as Parameters<Awaited<typeof r>["updateFinding"]>[1]),
@@ -128,6 +135,9 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     addTarget: (i) => post(`/engagements/${i.engagementId}/targets`, i),
     listTargets: (eid) => get<unknown[]>(`/engagements/${eid}/targets`),
     updateTarget: (id, i) => patch(`/targets/${id}`, i),
+    addPort: (i) => post(`/targets/${i.targetId}/ports`, i),
+    listPorts: (tid) => get<unknown[]>(`/targets/${tid}/ports`),
+    updatePort: (id, i) => patch(`/ports/${id}`, i),
     addFinding: (i) => post(`/engagements/${(i as Record<string, string>).engagementId}/findings`, i),
     listFindings: (eid) => get<unknown[]>(`/engagements/${eid}/findings`),
     updateFinding: (id, i) => patch(`/findings/${id}`, i),

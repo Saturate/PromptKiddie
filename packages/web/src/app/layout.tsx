@@ -53,8 +53,8 @@ export default async function RootLayout({
                 </div>
               </div>
             </SidebarInset>
-            <ChatPanel />
           </SidebarProvider>
+          <ChatPanel />
         </TooltipProvider>
         <Toaster position="bottom-right" />
         </ThemeProvider>

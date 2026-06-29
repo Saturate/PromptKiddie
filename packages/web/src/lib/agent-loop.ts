@@ -14,9 +14,15 @@ interface AgentLoopOptions {
   messages: Array<{ role: string; content: unknown }>;
   tools: ToolSet;
   maxTurns?: number;
+  maxRepeats?: number;
   telemetry?: Record<string, unknown>;
   onToolCall?: (name: string, args: unknown) => void;
   onText?: (text: string) => void;
+  onStuck?: (toolName: string, count: number) => void;
+}
+
+function callSignature(name: string, args: unknown): string {
+  return `${name}:${JSON.stringify(args)}`;
 }
 
 export async function agentLoop({
@@ -25,12 +31,15 @@ export async function agentLoop({
   messages,
   tools,
   maxTurns = 20,
+  maxRepeats = 3,
   telemetry,
   onToolCall,
   onText,
+  onStuck,
 }: AgentLoopOptions) {
   const history = [...messages];
   let fullText = "";
+  const recentCalls: string[] = [];
 
   for (let turn = 0; turn < maxTurns; turn++) {
     const result = await generateText({
@@ -52,6 +61,16 @@ export async function agentLoop({
     if (step.toolCalls?.length) {
       for (const tc of step.toolCalls) {
         onToolCall?.(tc.toolName, tc.args);
+
+        const sig = callSignature(tc.toolName, tc.args);
+        recentCalls.push(sig);
+        if (recentCalls.length > maxRepeats) recentCalls.shift();
+
+        if (recentCalls.length >= maxRepeats && recentCalls.every((c) => c === sig)) {
+          onStuck?.(tc.toolName, maxRepeats);
+          fullText += `\n[Stopped: repeated ${tc.toolName} call ${maxRepeats} times with identical arguments]`;
+          return { text: fullText, messages: history, stuck: true };
+        }
       }
     }
 
@@ -63,5 +82,5 @@ export async function agentLoop({
     if (!step.toolCalls?.length) break;
   }
 
-  return { text: fullText, messages: history };
+  return { text: fullText, messages: history, stuck: false };
 }

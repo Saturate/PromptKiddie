@@ -15,8 +15,12 @@
       "command": "node",
       "args": ["packages/tooling-mcp/dist/index.js"],
       "env": {
-        "PK_TOOLING_CONTAINER": "promptkiddie-tooling"
+        "PK_TOOLING_CONTAINER": "promptkiddie-attackbox"
       }
+    },
+    "chrome-devtools-vpn": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--cdpUrl=http://localhost:9222"]
     }
   }
 }

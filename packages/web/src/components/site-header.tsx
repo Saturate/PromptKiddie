@@ -11,7 +11,10 @@ export function SiteHeader() {
           orientation="vertical"
           className="mx-2 h-4 data-vertical:self-auto"
         />
-        <h1 className="text-base font-medium font-mono">PromptKiddie</h1>
+        <h1 className="text-base font-mono">
+          <span className="font-light text-foreground/60">Prompt</span>
+          <span className="font-bold">Kiddie</span>
+        </h1>
         <div className="ml-auto">
           <ThemeToggle />
         </div>

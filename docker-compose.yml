@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: promptkiddie-db
     restart: unless-stopped
     environment:
@@ -17,12 +17,86 @@ services:
       timeout: 5s
       retries: 10
 
+  # --- Phase-specific attackboxes -------------------------------------------
+  # Default: full image (Kali-based, everything). Override with PK_IMAGE=recon etc.
+
   attackbox:
     image: ghcr.io/saturate/promptkiddie-attackbox:latest
     build:
-      context: packages/tooling
-      dockerfile: Dockerfile
+      context: packages/tooling/images
+      dockerfile: Dockerfile.full
     container_name: promptkiddie-attackbox
+    restart: unless-stopped
+    ports:
+      - "${PK_BROWSER_PORT:-9222}:9222"
+    volumes:
+      - ./engagements:/workspace/engagements
+      - ${PK_VPN_CONFIG:-./vpn}:/vpn:ro
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+
+  # Headless Chrome sharing the attackbox network (routes through VPN)
+  browser:
+    image: zenika/alpine-chrome:latest
+    container_name: promptkiddie-browser
+    restart: unless-stopped
+    network_mode: "service:attackbox"
+    command: >
+      --no-sandbox
+      --disable-gpu
+      --disable-dev-shm-usage
+      --remote-debugging-address=0.0.0.0
+      --remote-debugging-port=9222
+      --headless
+    shm_size: "512m"
+
+  attackbox-recon:
+    build:
+      context: packages/tooling/images
+      dockerfile: Dockerfile.recon
+      args:
+        BASE_IMAGE: pk-base
+    container_name: promptkiddie-recon
+    profiles: ["phase-containers"]
+    restart: unless-stopped
+    volumes:
+      - ./engagements:/workspace/engagements
+      - ${PK_VPN_CONFIG:-./vpn}:/vpn:ro
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+
+  attackbox-enum:
+    build:
+      context: packages/tooling/images
+      dockerfile: Dockerfile.enum
+      args:
+        BASE_IMAGE: pk-base
+    container_name: promptkiddie-enum
+    profiles: ["phase-containers"]
+    restart: unless-stopped
+    volumes:
+      - ./engagements:/workspace/engagements
+    cap_add:
+      - NET_RAW
+
+  attackbox-exploit:
+    build:
+      context: packages/tooling/images
+      dockerfile: Dockerfile.exploit
+      args:
+        BASE_IMAGE: pk-base
+    container_name: promptkiddie-exploit
+    profiles: ["phase-containers"]
     restart: unless-stopped
     volumes:
       - ./engagements:/workspace/engagements

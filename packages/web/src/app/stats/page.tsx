@@ -200,7 +200,7 @@ export default async function StatsPage() {
                   <TableCell>
                     <Link
                       href={`/engagements/${e.id}`}
-                      className="text-green-500 hover:underline font-mono text-sm"
+                      className="text-primary hover:underline font-mono text-sm"
                     >
                       {e.name}
                     </Link>

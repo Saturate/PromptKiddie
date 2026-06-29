@@ -1,0 +1,16 @@
+ARG BASE_IMAGE=pk-base
+FROM ${BASE_IMAGE}
+
+ENV PK_IMAGE_TYPE=enum
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nmap \
+    ffuf gobuster nikto \
+    nuclei \
+    enum4linux smbclient ldap-utils \
+    httpx-toolkit \
+    seclists wordlists \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY motd-enum.sh /etc/pk-motd.sh
+RUN chmod +x /etc/pk-motd.sh

@@ -49,7 +49,7 @@ function PhaseIndicator({ currentPhase }: { currentPhase: string }) {
             <span
               className={`
                 inline-block px-2.5 py-0.5 rounded text-[11px] font-mono font-medium uppercase tracking-wide
-                ${active ? "bg-pk-green text-black" : ""}
+                ${active ? "bg-pk-amber text-black" : ""}
                 ${done ? "bg-muted text-muted-foreground" : ""}
                 ${!done && !active ? "text-muted-foreground/40 border border-border/40" : ""}
               `}
@@ -105,7 +105,7 @@ export default async function EngagementPage({
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold font-mono">{engagement.name}</h1>
           {hasRunningAgent && (
-            <span className="h-2.5 w-2.5 rounded-full bg-pk-green animate-pulse" title="Agent running" />
+            <span className="h-2.5 w-2.5 rounded-full bg-pk-amber animate-pulse" title="Agent running" />
           )}
           <Badge variant="outline" className="font-mono text-[10px] uppercase">
             {engagement.type}
@@ -127,7 +127,7 @@ export default async function EngagementPage({
             href={engagement.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-mono text-pk-green hover:underline"
+            className="inline-flex items-center gap-1 text-xs font-mono text-pk-amber hover:underline"
           >
             {engagement.sourceUrl} <span className="text-muted-foreground">&#8599;</span>
           </a>
@@ -158,11 +158,11 @@ export default async function EngagementPage({
         <div className="flex items-center gap-3">
           <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
             <div
-              className="h-full bg-pk-green transition-all"
+              className="h-full bg-pk-amber transition-all"
               style={{ width: `${(objectives.filter(o => o.completed).length / objectives.length) * 100}%` }}
             />
           </div>
-          <span className="font-mono text-sm font-bold text-pk-green">
+          <span className="font-mono text-sm font-bold text-pk-amber">
             {objectives.filter(o => o.completed).length}/{objectives.length} flags
           </span>
         </div>
@@ -182,7 +182,7 @@ export default async function EngagementPage({
                 <div key={o.id} className="flex items-start gap-3 border border-border rounded-lg p-3">
                   <div className="mt-0.5 text-lg">
                     {o.completed ? (
-                      <span className="text-pk-green">&#10003;</span>
+                      <span className="text-pk-amber">&#10003;</span>
                     ) : (
                       <span className="text-muted-foreground/40">&#9675;</span>
                     )}
@@ -200,7 +200,7 @@ export default async function EngagementPage({
                     )}
                     <div className="font-mono text-xs">
                       {o.flag ? (
-                        <span className="text-pk-green font-semibold">{o.flag}</span>
+                        <span className="text-pk-amber font-semibold">{o.flag}</span>
                       ) : (
                         <span className="text-muted-foreground/50">---</span>
                       )}
@@ -293,7 +293,10 @@ export default async function EngagementPage({
           </CardHeader>
           <CardContent>
             {targets.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono">No targets added</p>
+              <div className="text-center py-6 space-y-1">
+                <p className="text-sm text-muted-foreground font-mono">No targets added</p>
+                <p className="text-xs text-primary/40 italic font-mono">hard to hack nothing</p>
+              </div>
             ) : (
               <Table>
                 <TableHeader>
@@ -310,10 +313,10 @@ export default async function EngagementPage({
                       <TableCell>
                         <Badge variant="outline" className="font-mono text-[10px]">{t.kind}</Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-sm text-pk-green">{t.identifier}</TableCell>
+                      <TableCell className="font-mono text-sm text-pk-amber">{t.identifier}</TableCell>
                       <TableCell>
                         {t.inScope ? (
-                          <Badge className="bg-pk-green/20 text-pk-green border-pk-green/30 font-mono text-[10px]">in</Badge>
+                          <Badge className="bg-pk-amber/20 text-pk-amber border-pk-amber/30 font-mono text-[10px]">in</Badge>
                         ) : (
                           <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">out</Badge>
                         )}
@@ -338,7 +341,10 @@ export default async function EngagementPage({
           </CardHeader>
           <CardContent className="space-y-3">
             {findings.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono">No findings</p>
+              <div className="text-center py-6 space-y-1">
+                <p className="text-sm text-muted-foreground font-mono">No findings</p>
+                <p className="text-xs text-primary/40 italic font-mono">either it&apos;s secure or we haven&apos;t looked hard enough</p>
+              </div>
             ) : (
               findings.map((f) => (
                 <div key={f.id} className="border border-border rounded-lg p-4 space-y-2">
@@ -438,7 +444,7 @@ export default async function EngagementPage({
                     </div>
                     {a.command && (
                       <div className="bg-background rounded px-3 py-2 mt-1 border border-border/50">
-                        <code className="font-mono text-xs text-pk-green break-all">
+                        <code className="font-mono text-xs text-pk-amber break-all">
                           $ {a.command}
                         </code>
                       </div>
@@ -476,7 +482,7 @@ export default async function EngagementPage({
                   decision: "bg-blue-500/20 text-blue-400",
                   observation: "bg-gray-500/20 text-gray-400",
                   stuck: "bg-red-500/20 text-red-400",
-                  progress: "bg-green-500/20 text-green-400",
+                  progress: "bg-emerald-500/20 text-emerald-400",
                 };
                 const borderClass = entry.category ? catColors[entry.category] ?? "border-l-gray-500" : "border-l-gray-500";
                 return (
@@ -519,7 +525,10 @@ export default async function EngagementPage({
           </CardHeader>
           <CardContent>
             {evidence.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono">No evidence captured</p>
+              <div className="text-center py-6 space-y-1">
+                <p className="text-sm text-muted-foreground font-mono">No evidence captured</p>
+                <p className="text-xs text-primary/40 italic font-mono">screenshots or it didn&apos;t happen</p>
+              </div>
             ) : (
               <Table>
                 <TableHeader>
@@ -529,15 +538,40 @@ export default async function EngagementPage({
                     <TableHead className="font-mono text-[10px] uppercase">SHA256</TableHead>
                     <TableHead className="font-mono text-[10px] uppercase">Size</TableHead>
                     <TableHead className="font-mono text-[10px] uppercase">Captured</TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {evidence.map((e) => (
+                  {evidence.map((e) => {
+                    const isImage = e.path?.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i);
+                    const isText = e.path?.match(/\.(txt|json|jsonl|log|xml|csv|html)$/i);
+                    return (
                     <TableRow key={e.id}>
                       <TableCell>
                         <Badge variant="outline" className="font-mono text-[10px]">{e.type}</Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-pk-green">{e.path}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        <span className="relative group/ev inline-block">
+                          <a
+                            href={`/api/evidence/${e.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-pk-amber hover:underline"
+                          >
+                            {e.path?.split("/").pop()}
+                          </a>
+                          {isImage && (
+                            <span className="pointer-events-none absolute left-0 top-full mt-2 z-50 hidden group-hover/ev:block">
+                              <img
+                                src={`/api/evidence/${e.id}`}
+                                alt={e.path?.split("/").pop() ?? ""}
+                                className="rounded-lg border border-border shadow-xl max-w-[400px] max-h-[300px] object-contain bg-background"
+                                loading="lazy"
+                              />
+                            </span>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell className="font-mono text-[11px] text-muted-foreground">
                         {e.sha256 ? e.sha256.slice(0, 16) + "..." : "-"}
                       </TableCell>
@@ -547,8 +581,19 @@ export default async function EngagementPage({
                       <TableCell className="font-mono text-[11px] text-muted-foreground">
                         {new Date(e.capturedAt!).toLocaleString()}
                       </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {(isImage || isText) && (
+                            <a href={`/api/evidence/${e.id}`} target="_blank" rel="noopener noreferrer"
+                              className="text-[10px] font-mono text-muted-foreground hover:text-foreground">view</a>
+                          )}
+                          <a href={`/api/evidence/${e.id}?dl`} download
+                            className="text-[10px] font-mono text-muted-foreground hover:text-foreground">dl</a>
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -586,8 +631,8 @@ export default async function EngagementPage({
                       </TableCell>
                       <TableCell>
                         <Badge className={`font-mono text-[10px] ${
-                          r.status === "running" ? "bg-pk-green/20 text-pk-green border-pk-green/30 animate-pulse" :
-                          r.status === "ok" ? "bg-pk-green/20 text-pk-green border-pk-green/30" :
+                          r.status === "running" ? "bg-pk-amber/20 text-pk-amber border-pk-amber/30 animate-pulse" :
+                          r.status === "ok" ? "bg-pk-amber/20 text-pk-amber border-pk-amber/30" :
                           "bg-destructive/20 text-destructive border-destructive/30"
                         }`}>
                           {r.status}
