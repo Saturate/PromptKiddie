@@ -234,3 +234,78 @@ export function markdownToBlock(md: string): { name: string; nodes: PlaybookStep
   const { name, phases } = markdownToPlaybook(md);
   return { name, nodes: phases.flatMap((p) => p.steps) };
 }
+
+// ---------------------------------------------------------------------------
+// Mermaid export
+// ---------------------------------------------------------------------------
+
+const PHASE_COLORS: Record<string, string> = {
+  recon: "#3b82f6",
+  enum: "#8b5cf6",
+  exploit: "#ef4444",
+  postexploit: "#f97316",
+  report: "#10b981",
+};
+
+const NODE_TYPE_SHAPES: Record<string, [string, string]> = {
+  sequence: ["([", "])"],
+  parallel: ["[[", "]]"],
+  selector: ["{", "}"],
+  gate: ["{{", "}}"],
+  block_ref: [">", "]"],
+  action: ["[", "]"],
+};
+
+function mermaidId(key: string): string {
+  return key.replace(/[^a-zA-Z0-9_]/g, "_");
+}
+
+function escapeLabel(s: string): string {
+  return s.replace(/"/g, "#quot;");
+}
+
+export function playbookToMermaid(name: string, phases: Phase[]): string {
+  const lines: string[] = [
+    `%% ${name}`,
+    "flowchart TD",
+  ];
+
+  for (const phase of phases) {
+    const color = PHASE_COLORS[phase.phase] ?? "#6b7280";
+    lines.push("");
+    lines.push(`  subgraph ${mermaidId(phase.phase)}["${escapeLabel(phase.title)}"]`);
+    lines.push(`    style ${mermaidId(phase.phase)} fill:${color}15,stroke:${color},stroke-width:2px`);
+
+    for (const step of phase.steps) {
+      const id = mermaidId(step.key);
+      const [open, close] = NODE_TYPE_SHAPES[step.nodeType ?? "action"] ?? ["[", "]"];
+      const typeIcon = step.type === "judgment" ? "🧠 " : "";
+      const blockIcon = step.nodeType === "block_ref" ? "▣ " : "";
+      const label = `${typeIcon}${blockIcon}${escapeLabel(step.title)}`;
+
+      lines.push(`    ${id}${open}"${label}"${close}`);
+    }
+
+    lines.push("  end");
+  }
+
+  lines.push("");
+
+  for (const phase of phases) {
+    for (const step of phase.steps) {
+      const deps = step.dependsOn ?? [];
+      for (const dep of deps) {
+        const fromId = mermaidId(dep);
+        const toId = mermaidId(step.key);
+        const label = step.condition ? ` -->|"${escapeLabel(step.condition)}"| ` : " --> ";
+        lines.push(`  ${fromId}${label}${toId}`);
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function blockToMermaid(name: string, nodes: PlaybookStep[]): string {
+  return playbookToMermaid(name, [{ phase: "block", title: name, steps: nodes }]);
+}

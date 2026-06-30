@@ -18,6 +18,7 @@ import {
   loadConfig,
   markdownToPlaybook,
   playbookToMarkdown,
+  playbookToMermaid,
   updatePlaybook,
 } from "@promptkiddie/core";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
@@ -406,9 +407,10 @@ playbook
 
 playbook
   .command("export")
-  .description("Export a playbook to markdown (stdout or file)")
+  .description("Export a playbook to markdown or mermaid")
   .argument("<id>", "Playbook UUID or engagement type (ctf, blackbox, ...)")
   .option("-o, --out <file>", "Write to file instead of stdout")
+  .option("-f, --format <format>", "Output format: md or mermaid", "md")
   .action(async (idOrType, o) => {
     const isUuid = /^[0-9a-f]{8}-/.test(idOrType);
     let pb = isUuid ? await getPlaybook(idOrType) : null;
@@ -417,12 +419,15 @@ playbook
       pb = await getDefaultPlaybook(idOrType);
     }
     if (!pb) { console.error(`No playbook found for "${idOrType}"`); process.exit(1); }
-    const md = playbookToMarkdown(pb.name, pb.phases as Parameters<typeof playbookToMarkdown>[1]);
+    const phases = pb.phases as Parameters<typeof playbookToMarkdown>[1];
+    const output = o.format === "mermaid"
+      ? playbookToMermaid(pb.name, phases)
+      : playbookToMarkdown(pb.name, phases);
     if (o.out) {
-      await writeFile(o.out, md, "utf-8");
+      await writeFile(o.out, output, "utf-8");
       console.error(`Wrote ${o.out}`);
     } else {
-      console.log(md);
+      console.log(output);
     }
   });
 
