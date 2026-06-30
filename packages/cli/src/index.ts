@@ -5,13 +5,20 @@
  */
 import "dotenv/config";
 import { Command } from "commander";
+import { readFile, writeFile } from "node:fs/promises";
 import {
   addEvidence,
   closeDb,
+  createPlaybook,
   generateReport,
   getEngagement,
+  getPlaybook,
   getRepo,
+  listPlaybooks,
   loadConfig,
+  markdownToPlaybook,
+  playbookToMarkdown,
+  updatePlaybook,
 } from "@promptkiddie/core";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
@@ -370,6 +377,65 @@ artifact
   .command("list")
   .option("--engagement <id>")
   .action(async (o) => out(await repo.listArtifacts(await resolveEngagementId(o.engagement))));
+
+// --- playbook (export/import as markdown) ----------------------------------
+const playbook = program.command("playbook").description("Manage playbook templates");
+
+playbook
+  .command("list")
+  .description("List all playbook templates")
+  .action(async () => {
+    const pbs = await listPlaybooks();
+    for (const pb of pbs) {
+      const phaseCount = (pb.phases as unknown[]).length;
+      const def = pb.isDefault ? " (default)" : "";
+      console.log(`${pb.id}  ${pb.name}  [${pb.engagementType}]  ${phaseCount} phases${def}`);
+    }
+  });
+
+playbook
+  .command("export")
+  .description("Export a playbook to markdown (stdout or file)")
+  .argument("<id>", "Playbook UUID or engagement type (ctf, blackbox, ...)")
+  .option("-o, --out <file>", "Write to file instead of stdout")
+  .action(async (idOrType, o) => {
+    const isUuid = /^[0-9a-f]{8}-/.test(idOrType);
+    let pb = isUuid ? await getPlaybook(idOrType) : null;
+    if (!pb) {
+      const { getDefaultPlaybook } = await import("@promptkiddie/core");
+      pb = await getDefaultPlaybook(idOrType);
+    }
+    if (!pb) { console.error(`No playbook found for "${idOrType}"`); process.exit(1); }
+    const md = playbookToMarkdown(pb.name, pb.phases as Parameters<typeof playbookToMarkdown>[1]);
+    if (o.out) {
+      await writeFile(o.out, md, "utf-8");
+      console.error(`Wrote ${o.out}`);
+    } else {
+      console.log(md);
+    }
+  });
+
+playbook
+  .command("import")
+  .description("Import a playbook from a markdown file")
+  .argument("<file>", "Path to markdown file")
+  .option("--type <type>", "Engagement type (ctf, blackbox, whitebox, bugbounty)", "ctf")
+  .option("--update <id>", "Update existing playbook instead of creating new")
+  .action(async (file, o) => {
+    const md = await readFile(file, "utf-8");
+    const parsed = markdownToPlaybook(md);
+    if (o.update) {
+      const row = await updatePlaybook(o.update, { name: parsed.name, phases: parsed.phases });
+      console.log(`Updated playbook ${row.id}: ${row.name}`);
+    } else {
+      const row = await createPlaybook({
+        name: parsed.name,
+        engagementType: o.type,
+        phases: parsed.phases,
+      });
+      console.log(`Created playbook ${row.id}: ${row.name}`);
+    }
+  });
 
 // --- step (playbook graph execution) ---------------------------------------
 const step = program.command("step").description("Playbook step execution");
