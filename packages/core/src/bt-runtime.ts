@@ -30,6 +30,7 @@ export interface GraphState {
   ports: Array<{ port: number; service?: string | null; state: string }>;
   findings: Array<{ id: string; severity: string; title: string }>;
   artifacts: Array<{ id: string; type: string }>;
+  targets: Array<{ id: string; kind: string; identifier: string; notes?: string | null }>;
 }
 
 /**
@@ -189,6 +190,14 @@ export function evaluateCondition(condition: string, state: GraphState): boolean
     if (c.includes("type") && c.includes("==")) {
       const typ = c.split("==").pop()?.trim().replace(/['"]/g, "") ?? "";
       return state.artifacts.some((a) => a.type === typ);
+    }
+  }
+
+  if (c.startsWith("targets.")) {
+    const allNotes = (state.targets ?? []).map((t) => (t.notes ?? "").toLowerCase()).join(" ");
+    if (c.includes("os") && c.includes("contains")) {
+      const os = c.split("contains").pop()?.trim().replace(/['"]/g, "") ?? "";
+      return allNotes.includes(os);
     }
   }
 

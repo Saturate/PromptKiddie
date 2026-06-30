@@ -963,6 +963,7 @@ export async function getNextSteps(engagementId: string, maxSteps = 5) {
     ports: allPorts.map((p) => ({ port: p.port, service: p.service, state: p.state })),
     findings: fds.map((f) => ({ id: f.id, severity: f.severity, title: f.title })),
     artifacts: arts.map((a) => ({ id: a.id, type: a.type })),
+    targets: tgts.map((t) => ({ id: t.id, kind: t.kind, identifier: t.identifier, notes: t.notes })),
   };
 
   const autoSkips = findAutoSkips(state);

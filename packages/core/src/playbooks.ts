@@ -71,7 +71,7 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       // Credential harvesting
       { key: "enum.cewl", title: "Generate wordlist from site", type: "mechanical", command: "pk exec -- cewl http://{target} -d 2 -m 5 -w /tmp/cewl.txt", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 20, optional: true },
       { key: "enum.brute_force", title: "Brute-force / password spray", type: "judgment", description: "Use hydra or ffuf against login forms with cewl wordlist and common passwords. Try top usernames: admin, root, user.", dependsOn: ["enum.cewl", "enum.default_creds"], condition: "ports.service contains http", priority: 22 },
-      { key: "enum.harvest", title: "Harvest credentials + loot", type: "judgment", description: "Collect all credentials, keys, passwords, hashes found. Record each as an artifact.", dependsOn: ["enum.known_cves", "enum.default_creds", "enum.nuclei", "enum.web_source", "enum.smb", "enum.ftp", "enum.snmp", "enum.sqli_test", "enum.lfi_test", "enum.ssti_test", "enum.cmdi_test", "enum.xxe_test", "enum.ssrf_test", "enum.brute_force", "enum.vhost_fuzz"], priority: 30 },
+      { key: "enum.harvest", title: "Harvest credentials + loot", type: "judgment", description: "Collect all credentials, keys, passwords, hashes found. Record each as an artifact.", dependsOn: ["enum.known_cves", "enum.default_creds", "enum.nuclei", "enum.web_source", "enum.smb", "enum.ftp", "enum.snmp", "enum.sqli_test", "enum.lfi_test", "enum.ssti_test", "enum.cmdi_test", "enum.xxe_test", "enum.ssrf_test", "enum.upload_test", "enum.brute_force", "enum.vhost_fuzz"], priority: 30 },
 
       { key: "enum.end", title: "Enumeration Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["enum.harvest"], priority: 99 },
     ],
@@ -106,7 +106,7 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       { key: "post.privesc", title: "Privilege Escalation", type: "mechanical", nodeType: "block_ref", blockRef: "Privilege Escalation", dependsOn: ["post.local_creds"], priority: 12 },
 
       // Credential cracking (if hashes found)
-      { key: "post.crack", title: "Credential Cracking", type: "mechanical", nodeType: "block_ref", blockRef: "Credential Cracking", dependsOn: ["post.local_creds"], priority: 14 },
+      { key: "post.crack", title: "Credential Cracking", type: "mechanical", nodeType: "block_ref", blockRef: "Credential Cracking", dependsOn: ["post.local_creds"], condition: "artifacts.type == credential", priority: 14, optional: true },
 
       { key: "post.root_flag", title: "Capture root flag", type: "mechanical", command: "pk exec -- find / -name root.txt 2>/dev/null | head -5 && cat /root/root.txt 2>/dev/null || dir C:\\Users\\Administrator\\Desktop\\root.txt 2>nul", dependsOn: ["post.privesc"], priority: 35 },
       { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag", "post.internal_net", "post.crack"], priority: 99 },
