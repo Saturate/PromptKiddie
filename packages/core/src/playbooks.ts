@@ -29,7 +29,7 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       { key: "recon.web", title: "Web Recon", type: "mechanical", nodeType: "block_ref", blockRef: "Web Recon", dependsOn: ["recon.nmap_svc"], condition: "ports.service contains http", priority: 12 },
 
       // SSL cert check for hostnames
-      { key: "recon.ssl_names", title: "Extract hostnames from SSL certs", type: "mechanical", command: "pk exec -- echo | openssl s_client -connect {target}:443 2>/dev/null | openssl x509 -noout -ext subjectAltName -subject 2>/dev/null || echo 'no SSL'", dependsOn: ["recon.nmap_svc"], condition: "ports.port in [443,8443]", priority: 12 },
+      { key: "recon.ssl_names", title: "Extract hostnames from SSL certs", type: "mechanical", command: "pk exec -- echo | openssl s_client -connect {target}:443 2>/dev/null | openssl x509 -noout -ext subjectAltName -subject 2>/dev/null || echo 'no SSL'", dependsOn: ["recon.nmap_svc"], condition: "ports.port in [443,8443,9443]", priority: 12 },
 
       { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.nmap_svc", "recon.web", "recon.udp_scan", "recon.ssl_names"], priority: 99 },
     ],
@@ -49,22 +49,29 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       { key: "enum.default_creds", title: "Try default/anonymous access", type: "judgment", description: "For each service: try anonymous access (FTP, SMB null session) and default credentials (admin:admin, root:root, service-specific).", dependsOn: ["enum.fork"], priority: 8 },
 
       // Web enumeration (parallel with CVE/cred checks)
-      { key: "enum.dir_fuzz", title: "Directory fuzzing", type: "mechanical", command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/common.txt -mc 200,301,302,403", dependsOn: ["enum.fork"], condition: "ports.service contains http", priority: 10 },
-      { key: "enum.nuclei", title: "Nuclei CVE + misconfig scan", type: "mechanical", command: "pk exec -- nuclei -u http://{target} -tags cve,misconfig,exposure,default-login", dependsOn: ["enum.fork"], condition: "ports.service contains http", priority: 10 },
-      { key: "enum.vhost_fuzz", title: "Vhost/subdomain fuzzing", type: "mechanical", command: "pk exec -- ffuf -u http://{target} -H 'Host: FUZZ.{target}' -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt -mc 200,301,302 -fs 0", dependsOn: ["enum.hosts_file"], condition: "ports.service contains http", priority: 12, optional: true },
-      { key: "enum.web_source", title: "Analyze web pages + source", type: "judgment", description: "Check robots.txt, sitemap, page source for comments, hidden forms, JS, API endpoints. Look for LFI/RFI/SQLi entry points.", dependsOn: ["enum.dir_fuzz"], priority: 15 },
+      { key: "enum.dir_fuzz", title: "Directory + extension fuzzing", type: "mechanical", command: "pk exec -- ffuf -u http://{target}:{port}/FUZZ -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -mc 200,301,302,403 -e .php,.html,.txt,.bak,.old -fc 404", dependsOn: ["enum.fork"], condition: "ports.service contains http", priority: 10 },
+      { key: "enum.nuclei", title: "Nuclei CVE + misconfig scan", type: "mechanical", command: "pk exec -- nuclei -u {target} -tags cve,misconfig,exposure,default-login -severity medium,high,critical", dependsOn: ["enum.fork"], condition: "ports.service contains http", priority: 10 },
+      { key: "enum.vhost_fuzz", title: "Vhost/subdomain fuzzing", type: "mechanical", command: "pk exec -- ffuf -u http://{target} -H 'Host: FUZZ.{target}' -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt -mc 200,301,302 -fs 0", dependsOn: ["enum.fork"], condition: "ports.service contains http", priority: 12, optional: true },
+      { key: "enum.web_source", title: "Analyze web pages + source", type: "judgment", description: "Check robots.txt, sitemap, page source for comments, hidden forms, JS, API endpoints. Look for injection entry points.", dependsOn: ["enum.dir_fuzz"], priority: 15 },
 
-      // Injection testing
+      // Injection testing (all depend on web_source)
       { key: "enum.sqli_test", title: "Test for SQL injection", type: "judgment", description: "Test login forms and URL parameters for SQLi. Try manual payloads first, then sqlmap if promising.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 18 },
       { key: "enum.lfi_test", title: "Test for LFI/RFI", type: "judgment", description: "Test file parameters for local/remote file inclusion: ../../etc/passwd, php://filter, etc.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 18 },
+      { key: "enum.ssti_test", title: "Test for SSTI", type: "judgment", description: "Test for SSTI: {{7*7}}, ${7*7}, #{7*7} in all input fields. Check Jinja2, Twig, Mako, Pebble.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 18 },
+      { key: "enum.cmdi_test", title: "Test for command injection", type: "judgment", description: "Test parameters for OS command injection: ; id, | whoami, $(id), `id`. Check ping, traceroute, and lookup fields.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 18 },
+      { key: "enum.xxe_test", title: "Test for XXE", type: "judgment", description: "Test XML-accepting endpoints for XXE: file:///etc/passwd, SSRF via DTD. Check file upload, SOAP, RSS endpoints.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 19 },
+      { key: "enum.ssrf_test", title: "Test for SSRF", type: "judgment", description: "Test URL/redirect parameters for SSRF: http://127.0.0.1, http://169.254.169.254, internal services on discovered ports.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 19 },
+      { key: "enum.upload_test", title: "Test file upload bypass", type: "judgment", description: "Test file upload for bypass: double extensions (.php.jpg), null bytes, content-type manipulation, magic bytes.", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 19, optional: true },
 
-      // SMB/FTP if present
+      // Protocol-specific enumeration
       { key: "enum.smb", title: "SMB shares + users", type: "mechanical", command: "pk exec -- enum4linux -a {target}", dependsOn: ["enum.default_creds"], condition: "ports.port in [139,445]", priority: 12 },
       { key: "enum.ftp", title: "FTP file listing + download", type: "judgment", description: "List FTP contents, download configs/backups/source code.", dependsOn: ["enum.default_creds"], condition: "ports.port = 21", priority: 12 },
+      { key: "enum.snmp", title: "SNMP enumeration", type: "mechanical", command: "pk exec -- snmpwalk -v2c -c public {target} 2>/dev/null | head -50", dependsOn: ["enum.fork"], condition: "ports.port in [161]", priority: 12 },
 
       // Credential harvesting
       { key: "enum.cewl", title: "Generate wordlist from site", type: "mechanical", command: "pk exec -- cewl http://{target} -d 2 -m 5 -w /tmp/cewl.txt", dependsOn: ["enum.web_source"], condition: "ports.service contains http", priority: 20, optional: true },
-      { key: "enum.harvest", title: "Harvest credentials + loot", type: "judgment", description: "Collect all credentials, keys, passwords, hashes found. Record each as an artifact.", dependsOn: ["enum.known_cves", "enum.nuclei", "enum.web_source", "enum.smb", "enum.ftp", "enum.sqli_test", "enum.lfi_test"], priority: 30 },
+      { key: "enum.brute_force", title: "Brute-force / password spray", type: "judgment", description: "Use hydra or ffuf against login forms with cewl wordlist and common passwords. Try top usernames: admin, root, user.", dependsOn: ["enum.cewl", "enum.default_creds"], condition: "ports.service contains http", priority: 22 },
+      { key: "enum.harvest", title: "Harvest credentials + loot", type: "judgment", description: "Collect all credentials, keys, passwords, hashes found. Record each as an artifact.", dependsOn: ["enum.known_cves", "enum.default_creds", "enum.nuclei", "enum.web_source", "enum.smb", "enum.ftp", "enum.snmp", "enum.sqli_test", "enum.lfi_test", "enum.ssti_test", "enum.cmdi_test", "enum.xxe_test", "enum.ssrf_test", "enum.brute_force", "enum.vhost_fuzz"], priority: 30 },
 
       { key: "enum.end", title: "Enumeration Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["enum.harvest"], priority: 99 },
     ],
@@ -78,7 +85,7 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       { key: "exploit.poc", title: "Build minimal PoC", type: "judgment", description: "Create the simplest proof that works. Read-only over destructive.", dependsOn: ["exploit.pick"], priority: 10 },
       { key: "exploit.verify", title: "Adversarial verify", type: "judgment", description: "Try to disprove the finding. Check for WAF, input validation, mitigations. If false positive, go back to pick.", dependsOn: ["exploit.poc"], priority: 15 },
       { key: "exploit.shell", title: "Get initial access", type: "judgment", description: "Use the confirmed finding to get a shell or session. If this fails, loop back to pick another path.", dependsOn: ["exploit.verify"], priority: 20 },
-      { key: "exploit.user_flag", title: "Capture user flag", type: "mechanical", command: "pk exec -- find / -name user.txt -o -name user.txt 2>/dev/null | head -5 && cat /home/*/user.txt 2>/dev/null || dir C:\\Users\\*\\Desktop\\user.txt 2>nul", dependsOn: ["exploit.shell"], priority: 25 },
+      { key: "exploit.user_flag", title: "Capture user flag", type: "mechanical", command: "pk exec -- find / -name user.txt 2>/dev/null | head -5 && cat /home/*/user.txt 2>/dev/null || dir C:\\Users\\*\\Desktop\\user.txt 2>nul", dependsOn: ["exploit.shell"], priority: 25 },
       { key: "exploit.end", title: "Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["exploit.user_flag"], priority: 99 },
     ],
   },
@@ -98,8 +105,11 @@ export const CTF_PLAYBOOK: PlaybookPhaseTemplate[] = [
       // Automated + manual privesc
       { key: "post.privesc", title: "Privilege Escalation", type: "mechanical", nodeType: "block_ref", blockRef: "Privilege Escalation", dependsOn: ["post.local_creds"], priority: 12 },
 
+      // Credential cracking (if hashes found)
+      { key: "post.crack", title: "Credential Cracking", type: "mechanical", nodeType: "block_ref", blockRef: "Credential Cracking", dependsOn: ["post.local_creds"], priority: 14 },
+
       { key: "post.root_flag", title: "Capture root flag", type: "mechanical", command: "pk exec -- find / -name root.txt 2>/dev/null | head -5 && cat /root/root.txt 2>/dev/null || dir C:\\Users\\Administrator\\Desktop\\root.txt 2>nul", dependsOn: ["post.privesc"], priority: 35 },
-      { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag", "post.internal_net"], priority: 99 },
+      { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag", "post.internal_net", "post.crack"], priority: 99 },
     ],
   },
   {
