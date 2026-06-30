@@ -54,6 +54,8 @@ export interface Repo {
   listEngagementSteps(engagementId: string): Promise<unknown[]>;
   completeStep(engagementId: string, stepKey: string, result?: { type: string; id: string }): Promise<unknown>;
   skipStep(engagementId: string, stepKey: string, reason: string): Promise<unknown>;
+  startStep(engagementId: string, stepKey: string, agentId?: string): Promise<unknown>;
+  getNextSteps(engagementId: string, maxSteps?: number): Promise<unknown>;
   getDefaultPlaybook(engagementType: string): Promise<unknown>;
   initEngagementSteps(engagementId: string, playbookId: string): Promise<unknown[]>;
 }
@@ -99,6 +101,8 @@ function createLocalRepo(): Repo {
     listEngagementSteps: async (eid) => (await r).listEngagementSteps(eid),
     completeStep: async (eid, key, result) => (await r).completeStep(eid, key, result),
     skipStep: async (eid, key, reason) => (await r).skipStep(eid, key, reason),
+    startStep: async (eid, key, agentId) => (await r).startStep(eid, key, agentId),
+    getNextSteps: async (eid, maxSteps) => (await r).getNextSteps(eid, maxSteps),
     getDefaultPlaybook: async (type) => (await r).getDefaultPlaybook(type),
     initEngagementSteps: async (eid, pid) => (await r).initEngagementSteps(eid, pid),
   };
@@ -173,6 +177,8 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     listEngagementSteps: (eid) => get<unknown[]>(`/engagements/${eid}/steps`),
     completeStep: (eid, key, result) => put(`/engagements/${eid}/steps/${key}/complete`, result ?? {}),
     skipStep: (eid, key, reason) => put(`/engagements/${eid}/steps/${key}/skip`, { reason }),
+    startStep: (eid, key, agentId) => put(`/engagements/${eid}/steps/${key}/start`, { agentId }),
+    getNextSteps: (eid, maxSteps) => get(`/engagements/${eid}/steps/next${maxSteps ? `?max=${maxSteps}` : ""}`),
     getDefaultPlaybook: (type) => get(`/playbooks/default/${type}`),
     initEngagementSteps: (eid, pid) => post(`/engagements/${eid}/steps/init`, { playbookId: pid }) as Promise<unknown[]>,
   };

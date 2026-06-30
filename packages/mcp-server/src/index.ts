@@ -291,6 +291,60 @@ server.tool(
   async ({ engagementId }) => json(await repo.listEvidence(engagementId)),
 );
 
+// --- Playbook steps -------------------------------------------------------
+
+server.tool(
+  "list_steps",
+  "List all playbook steps for an engagement with their status",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => json(await repo.listEngagementSteps(engagementId)),
+);
+
+server.tool(
+  "get_next_steps",
+  "Evaluate the playbook graph: auto-skip nodes whose conditions are false, return ready nodes sorted by priority, and report progress. Use this to decide what to execute next.",
+  {
+    engagementId: z.string().uuid(),
+    maxSteps: z.number().optional().describe("Max ready nodes to return (default 5)"),
+  },
+  async ({ engagementId, maxSteps }) => json(await repo.getNextSteps(engagementId, maxSteps)),
+);
+
+server.tool(
+  "start_step",
+  "Mark a playbook step as running (sets startedAt, agentId). Call before executing a step so it glows amber in the UI.",
+  {
+    engagementId: z.string().uuid(),
+    stepKey: z.string().describe("Step key, e.g. recon.tcp_scan"),
+    agentId: z.string().optional().describe("ID of the agent executing this step"),
+  },
+  async ({ engagementId, stepKey, agentId }) => json(await repo.startStep(engagementId, stepKey, agentId)),
+);
+
+server.tool(
+  "complete_step",
+  "Mark a playbook step as done. Call after the step's work is finished.",
+  {
+    engagementId: z.string().uuid(),
+    stepKey: z.string().describe("Step key, e.g. recon.tcp_scan"),
+    resultType: z.string().optional().describe("What was produced: port, finding, evidence, activity"),
+    resultId: z.string().uuid().optional().describe("UUID of the result row"),
+  },
+  async ({ engagementId, stepKey, resultType, resultId }) =>
+    json(await repo.completeStep(engagementId, stepKey, resultType && resultId ? { type: resultType, id: resultId } : undefined)),
+);
+
+server.tool(
+  "skip_step",
+  "Skip a playbook step with a reason. Use when a step is not applicable.",
+  {
+    engagementId: z.string().uuid(),
+    stepKey: z.string().describe("Step key to skip"),
+    reason: z.string().describe("Why this step is being skipped"),
+  },
+  async ({ engagementId, stepKey, reason }) => json(await repo.skipStep(engagementId, stepKey, reason)),
+);
+
 // --- Activity log ----------------------------------------------------------
 
 server.tool(
