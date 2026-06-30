@@ -45,10 +45,21 @@ engagement
   .option("--brief <brief>", "engagement brief / description")
   .option("--source-url <url>", "source URL (e.g. THM room, HTB machine)")
   .option("--group <group>", "engagement group (e.g. THM, HTB)")
+  .option("--no-playbook", "skip playbook step initialization")
   .action(async (o) => {
     const row = await repo.createEngagement({ name: o.name, type: o.type, scope: o.scope, brief: o.brief, sourceUrl: o.sourceUrl, group: o.group }) as { id: string };
     await setActiveEngagement(row.id);
-    console.error(`Created engagement and set it active: ${row.id}`);
+
+    let stepCount = 0;
+    if (o.playbook !== false) {
+      const pb = await repo.getDefaultPlaybook(o.type);
+      if (pb) {
+        const steps = await repo.initEngagementSteps(row.id, (pb as { id: string }).id);
+        stepCount = (steps as unknown[]).length;
+      }
+    }
+
+    console.error(`Created engagement ${row.id} (${stepCount} playbook steps initialized)`);
     out(row);
   });
 

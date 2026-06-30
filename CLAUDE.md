@@ -75,7 +75,8 @@ Use the `pk` CLI for all state. Everything you do must be reconstructable from t
 ```bash
 # Engagements
 pk engagement new --name "<name>" --type <ctf|whitebox|blackbox|bugbounty> \
-  [--scope "..."] [--brief "..."] [--source-url "..."] [--group THM]
+  [--scope "..."] [--brief "..."] [--source-url "..."] [--group THM] \
+  [--no-playbook]               # auto-inits playbook steps unless --no-playbook
 pk engagement list
 pk engagement use <id>            # set the active engagement for this shell
 pk engagement show [id]           # returns everything: targets, findings, objectives, evidence, artifacts, activity
