@@ -782,6 +782,36 @@ export async function listPlaybooks() {
   return db.select().from(playbooks).orderBy(playbooks.name);
 }
 
+export async function createPlaybook(input: {
+  name: string;
+  engagementType: string;
+  description?: string;
+  phases: PlaybookPhase[];
+}) {
+  const db = getDb();
+  const [row] = await db.insert(playbooks).values({
+    name: input.name,
+    engagementType: input.engagementType as "ctf",
+    description: input.description ?? null,
+    isDefault: false,
+    phases: input.phases,
+  }).returning();
+  return row;
+}
+
+export async function updatePlaybook(id: string, input: {
+  name?: string;
+  description?: string;
+  phases?: PlaybookPhase[];
+}) {
+  const db = getDb();
+  const [row] = await db.update(playbooks)
+    .set({ ...input, updatedAt: new Date() })
+    .where(eq(playbooks.id, id))
+    .returning();
+  return row;
+}
+
 export async function initEngagementSteps(engagementId: string, playbookId: string) {
   const db = getDb();
   const pb = await getPlaybook(playbookId);

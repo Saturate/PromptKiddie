@@ -114,6 +114,12 @@ pk activity log --phase <recon|enum|exploit|postexploit|report> \
   --action "<what>" [--command "<cmd>"] [--result <evidenceId>]
 pk activity list
 
+# Playbooks (templates + markdown round-trip)
+pk playbook list                    # all playbook templates
+pk playbook export <id|type> [-o file.md]  # export as markdown (lossless)
+pk playbook import <file.md> [--type ctf]  # import from markdown
+pk playbook import <file.md> --update <id> # update existing playbook
+
 # Playbook steps (graph-driven execution)
 pk step list                        # all steps with status
 pk step next [--max 5]              # ready steps from BT runtime
