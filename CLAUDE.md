@@ -34,28 +34,37 @@ noisy output out of your context or to run work in parallel: otherwise just use 
 - Honor RoE limits on disruptive/destructive techniques and time windows.
 - This workspace is for **authorized testing, CTFs, and education only.**
 
-## Working an engagement
+## Graph-driven execution
 
-Follow `docs/METHODOLOGY.md` phases in order (recon → enumeration → exploitation →
-post-exploitation → reporting), looping back when new information warrants. For each phase,
-run the owning skill: directly, or via its sub-agent when you need context isolation. Any
-brief (to yourself or a sub-agent) must include: the engagement id, the in-scope targets,
-the RoE constraints, and what to produce.
+The playbook graph is the execution plan. The BT runtime evaluates dependencies and
+conditions to determine which steps are ready. Follow it:
 
-**Auto-progress between phases.** When a phase completes and the next phase has clear work
-to do, start it immediately. Do not pause to ask permission between phases. Report results
+1. **Query the graph:** Call `get_next_steps` (MCP) or `pk step next` to get ready nodes
+   sorted by priority. The runtime auto-skips steps whose conditions are false (e.g., no
+   SMB ports found skips SMB enumeration).
+2. **Claim a step:** Call `start_step` / `pk step start <key>` before executing. This
+   marks the node as "running" (glows amber in the UI).
+3. **Execute the step:** Run the relevant skill or spawn a sub-agent. The step title and
+   phase tell you which skill to use. Brief sub-agents with the engagement ID, in-scope
+   targets, and the specific step to complete.
+4. **Complete the step:** Call `complete_step` / `pk step complete <key>` when done. If
+   the step is not applicable, call `skip_step` / `pk step skip <key> --reason "..."`.
+5. **Auto-advance phases:** When `get_next_steps` shows a phase at 100% complete, call
+   `advance_phase` to move to the next phase.
+6. **Loop:** Return to step 1 until all steps are complete or the engagement is done.
+
+Do NOT skip ahead in the graph. Do NOT execute steps whose dependencies aren't met.
+The graph decides WHAT to do; you and the skills decide HOW.
+
+**Auto-progress between phases.** When a phase completes and the next phase has ready
+steps, start immediately. Do not pause to ask permission between phases. Report results
 as you go, but keep moving. Only stop if you hit an ambiguity, a scope question, or need
 human input (credentials, VPN, etc.).
 
-**Phase advancement is the orchestrator's job.** Sub-agents do not call `pk engagement
-phase` or `pk engagement status`. They report findings and evidence, then the orchestrator
-decides when to advance. Specifically:
-
-1. Before spawning an agent for a phase, run `pk engagement phase <phase>` yourself.
-2. When the agent returns, review its results, log any follow-up, then advance.
-3. Do not include phase-advancement instructions in agent briefs.
-4. If running agents in the background, use the Monitor tool or periodic checks to
-   track progress and advance phases as work completes.
+**Phase advancement is the orchestrator's job.** Sub-agents do not call `pk step complete`
+or `pk engagement phase`. They report findings and evidence, then the orchestrator reviews
+results, completes the step, and advances the phase. Do not include phase-advancement or
+step-completion instructions in agent briefs.
 
 Always finish an engagement with the **reporting** phase.
 
@@ -104,6 +113,13 @@ pk evidence list
 pk activity log --phase <recon|enum|exploit|postexploit|report> \
   --action "<what>" [--command "<cmd>"] [--result <evidenceId>]
 pk activity list
+
+# Playbook steps (graph-driven execution)
+pk step list                        # all steps with status
+pk step next [--max 5]              # ready steps from BT runtime
+pk step start <key> [--agent <id>]  # mark running (glows amber in UI)
+pk step complete <key>              # mark done
+pk step skip <key> --reason "..."   # skip with reason
 
 # Sub-agent run bookkeeping
 pk agent start --agent <name> --phase <phase>     # prints a run id

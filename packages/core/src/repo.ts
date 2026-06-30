@@ -27,6 +27,12 @@ import {
 } from "./schema.js";
 import { DEFAULT_PLAYBOOKS } from "./playbooks.js";
 import { BUILTIN_BLOCKS } from "./blocks.js";
+import {
+  findAutoSkips,
+  findReadyNodes,
+  getProgress,
+  type GraphState,
+} from "./bt-runtime.js";
 
 /** Turn a name into a filesystem/url-safe slug. */
 export function slugify(name: string): string {
@@ -878,4 +884,74 @@ export async function skipStep(
     ))
     .returning();
   return row;
+}
+
+export async function startStep(
+  engagementId: string,
+  stepKey: string,
+  agentId?: string,
+) {
+  const db = getDb();
+  const [row] = await db.update(engagementSteps)
+    .set({
+      status: "running",
+      startedAt: new Date(),
+      agentId: agentId ?? null,
+    })
+    .where(and(
+      eq(engagementSteps.engagementId, engagementId),
+      eq(engagementSteps.stepKey, stepKey),
+    ))
+    .returning();
+  return row;
+}
+
+export async function getNextSteps(engagementId: string, maxSteps = 5) {
+  const steps = await listEngagementSteps(engagementId);
+  const tgts = await listTargets(engagementId);
+  const allPorts = [];
+  for (const t of tgts) {
+    const p = await listPorts(t.id);
+    allPorts.push(...p);
+  }
+  const fds = await listFindings(engagementId);
+  const arts = await listArtifacts(engagementId);
+
+  const state: GraphState = {
+    steps: steps.map((s) => ({
+      id: s.id,
+      stepKey: s.stepKey,
+      title: s.title,
+      status: s.status as "pending" | "running" | "done" | "skipped",
+      nodeType: s.nodeType ?? "action",
+      dependsOn: s.dependsOn ?? [],
+      priority: s.priority ?? 50,
+      condition: s.condition,
+      agentId: s.agentId,
+      phase: s.phase,
+    })),
+    ports: allPorts.map((p) => ({ port: p.port, service: p.service, state: p.state })),
+    findings: fds.map((f) => ({ id: f.id, severity: f.severity, title: f.title })),
+    artifacts: arts.map((a) => ({ id: a.id, type: a.type })),
+  };
+
+  const autoSkips = findAutoSkips(state);
+  for (const skip of autoSkips) {
+    await skipStep(engagementId, skip.stepKey, `Condition not met: ${skip.condition}`);
+  }
+
+  if (autoSkips.length > 0) {
+    const refreshed = await listEngagementSteps(engagementId);
+    state.steps = refreshed.map((s) => ({
+      id: s.id, stepKey: s.stepKey, title: s.title,
+      status: s.status as "pending" | "running" | "done" | "skipped",
+      nodeType: s.nodeType ?? "action", dependsOn: s.dependsOn ?? [],
+      priority: s.priority ?? 50, condition: s.condition,
+      agentId: s.agentId, phase: s.phase,
+    }));
+  }
+
+  const ready = findReadyNodes(state).slice(0, maxSteps);
+  const progress = getProgress(state);
+  return { ready, progress, autoSkipped: autoSkips.length };
 }

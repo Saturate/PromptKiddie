@@ -371,6 +371,60 @@ artifact
   .option("--engagement <id>")
   .action(async (o) => out(await repo.listArtifacts(await resolveEngagementId(o.engagement))));
 
+// --- step (playbook graph execution) ---------------------------------------
+const step = program.command("step").description("Playbook step execution");
+
+step
+  .command("list")
+  .description("List all playbook steps with status")
+  .option("--engagement <id>")
+  .action(async (o) => out(await repo.listEngagementSteps(await resolveEngagementId(o.engagement))));
+
+step
+  .command("next")
+  .description("Get next ready steps from the playbook graph")
+  .option("--max <n>", "Max steps to return", "5")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.getNextSteps(eid, parseInt(o.max, 10)));
+  });
+
+step
+  .command("start")
+  .description("Mark a step as running (glows amber in the UI)")
+  .argument("<key>", "Step key, e.g. recon.tcp_scan")
+  .option("--agent <agentId>", "ID of the agent executing this step")
+  .option("--engagement <id>")
+  .action(async (key, o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.startStep(eid, key, o.agent));
+  });
+
+step
+  .command("complete")
+  .description("Mark a step as done")
+  .argument("<key>", "Step key, e.g. recon.tcp_scan")
+  .option("--result-type <type>", "What was produced: port, finding, evidence, activity")
+  .option("--result-id <id>", "UUID of the result row")
+  .option("--engagement <id>")
+  .action(async (key, o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    const result = o.resultType && o.resultId ? { type: o.resultType, id: o.resultId } : undefined;
+    out(await repo.completeStep(eid, key, result));
+  });
+
+step
+  .command("skip")
+  .description("Skip a step with a reason")
+  .argument("<key>", "Step key, e.g. enum.smb_enum")
+  .requiredOption("--reason <reason>", "Why this step is being skipped")
+  .option("--engagement <id>")
+  .action(async (key, o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.skipStep(eid, key, o.reason));
+  });
+
 // --- activity --------------------------------------------------------------
 const act = program.command("activity").description("Append-only audit trail");
 
