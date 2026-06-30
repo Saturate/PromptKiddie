@@ -20,13 +20,25 @@ const json = (v: unknown) => ({
 
 server.tool(
   "create_engagement",
-  "Create a new engagement (CTF, whitebox, blackbox, or bugbounty)",
+  "Create a new engagement (CTF, whitebox, blackbox, or bugbounty). Auto-initializes playbook steps from the default playbook for the engagement type unless no_playbook is true.",
   {
     name: z.string(),
     type: z.enum(["ctf", "whitebox", "blackbox", "bugbounty"]),
     scope: z.string().optional(),
+    no_playbook: z.boolean().optional().describe("Skip playbook initialization"),
   },
-  async ({ name, type, scope }) => json(await repo.createEngagement({ name, type, scope })),
+  async ({ name, type, scope, no_playbook }) => {
+    const eng = await repo.createEngagement({ name, type, scope }) as { id: string };
+    let stepsInitialized = 0;
+    if (!no_playbook) {
+      const pb = await repo.getDefaultPlaybook(type);
+      if (pb) {
+        const steps = await repo.initEngagementSteps(eng.id, (pb as { id: string }).id);
+        stepsInitialized = (steps as unknown[]).length;
+      }
+    }
+    return json({ ...eng, stepsInitialized });
+  },
 );
 
 server.tool(
