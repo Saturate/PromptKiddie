@@ -15,7 +15,8 @@ const phases: PlaybookPhaseTemplate[] = [
       { key: "recon.web", title: "Web Recon", type: "mechanical", nodeType: "block_ref", blockRef: "Web Recon", dependsOn: ["recon.nmap_svc"], condition: "ports.service contains http", priority: 12 },
       { key: "recon.ssl_names", title: "Extract hostnames from SSL certs", type: "mechanical", command: "pk exec -- echo | openssl s_client -connect {target}:443 2>/dev/null | openssl x509 -noout -ext subjectAltName -subject 2>/dev/null || echo 'no SSL'", dependsOn: ["recon.nmap_svc"], condition: "ports.port in [443,8443,9443]", priority: 12 },
 
-      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.nmap_svc", "recon.web", "recon.udp_scan", "recon.ssl_names"], priority: 99 },
+      { key: "recon.freestyle", title: "Additional recon", type: "judgment", description: "Anything the playbook missed: unusual services, non-standard ports, passive OSINT. If you find a technique that works, note it for playbook improvement.", dependsOn: ["recon.nmap_svc", "recon.web", "recon.udp_scan", "recon.ssl_names"], priority: 90, optional: true },
+      { key: "recon.end", title: "Recon Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["recon.nmap_svc", "recon.web", "recon.udp_scan", "recon.ssl_names", "recon.freestyle"], priority: 99 },
     ],
   },
   {
@@ -51,7 +52,8 @@ const phases: PlaybookPhaseTemplate[] = [
       { key: "enum.brute_force", title: "Brute-force / password spray", type: "judgment", description: "Use hydra or ffuf against login forms with cewl wordlist and common passwords. Try top usernames: admin, root, user.", dependsOn: ["enum.cewl", "enum.default_creds"], condition: "ports.service contains http", priority: 22 },
       { key: "enum.harvest", title: "Harvest credentials + loot", type: "judgment", description: "Collect all credentials, keys, passwords, hashes found. Record each as an artifact.", dependsOn: ["enum.known_cves", "enum.default_creds", "enum.nuclei", "enum.web_source", "enum.smb", "enum.ftp", "enum.snmp", "enum.sqli_test", "enum.lfi_test", "enum.ssti_test", "enum.cmdi_test", "enum.xxe_test", "enum.ssrf_test", "enum.upload_test", "enum.brute_force", "enum.vhost_fuzz"], priority: 30 },
 
-      { key: "enum.end", title: "Enumeration Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["enum.harvest"], priority: 99 },
+      { key: "enum.freestyle", title: "Additional enumeration", type: "judgment", description: "Services or protocols not covered above: Redis, Memcached, LDAP, databases, custom APIs, unusual web frameworks. If you find a technique that works, note it for playbook improvement.", dependsOn: ["enum.harvest"], priority: 90, optional: true },
+      { key: "enum.end", title: "Enumeration Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["enum.harvest", "enum.freestyle"], priority: 99 },
     ],
   },
   {
@@ -64,7 +66,8 @@ const phases: PlaybookPhaseTemplate[] = [
       { key: "exploit.verify", title: "Adversarial verify", type: "judgment", description: "Try to disprove the finding. Check for WAF, input validation, mitigations. If false positive, go back to pick.", dependsOn: ["exploit.poc"], priority: 15 },
       { key: "exploit.shell", title: "Get initial access", type: "judgment", description: "Use the confirmed finding to get a shell or session. If this fails, loop back to pick another path.", dependsOn: ["exploit.verify"], priority: 20 },
       { key: "exploit.user_flag", title: "Capture user flag", type: "mechanical", command: "pk exec -- find / -name user.txt 2>/dev/null | head -5 && cat /home/*/user.txt 2>/dev/null || dir C:\\Users\\*\\Desktop\\user.txt 2>nul", dependsOn: ["exploit.shell"], priority: 25 },
-      { key: "exploit.end", title: "Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["exploit.user_flag"], priority: 99 },
+      { key: "exploit.freestyle", title: "Alternative attack paths", type: "judgment", description: "If the primary path failed or the user flag wasn't found: try a different finding, chain exploits, or attempt an approach not covered by the playbook. Note successful techniques for playbook improvement.", dependsOn: ["exploit.user_flag"], priority: 90, optional: true },
+      { key: "exploit.end", title: "Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["exploit.user_flag", "exploit.freestyle"], priority: 99 },
     ],
   },
   {
@@ -78,7 +81,8 @@ const phases: PlaybookPhaseTemplate[] = [
       { key: "post.privesc", title: "Privilege Escalation", type: "mechanical", nodeType: "block_ref", blockRef: "Privilege Escalation", dependsOn: ["post.local_creds"], priority: 12 },
       { key: "post.crack", title: "Credential Cracking", type: "mechanical", nodeType: "block_ref", blockRef: "Credential Cracking", dependsOn: ["post.local_creds"], condition: "artifacts.type == credential", priority: 14, optional: true },
       { key: "post.root_flag", title: "Capture root flag", type: "mechanical", command: "pk exec -- find / -name root.txt 2>/dev/null | head -5 && cat /root/root.txt 2>/dev/null || dir C:\\Users\\Administrator\\Desktop\\root.txt 2>nul", dependsOn: ["post.privesc"], priority: 35 },
-      { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag", "post.internal_net", "post.crack"], priority: 99 },
+      { key: "post.freestyle", title: "Additional post-exploitation", type: "judgment", description: "Anything the playbook missed: persistence mechanisms, data exfiltration paths, additional flags, pivoting to other hosts. Note successful techniques for playbook improvement.", dependsOn: ["post.root_flag", "post.internal_net", "post.crack"], priority: 90, optional: true },
+      { key: "post.end", title: "Post-Exploitation Complete", type: "mechanical", nodeType: "sequence", dependsOn: ["post.root_flag", "post.internal_net", "post.crack", "post.freestyle"], priority: 99 },
     ],
   },
   {

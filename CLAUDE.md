@@ -53,8 +53,18 @@ conditions to determine which steps are ready. Follow it:
    `advance_phase` to move to the next phase.
 6. **Loop:** Return to step 1 until all steps are complete or the engagement is done.
 
-Do NOT skip ahead in the graph. Do NOT execute steps whose dependencies aren't met.
 The graph decides WHAT to do; you and the skills decide HOW.
+
+**Playbook first, freestyle second.** Follow the graph steps in order. If you spot work
+that no step covers (unusual service, custom protocol, non-standard attack vector),
+you may act outside the graph at any time: run the technique, log it with `pk activity
+log`, and record findings normally. When a phase's structured steps are done, the
+`*.freestyle` catch-all node is your explicit window to try anything else.
+
+**Suggest playbook improvements.** When freestyle work succeeds, send a message to the
+inbox noting what worked and recommending it as a new playbook step. Include the step
+key, title, phase, and whether it should be mechanical or judgment. This feedback loop
+makes the playbook better over time.
 
 **Auto-progress between phases.** When a phase completes and the next phase has ready
 steps, start immediately. Do not pause to ask permission between phases. Report results
