@@ -721,6 +721,42 @@ shell
     });
   });
 
+// --- events (Docker exec watcher) ------------------------------------------
+const events = program.command("events").description("Docker container event monitoring");
+
+events
+  .command("watch")
+  .description("Stream exec events from PK containers and log to the engagement DB")
+  .option("--engagement <id>")
+  .option("--phase <phase>", "override phase for all logged events")
+  .action(async (o) => {
+    const { startExecWatcher } = await import("@promptkiddie/core");
+    const eid = await resolveEngagementId(o.engagement);
+    const ac = new AbortController();
+
+    console.error(`[exec-watcher] Watching PK containers for engagement ${eid}`);
+    console.error("[exec-watcher] Press Ctrl+C to stop\n");
+
+    const watcher = startExecWatcher({
+      engagementId: eid,
+      phase: o.phase,
+      signal: ac.signal,
+      onExec: (entry) => {
+        const exit = entry.exitCode === 0 ? "\x1b[32m0\x1b[0m" : `\x1b[31m${entry.exitCode}\x1b[0m`;
+        console.log(
+          `\x1b[33m${entry.service}\x1b[0m  ${entry.tool}  exit:${exit}  ${entry.durationMs}ms` +
+          `\n  \x1b[90m${entry.cmd}\x1b[0m`,
+        );
+      },
+    });
+
+    process.on("SIGINT", () => { watcher.stop(); process.exit(0); });
+    process.on("SIGTERM", () => { watcher.stop(); process.exit(0); });
+
+    // Keep process alive
+    await new Promise(() => {});
+  });
+
 // --- exec (run command + auto-log) -----------------------------------------
 const DEFAULT_CONTAINER = config.attackbox.container;
 const USE_DOCKER = config.attackbox.exec_mode !== "local";
