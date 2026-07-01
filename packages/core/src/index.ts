@@ -9,6 +9,7 @@ export { DEFAULT_PLAYBOOKS, CTF_PLAYBOOK, type PlaybookDef, type PlaybookPhaseTe
 export { playbookToMarkdown, blockToMarkdown, markdownToPlaybook, markdownToBlock, playbookToMermaid, blockToMermaid } from "./playbook-md.js";
 export { BUILTIN_BLOCKS, WEB_RECON_BLOCK, CRED_CRACK_BLOCK, type BlockDef } from "./blocks.js";
 export { findReadyNodes, findAutoSkips, getNextNode, getParallelNodes, isPhaseComplete, getProgress, evaluateCondition, type StepNode, type ReadyNode, type GraphState } from "./bt-runtime.js";
+export { startExecWatcher, type ExecWatcherOptions, type ExecLogEntry } from "./exec-watcher.js";
 export {
   getEmbeddingProvider,
   setEmbeddingProvider,
