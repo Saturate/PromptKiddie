@@ -90,7 +90,14 @@ export async function getEngagement(id: string) {
 
 export async function updateEngagement(
   id: string,
-  input: { name?: string; brief?: string; sourceUrl?: string; group?: string; scope?: string },
+  input: {
+    name?: string;
+    brief?: string;
+    sourceUrl?: string;
+    group?: string;
+    scope?: string;
+    type?: "ctf" | "whitebox" | "blackbox" | "bugbounty";
+  },
 ) {
   const db = getDb();
   const [row] = await db.update(engagements).set(input).where(eq(engagements.id, id)).returning();

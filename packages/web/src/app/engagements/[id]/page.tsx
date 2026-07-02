@@ -24,7 +24,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EditEngagementDialog } from "@/components/edit-engagement-dialog";
 import { FileDown } from "lucide-react";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -70,18 +72,22 @@ function PhaseIndicator({ currentPhase }: { currentPhase: string }) {
 
 export default async function EngagementPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ activity?: string }>;
 }) {
   const { id } = await params;
+  const { activity: activityParam } = await searchParams;
   const engagement = await getEngagement(id);
   if (!engagement) notFound();
 
-  const DISPLAY_LIMIT = 50;
+  const ACTIVITY_PAGE = 50;
+  const activityLimit = Math.max(ACTIVITY_PAGE, Number(activityParam) || ACTIVITY_PAGE);
   const [targets, findings, activity, evidence, agentRuns, objectives, agentLogEntries, steps] = await Promise.all([
     listTargets(id),
     listFindings(id),
-    listActivity(id, DISPLAY_LIMIT),
+    listActivity(id, activityLimit),
     listEvidence(id),
     listAgentRuns(id),
     listObjectives(id),
@@ -89,7 +95,9 @@ export default async function EngagementPage({
     listEngagementSteps(id),
   ]);
 
-  const activityTotal = activity.length >= DISPLAY_LIMIT ? `${DISPLAY_LIMIT}+` : activity.length;
+  // A full page means more rows may exist beyond the current limit.
+  const hasMoreActivity = activity.length >= activityLimit;
+  const activityTotal = hasMoreActivity ? `${activity.length}+` : activity.length;
   const evidenceTotal = evidence.length;
 
   const hasRunningAgent = agentRuns.some((r) => r.status === "running");
@@ -121,6 +129,7 @@ export default async function EngagementPage({
             {engagement.status}
           </Badge>
           <span className="flex-1" />
+          <EditEngagementDialog engagement={engagement} />
           <a href={`/api/report/${id}`} download>
             <Button variant="outline" size="sm">
               <FileDown className="size-3.5" data-icon="inline-start" />
@@ -474,6 +483,18 @@ export default async function EngagementPage({
                     )}
                   </div>
                 ))}
+                {hasMoreActivity && (
+                  <div className="flex justify-center pt-1">
+                    <Link
+                      href={`?activity=${activityLimit + ACTIVITY_PAGE}#activity`}
+                      scroll={false}
+                    >
+                      <Button variant="outline" size="sm" className="font-mono text-xs">
+                        Load more
+                      </Button>
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
