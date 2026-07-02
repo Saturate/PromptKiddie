@@ -1,8 +1,8 @@
 /**
  * Provider-agnostic embedding interface.
- * Adapted from github.com/saturate/husk.
- * Supports Ollama (default, local), OpenAI-compatible APIs, and Transformers.js.
+ * Provider/model/URL configured via PkConfig.embeddings (config.toml or env vars).
  */
+import { loadConfig } from "./config.js";
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
@@ -17,17 +17,17 @@ interface OllamaEmbedResponse {
 class OllamaProvider implements EmbeddingProvider {
   private readonly url: string;
   private readonly model: string;
-  private cachedDimensions: number | null = null;
+  private cachedDimensions: number;
   readonly name = "ollama";
 
-  constructor(url?: string, model?: string) {
-    this.url = url ?? process.env.PK_EMBED_URL ?? "http://localhost:11434";
-    this.model = model ?? process.env.PK_EMBED_MODEL ?? "nomic-embed-text";
+  constructor(url: string, model: string, dimensions: number) {
+    this.url = url;
+    this.model = model;
+    this.cachedDimensions = dimensions;
   }
 
   get dimensions(): number {
-    if (this.cachedDimensions) return this.cachedDimensions;
-    return Number(process.env.PK_EMBED_DIMENSIONS) || 768;
+    return this.cachedDimensions;
   }
 
   async embed(text: string): Promise<number[]> {
@@ -62,18 +62,12 @@ class OpenAICompatibleProvider implements EmbeddingProvider {
   private readonly baseUrl: string;
   private readonly apiKey: string | null;
 
-  constructor(options?: {
-    name?: string;
-    baseUrl?: string;
-    model?: string;
-    apiKey?: string;
-    dimensions?: number;
-  }) {
-    this.name = options?.name ?? "openai";
-    this.baseUrl = options?.baseUrl ?? process.env.PK_EMBED_URL ?? "https://api.openai.com/v1";
-    this.model = options?.model ?? process.env.PK_EMBED_MODEL ?? "text-embedding-3-small";
-    this.apiKey = options?.apiKey ?? process.env.PK_EMBED_API_KEY ?? null;
-    this.dimensions = options?.dimensions ?? (Number(process.env.PK_EMBED_DIMENSIONS) || 1536);
+  constructor(name: string, baseUrl: string, model: string, apiKey: string | null, dimensions: number) {
+    this.name = name;
+    this.baseUrl = baseUrl;
+    this.model = model;
+    this.apiKey = apiKey;
+    this.dimensions = dimensions;
   }
 
   async embed(text: string): Promise<number[]> {
@@ -101,13 +95,14 @@ class OpenAICompatibleProvider implements EmbeddingProvider {
 
 class OnnxProvider implements EmbeddingProvider {
   readonly name = "onnx";
-  private cachedDimensions = 384;
+  private cachedDimensions: number;
   private pipeline: unknown = null;
   private loading: Promise<unknown> | null = null;
   private readonly model: string;
 
-  constructor(model?: string) {
-    this.model = model ?? process.env.PK_EMBED_MODEL ?? "Xenova/all-MiniLM-L6-v2";
+  constructor(model: string, dimensions: number) {
+    this.model = model;
+    this.cachedDimensions = dimensions;
   }
 
   get dimensions(): number {
@@ -145,23 +140,19 @@ let provider: EmbeddingProvider | null = null;
 
 export function getEmbeddingProvider(): EmbeddingProvider {
   if (!provider) {
-    const backend = process.env.PK_EMBEDDINGS ?? "onnx";
-    switch (backend) {
+    const cfg = loadConfig().embeddings;
+    switch (cfg.provider) {
       case "openai":
-        provider = new OpenAICompatibleProvider();
+        provider = new OpenAICompatibleProvider("openai", cfg.url ?? "https://api.openai.com/v1", cfg.model, cfg.api_key, cfg.dimensions);
         break;
       case "llamacpp":
-        provider = new OpenAICompatibleProvider({
-          name: "llamacpp",
-          baseUrl: "http://localhost:8080/v1",
-          model: "default",
-        });
+        provider = new OpenAICompatibleProvider("llamacpp", cfg.url ?? "http://localhost:8080/v1", cfg.model, cfg.api_key, cfg.dimensions);
         break;
       case "ollama":
-        provider = new OllamaProvider();
+        provider = new OllamaProvider(cfg.url ?? "http://localhost:11434", cfg.model, cfg.dimensions);
         break;
       default:
-        provider = new OnnxProvider();
+        provider = new OnnxProvider(cfg.model, cfg.dimensions);
         break;
     }
   }
@@ -172,23 +163,31 @@ export function setEmbeddingProvider(p: EmbeddingProvider) {
   provider = p;
 }
 
-export async function checkEmbeddingModel(): Promise<{ ok: boolean; error?: string }> {
-  const url = process.env.PK_EMBED_URL ?? "http://localhost:11434";
-  const model = process.env.PK_EMBED_MODEL ?? "nomic-embed-text";
+export async function checkEmbeddingModel(): Promise<{ ok: boolean; error?: string; provider?: string }> {
+  const cfg = loadConfig().embeddings;
 
-  try {
-    const res = await fetch(`${url}/api/tags`);
-    if (!res.ok) return { ok: false, error: `Ollama not responding (${res.status})` };
-
-    const data = (await res.json()) as { models?: Array<{ name: string }> };
-    const models = data.models ?? [];
-    const hasModel = models.some((m) => m.name === model || m.name.startsWith(`${model}:`));
-
-    if (!hasModel) {
-      return { ok: false, error: `Model ${model} not pulled. Run: ollama pull ${model}` };
-    }
-    return { ok: true };
-  } catch {
-    return { ok: false, error: `Ollama not reachable at ${url}` };
+  if (cfg.provider === "onnx") {
+    return { ok: true, provider: `onnx (${cfg.model})` };
   }
+
+  if (cfg.provider === "ollama") {
+    const url = cfg.url ?? "http://localhost:11434";
+    try {
+      const res = await fetch(`${url}/api/tags`);
+      if (!res.ok) return { ok: false, error: `Ollama not responding (${res.status})` };
+
+      const data = (await res.json()) as { models?: Array<{ name: string }> };
+      const models = data.models ?? [];
+      const hasModel = models.some((m) => m.name === cfg.model || m.name.startsWith(`${cfg.model}:`));
+
+      if (!hasModel) {
+        return { ok: false, error: `Model ${cfg.model} not pulled. Run: ollama pull ${cfg.model}` };
+      }
+      return { ok: true, provider: `ollama (${cfg.model})` };
+    } catch {
+      return { ok: false, error: `Ollama not reachable at ${url}` };
+    }
+  }
+
+  return { ok: true, provider: `${cfg.provider} (${cfg.model})` };
 }
