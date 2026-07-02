@@ -31,7 +31,7 @@ interface SourceInfo {
 
 export default function KnowledgePage() {
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<"hybrid" | "vector" | "keyword">("keyword");
+  const [mode, setMode] = useState<"hybrid" | "vector" | "keyword">("hybrid");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [results, setResults] = useState<KnowledgeResult[]>([]);
   const [sources, setSources] = useState<SourceInfo[]>([]);

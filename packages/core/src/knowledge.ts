@@ -177,12 +177,15 @@ export async function searchKnowledge(
     : sql``;
 
   if (mode === "keyword") {
+    // OR-match: "less bin" -> 'less' | 'bin' so partial matches work.
+    // Boost documents matching more terms via ts_rank.
+    const orQuery = query.trim().split(/\s+/).join(" | ");
     const rows = await db.execute(sql`
       SELECT id, content, metadata,
-        ts_rank(tsv, websearch_to_tsquery('english', ${query})) AS score
+        ts_rank(tsv, to_tsquery('english', ${orQuery})) AS score
       FROM embeddings
       WHERE source_type = 'knowledge'
-        AND tsv @@ websearch_to_tsquery('english', ${query})
+        AND tsv @@ to_tsquery('english', ${orQuery})
         ${sourceFilter}
       ORDER BY score DESC
       LIMIT ${limit}
@@ -249,12 +252,13 @@ export async function searchKnowledge(
       `)
     : { rows: [] };
 
+  const orQuery = query.trim().split(/\s+/).join(" | ");
   const keywordRows = await db.execute(sql`
     SELECT id, content, metadata,
-      ts_rank(tsv, websearch_to_tsquery('english', ${query})) AS score
+      ts_rank(tsv, to_tsquery('english', ${orQuery})) AS score
     FROM embeddings
     WHERE source_type = 'knowledge'
-      AND tsv @@ websearch_to_tsquery('english', ${query})
+      AND tsv @@ to_tsquery('english', ${orQuery})
       ${sourceFilter}
     ORDER BY score DESC
     LIMIT ${limit * 2}
