@@ -720,6 +720,10 @@ export async function seedDefaultSettings() {
     "chat.orchestrator_model": "claude-opus-4-8",
     "chat.subagent_model": "claude-opus-4-8",
     "chat.max_steps": 0,
+    "embeddings.provider": "onnx",
+    "embeddings.model": "Xenova/all-MiniLM-L6-v2",
+    "embeddings.url": "",
+    "embeddings.dimensions": 384,
   };
   for (const [key, value] of Object.entries(defaults)) {
     const existing = await getSetting(key);

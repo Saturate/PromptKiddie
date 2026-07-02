@@ -12,6 +12,7 @@ export { findReadyNodes, findAutoSkips, getNextNode, getParallelNodes, isPhaseCo
 export { startExecWatcher, type ExecWatcherOptions, type ExecLogEntry } from "./exec-watcher.js";
 export {
   getEmbeddingProvider,
+  getEmbeddingProviderFromSettings,
   setEmbeddingProvider,
   checkEmbeddingModel,
   type EmbeddingProvider,

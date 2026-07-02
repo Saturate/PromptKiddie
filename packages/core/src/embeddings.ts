@@ -141,22 +141,43 @@ let provider: EmbeddingProvider | null = null;
 export function getEmbeddingProvider(): EmbeddingProvider {
   if (!provider) {
     const cfg = loadConfig().embeddings;
-    switch (cfg.provider) {
-      case "openai":
-        provider = new OpenAICompatibleProvider("openai", cfg.url ?? "https://api.openai.com/v1", cfg.model, cfg.api_key, cfg.dimensions);
-        break;
-      case "llamacpp":
-        provider = new OpenAICompatibleProvider("llamacpp", cfg.url ?? "http://localhost:8080/v1", cfg.model, cfg.api_key, cfg.dimensions);
-        break;
-      case "ollama":
-        provider = new OllamaProvider(cfg.url ?? "http://localhost:11434", cfg.model, cfg.dimensions);
-        break;
-      default:
-        provider = new OnnxProvider(cfg.model, cfg.dimensions);
-        break;
-    }
+    provider = buildProvider(cfg.provider, cfg.model, cfg.url, cfg.api_key, cfg.dimensions);
   }
   return provider;
+}
+
+export async function getEmbeddingProviderFromSettings(): Promise<EmbeddingProvider> {
+  if (provider) return provider;
+  try {
+    const { getSetting } = await import("./repo.js");
+    const dbProvider = await getSetting("embeddings.provider") as string | null;
+    if (dbProvider) {
+      const dbModel = (await getSetting("embeddings.model") as string) ?? "";
+      const dbUrl = (await getSetting("embeddings.url") as string) ?? "";
+      const dbKey = (await getSetting("embeddings.api_key") as string) ?? "";
+      const dbDims = Number(await getSetting("embeddings.dimensions")) || 384;
+      provider = buildProvider(dbProvider, dbModel, dbUrl || null, dbKey || null, dbDims);
+      return provider;
+    }
+  } catch {
+    // DB not available, fall back to config
+  }
+  return getEmbeddingProvider();
+}
+
+function buildProvider(
+  backend: string, model: string, url: string | null, apiKey: string | null, dimensions: number,
+): EmbeddingProvider {
+  switch (backend) {
+    case "openai":
+      return new OpenAICompatibleProvider("openai", url ?? "https://api.openai.com/v1", model, apiKey, dimensions);
+    case "llamacpp":
+      return new OpenAICompatibleProvider("llamacpp", url ?? "http://localhost:8080/v1", model, apiKey, dimensions);
+    case "ollama":
+      return new OllamaProvider(url ?? "http://localhost:11434", model, dimensions);
+    default:
+      return new OnnxProvider(model, dimensions);
+  }
 }
 
 export function setEmbeddingProvider(p: EmbeddingProvider) {
