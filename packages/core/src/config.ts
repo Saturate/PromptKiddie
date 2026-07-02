@@ -37,6 +37,13 @@ export interface PkConfig {
     secret: string | null;
     port: number;
   };
+  embeddings: {
+    provider: "onnx" | "ollama" | "openai" | "llamacpp";
+    model: string;
+    url: string | null;
+    api_key: string | null;
+    dimensions: number;
+  };
 }
 
 const DEFAULTS: PkConfig = {
@@ -63,6 +70,13 @@ const DEFAULTS: PkConfig = {
     url: null,
     secret: null,
     port: 3200,
+  },
+  embeddings: {
+    provider: "onnx",
+    model: "Xenova/all-MiniLM-L6-v2",
+    url: null,
+    api_key: null,
+    dimensions: 384,
   },
 };
 
@@ -105,6 +119,11 @@ function applyEnvOverrides(config: PkConfig): PkConfig {
   if (process.env.PK_API_URL) config.api.url = process.env.PK_API_URL;
   if (process.env.PK_API_SECRET) config.api.secret = process.env.PK_API_SECRET;
   if (process.env.PK_API_PORT) config.api.port = Number(process.env.PK_API_PORT);
+  if (process.env.PK_EMBEDDINGS) config.embeddings.provider = process.env.PK_EMBEDDINGS as PkConfig["embeddings"]["provider"];
+  if (process.env.PK_EMBED_MODEL) config.embeddings.model = process.env.PK_EMBED_MODEL;
+  if (process.env.PK_EMBED_URL) config.embeddings.url = process.env.PK_EMBED_URL;
+  if (process.env.PK_EMBED_API_KEY) config.embeddings.api_key = process.env.PK_EMBED_API_KEY;
+  if (process.env.PK_EMBED_DIMENSIONS) config.embeddings.dimensions = Number(process.env.PK_EMBED_DIMENSIONS);
   return config;
 }
 
