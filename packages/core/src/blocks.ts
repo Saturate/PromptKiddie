@@ -96,8 +96,23 @@ export const CRED_CRACK_BLOCK: BlockDef = {
   ],
 };
 
+export const LATERAL_MOVEMENT_BLOCK: BlockDef = {
+  name: "Lateral Movement",
+  description: "Multi-hop lateral movement: enumerate user context, identify trust boundaries, pivot, verify access, capture evidence. Repeat per hop.",
+  inputSchema: { host: "string", user: "string" },
+  outputSchema: { pivots: "string[]", flags: "string[]" },
+  nodes: [
+    { key: "lateral.enumerate", title: "Enumerate current user context", type: "judgment", description: "id, groups, sudo -l, cron, writable files, SSH keys, network connections, running processes. Map what this user can reach.", priority: 5 },
+    { key: "lateral.identify_boundary", title: "Identify trust boundary", type: "judgment", description: "Find the path to the next user or host: shared credentials, group membership, writable scripts/cron jobs, service configs, SSH keys, database access.", dependsOn: ["lateral.enumerate"], priority: 10 },
+    { key: "lateral.exploit_boundary", title: "Exploit trust boundary", type: "judgment", description: "Use the identified path to move to the next user or host. Search the knowledge base for specific techniques. Prefer the least destructive method.", dependsOn: ["lateral.identify_boundary"], priority: 15 },
+    { key: "lateral.verify_access", title: "Verify new access", type: "judgment", description: "Confirm access as the new user: id, whoami, read their files, check their privileges. If access failed, go back to identify_boundary.", dependsOn: ["lateral.exploit_boundary"], priority: 20 },
+    { key: "lateral.capture_evidence", title: "Capture evidence", type: "judgment", description: "Capture flag if present. Log credentials as artifacts. Record the pivot technique as a finding. Report the new user context to the orchestrator.", dependsOn: ["lateral.verify_access"], priority: 25 },
+  ],
+};
+
 export const BUILTIN_BLOCKS: BlockDef[] = [
   WEB_RECON_BLOCK,
   PRIVESC_BLOCK,
   CRED_CRACK_BLOCK,
+  LATERAL_MOVEMENT_BLOCK,
 ].map(withStartEnd);

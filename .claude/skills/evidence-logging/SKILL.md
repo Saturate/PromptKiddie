@@ -40,6 +40,18 @@ pk finding add --title "SQLi in /login" --severity high --cvss 8.1 \
   --desc "Boolean-based blind SQLi in username param"
 ```
 
+## Command execution
+
+All tool commands must run via `pk exec` to ensure they are logged and timestamped:
+
+    pk exec -- nmap -p- 10.10.10.5
+    pk exec --reason "checking for SQL injection" -- sqlmap -u "http://target/login"
+
+`pk exec` automatically logs the command to `activity_log`, truncates output >4KB (stores
+full output server-side), enforces timeouts, and enables `pk search` across stored outputs.
+
+Do not bypass `pk exec` even in automation or sub-agents.
+
 ## Rules
 
 - Capture evidence **at the moment of proof**, before you change anything.

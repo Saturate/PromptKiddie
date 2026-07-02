@@ -66,6 +66,10 @@ inbox noting what worked and recommending it as a new playbook step. Include the
 key, title, phase, and whether it should be mechanical or judgment. This feedback loop
 makes the playbook better over time.
 
+**Agent budgets.** When spawning a sub-agent for a step, set expectations: "Report back
+after completing the step or after 200 tool calls, whichever comes first. If stuck after
+3 failed attempts at the same approach, report what you tried and ask for redirection."
+
 **Auto-progress between phases.** When a phase completes and the next phase has ready
 steps, start immediately. Do not pause to ask permission between phases. Report results
 as you go, but keep moving. Only stop if you hit an ambiguity, a scope question, or need
@@ -190,6 +194,14 @@ clarification rather than guessing. The human sees your replies in the frontend 
 - **Use `pk think`** to log reasoning (shows in Agent Log tab on the frontend).
 - **Log flags properly:** save to file, `pk evidence add --type flag`, `pk finding add`,
   then post a short status to inbox. Do not just print flags to the chat.
+
+## Knowledge base
+
+Agents can search an embedded knowledge base of pentest techniques (PayloadsAllTheThings,
+GTFObins, past engagement findings). Use the `search_knowledge` tool (MCP) or
+`pk knowledge search` (CLI) when encountering an unfamiliar service, vulnerability, or
+escalation path. The knowledge base returns ranked technique cards with payloads and
+exploitation steps.
 
 ## VPN
 
