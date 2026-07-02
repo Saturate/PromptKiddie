@@ -29,7 +29,7 @@ export const KNOWLEDGE_SOURCES: KnowledgeSource[] = [
     name: "GTFObins",
     repo: "https://github.com/GTFOBins/GTFOBins.github.io",
     paths: ["_gtfobins"],
-    extensions: [".md"],
+    extensions: [],
     category: "privesc",
     chunkStrategy: "file",
     description: "Unix binary exploitation for sudo, SUID, capabilities, and shell escapes.",

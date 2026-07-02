@@ -109,7 +109,7 @@ export async function ingestDirectory(
     onProgress?: (file: string, chunks: number) => void;
   },
 ): Promise<IngestResult> {
-  const exts = opts.extensions ?? [".md", ".txt"];
+  const exts = opts.extensions?.length ? opts.extensions : null;
   const result: IngestResult = { files: 0, chunks: 0, skipped: 0, errors: [] };
 
   async function walk(dir: string) {
@@ -125,7 +125,7 @@ export async function ingestDirectory(
         continue;
       }
 
-      if (!exts.includes(extname(entry.name).toLowerCase())) {
+      if (exts && !exts.includes(extname(entry.name).toLowerCase())) {
         result.skipped++;
         continue;
       }

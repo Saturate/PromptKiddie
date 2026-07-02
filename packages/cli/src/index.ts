@@ -763,14 +763,13 @@ const knowledge = program.command("knowledge").description("Technique knowledge 
 
 knowledge
   .command("pull")
-  .description("Clone and ingest a registered knowledge source")
+  .description("Clone and ingest a registered knowledge source (clones inside Docker to avoid AV)")
   .argument("[source]", "Source name (PayloadsAllTheThings, GTFObins, HackTricks) or --all")
   .option("--all", "Pull all registered sources")
+  .option("--container <name>", "Docker container to clone inside", config.attackbox.container)
   .action(async (sourceName, o) => {
-    const { KNOWLEDGE_SOURCES, getKnowledgeSource, ingestDirectory, clearSource } = await import("@promptkiddie/core");
-    const { mkdtempSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const { tmpdir } = await import("node:os");
+    const { KNOWLEDGE_SOURCES, getKnowledgeSource, ingestDocument, clearSource } = await import("@promptkiddie/core");
+    const container = o.container;
 
     const sources = o.all ? KNOWLEDGE_SOURCES : sourceName ? [getKnowledgeSource(sourceName)].filter(Boolean) : [];
     if (sources.length === 0) {
@@ -778,14 +777,32 @@ knowledge
       process.exit(1);
     }
 
+    const dockerExec = (cmd: string): string => {
+      try {
+        return execFileSync("docker", ["exec", container, "sh", "-c", cmd], {
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 120000,
+        }).toString();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("stdout maxBuffer")) return "";
+        throw err;
+      }
+    };
+
     for (const src of sources) {
       if (!src) continue;
-      console.error(`[knowledge] Pulling ${src.name}...`);
-      const tmpDir = mkdtempSync(join(tmpdir(), "pk-knowledge-"));
+      const tmpDir = `/tmp/pk-kb-${src.name.toLowerCase().replace(/\s+/g, "-")}`;
+
+      console.error(`[knowledge] Cloning ${src.name} inside ${container}...`);
+      dockerExec(`rm -rf ${tmpDir}`);
       try {
-        execFileSync("git", ["clone", "--depth", "1", src.repo, tmpDir], { stdio: "pipe" });
+        execFileSync("docker", ["exec", container, "git", "clone", "--depth", "1", src.repo, tmpDir], {
+          stdio: ["pipe", "pipe", "pipe"],
+          timeout: 120000,
+        });
       } catch (err) {
-        console.error(`[knowledge] Failed to clone ${src.repo}: ${err instanceof Error ? err.message : err}`);
+        console.error(`[knowledge] Failed to clone: ${err instanceof Error ? err.message : err}`);
         continue;
       }
 
@@ -793,20 +810,43 @@ knowledge
       const cleared = await clearSource(src.name);
       if (cleared > 0) console.error(`[knowledge] Removed ${cleared} old chunks`);
 
+      let totalFiles = 0;
+      let totalChunks = 0;
+      let errors = 0;
+
       for (const subPath of src.paths) {
-        const ingestPath = subPath === "." ? tmpDir : join(tmpDir, subPath);
-        console.error(`[knowledge] Ingesting ${ingestPath}...`);
-        const result = await ingestDirectory(ingestPath, {
-          source: src.name,
-          extensions: src.extensions,
-          chunkStrategy: src.chunkStrategy,
-          onProgress: (file, chunks) => console.error(`  ${file} (${chunks} chunks)`),
-        });
-        console.error(`[knowledge] ${src.name}: ${result.files} files, ${result.chunks} chunks, ${result.skipped} skipped`);
-        if (result.errors.length > 0) {
-          result.errors.forEach((e) => console.error(`  ERROR: ${e}`));
+        const ingestDir = subPath === "." ? tmpDir : `${tmpDir}/${subPath}`;
+        const extArgs = src.extensions.map((e) => `-name "*${e}"`).join(" -o ");
+        const findCmd = extArgs
+          ? `find ${ingestDir} -type f \\( ${extArgs} \\) 2>/dev/null`
+          : `find ${ingestDir} -type f -not -name ".*" 2>/dev/null`;
+
+        const fileList = dockerExec(findCmd).trim().split("\n").filter(Boolean);
+        console.error(`[knowledge] Found ${fileList.length} files in ${subPath}`);
+
+        for (const filePath of fileList) {
+          try {
+            const content = dockerExec(`cat "${filePath}"`);
+            if (content.trim().length < 50) continue;
+
+            const relPath = filePath.replace(tmpDir + "/", "");
+            const chunks = await ingestDocument(content, {
+              source: src.name,
+              category: relPath.split("/")[0],
+              path: relPath,
+            }, src.chunkStrategy);
+
+            totalFiles++;
+            totalChunks += chunks;
+            if (totalFiles % 20 === 0) console.error(`  ${totalFiles} files, ${totalChunks} chunks...`);
+          } catch {
+            errors++;
+          }
         }
       }
+
+      dockerExec(`rm -rf ${tmpDir}`);
+      console.error(`[knowledge] ${src.name}: ${totalFiles} files, ${totalChunks} chunks, ${errors} errors`);
     }
   });
 
