@@ -99,11 +99,53 @@ class OpenAICompatibleProvider implements EmbeddingProvider {
   }
 }
 
+class OnnxProvider implements EmbeddingProvider {
+  readonly name = "onnx";
+  private cachedDimensions = 384;
+  private pipeline: unknown = null;
+  private loading: Promise<unknown> | null = null;
+  private readonly model: string;
+
+  constructor(model?: string) {
+    this.model = model ?? process.env.PK_EMBED_MODEL ?? "Xenova/all-MiniLM-L6-v2";
+  }
+
+  get dimensions(): number {
+    return this.cachedDimensions;
+  }
+
+  private async getPipeline() {
+    if (this.pipeline) return this.pipeline;
+    if (this.loading) return this.loading;
+
+    this.loading = (async () => {
+      const { pipeline, env } = await import("@huggingface/transformers");
+      env.allowLocalModels = true;
+      env.useBrowserCache = false;
+      const pipe = await pipeline("feature-extraction", this.model, {
+        dtype: "fp32",
+      });
+      this.pipeline = pipe;
+      return pipe;
+    })();
+
+    return this.loading;
+  }
+
+  async embed(text: string): Promise<number[]> {
+    const pipe = await this.getPipeline() as (input: string, opts: Record<string, unknown>) => Promise<{ tolist: () => number[][] }>;
+    const output = await pipe(text, { pooling: "mean", normalize: true });
+    const vector = output.tolist()[0];
+    this.cachedDimensions = vector.length;
+    return vector;
+  }
+}
+
 let provider: EmbeddingProvider | null = null;
 
 export function getEmbeddingProvider(): EmbeddingProvider {
   if (!provider) {
-    const backend = process.env.PK_EMBEDDINGS ?? "ollama";
+    const backend = process.env.PK_EMBEDDINGS ?? "onnx";
     switch (backend) {
       case "openai":
         provider = new OpenAICompatibleProvider();
@@ -115,8 +157,11 @@ export function getEmbeddingProvider(): EmbeddingProvider {
           model: "default",
         });
         break;
-      default:
+      case "ollama":
         provider = new OllamaProvider();
+        break;
+      default:
+        provider = new OnnxProvider();
         break;
     }
   }

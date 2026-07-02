@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
   source_type text NOT NULL, -- 'finding' | 'exec_output' | 'activity' | 'brief'
   source_id uuid, -- optional FK to the source row
   content text NOT NULL, -- the text that was embedded
-  embedding vector(768), -- nomic-embed-text default; 1536 for OpenAI text-embedding-3-small
+  embedding vector(384), -- all-MiniLM-L6-v2 (ONNX default); set PK_EMBEDDINGS=ollama for 768-dim nomic-embed-text
   metadata jsonb DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now()
 );

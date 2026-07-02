@@ -13,6 +13,7 @@
     "build": "tsc --build"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.2.0",
     "dotenv": "^16.4.0",
     "drizzle-orm": "^0.38.0",
     "pg": "^8.13.0"
