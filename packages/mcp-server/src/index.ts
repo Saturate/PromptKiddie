@@ -380,6 +380,24 @@ server.tool(
   async ({ engagementId }) => json(await repo.listActivity(engagementId)),
 );
 
+// --- Knowledge base --------------------------------------------------------
+
+server.tool(
+  "search_knowledge",
+  "Search the technique knowledge base (PayloadsAllTheThings, GTFObins, past findings). Use when you encounter a service, vulnerability, or escalation path and need exploitation techniques or payloads.",
+  {
+    query: z.string().describe("Search query, e.g. 'sudo less privilege escalation' or 'SSTI Jinja2'"),
+    limit: z.number().optional().describe("Max results (default 5)"),
+    source: z.string().optional().describe("Filter by source: PayloadsAllTheThings, GTFObins, etc."),
+    mode: z.enum(["hybrid", "vector", "keyword"]).optional().describe("Search mode (default hybrid)"),
+  },
+  async ({ query, limit, source, mode }) => {
+    const { searchKnowledge } = await import("@promptkiddie/core");
+    const results = await searchKnowledge(query, { limit, source, mode });
+    return json(results);
+  },
+);
+
 // --- Agent runs ------------------------------------------------------------
 
 server.tool(

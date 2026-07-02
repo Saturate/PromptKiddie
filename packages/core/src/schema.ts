@@ -467,6 +467,7 @@ export const embeddingSourceType = pgEnum("embedding_source_type", [
   "exec_output",
   "activity",
   "brief",
+  "knowledge",
 ]);
 
 /** Vector embeddings for semantic search across engagements (requires pgvector). */

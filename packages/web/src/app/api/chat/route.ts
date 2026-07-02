@@ -280,6 +280,19 @@ const pkTools = {
     }),
     execute: async ({ engagementId, stepKey, reason }) => skipStep(engagementId, stepKey, reason),
   }),
+  searchKnowledge: tool({
+    description: 'Search the technique knowledge base for exploitation techniques, payloads, and privesc methods. Use when you encounter a vulnerability or service and need specific attack guidance.',
+    inputSchema: z.object({
+      query: z.string().describe("Search query, e.g. 'sudo less privilege escalation'"),
+      limit: z.number().optional().describe("Max results (default 5)"),
+      source: z.string().optional().describe("Filter by source"),
+      mode: z.enum(["hybrid", "vector", "keyword"]).optional(),
+    }),
+    execute: async ({ query, limit, source, mode }) => {
+      const { searchKnowledge: search } = await import("@promptkiddie/core");
+      return search(query, { limit, source, mode });
+    },
+  }),
   addFinding: tool({
     description: 'Add a finding. Include exploit_scenario and source/sink refs when possible. Example: {"engagementId": "uuid", "title": "SQL Injection on /login", "severity": "high", "exploitScenario": "POST user=admin\' OR 1=1-- to /login bypasses auth", "sourceRef": "/login POST parameter", "sinkRef": "SQL query in auth.py:42", "confidence": 0.9}',
     inputSchema: z.object({
