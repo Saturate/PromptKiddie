@@ -4,6 +4,8 @@ import {
   ReactFlow,
   Background,
   Controls,
+  useReactFlow,
+  useNodesInitialized,
   type Node,
   type Edge,
   BackgroundVariant,
@@ -13,7 +15,49 @@ import { StepNode, type StepNodeData } from "./step-node";
 import { MetaNode, type MetaNodeData } from "./meta-node";
 import { ControlNode, type ControlNodeData } from "./control-node";
 import { layoutGraph } from "./layout";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+
+const PHASE_ORDER = ["scoping", "recon", "enum", "exploit", "postexploit", "report"];
+
+/**
+ * The nodes to zoom in on by default: whatever is actively in play. Running steps
+ * take precedence; otherwise the not-yet-done steps of the earliest incomplete
+ * phase. Empty (e.g. a finished engagement) means "show everything".
+ */
+function focusStepIds(steps: StepRow[]): string[] {
+  const running = steps.filter((s) => s.status === "running");
+  if (running.length > 0) return running.map((s) => s.id);
+
+  const incomplete = steps.filter((s) => s.status !== "done" && s.status !== "skipped");
+  if (incomplete.length === 0) return [];
+
+  const currentPhase =
+    PHASE_ORDER.find((p) => incomplete.some((s) => s.phase === p)) ?? incomplete[0].phase;
+  return incomplete.filter((s) => s.phase === currentPhase).map((s) => s.id);
+}
+
+/**
+ * Zooms to the focus nodes once per distinct focus target. Keyed on focusKey so
+ * the 5s AutoRefresh (which re-renders with fresh step data) doesn't fight a user
+ * who has panned/zoomed manually; it only re-frames when the active step changes.
+ */
+function FocusController({ focusIds, focusKey }: { focusIds: string[]; focusKey: string }) {
+  const { fitView } = useReactFlow();
+  const initialized = useNodesInitialized();
+  const lastKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!initialized || lastKey.current === focusKey) return;
+    lastKey.current = focusKey;
+    if (focusIds.length > 0) {
+      fitView({ nodes: focusIds.map((id) => ({ id })), maxZoom: 1, padding: 0.5, duration: 400 });
+    } else {
+      fitView({ maxZoom: 0.9, padding: 0.15, duration: 400 });
+    }
+  }, [initialized, focusKey, focusIds, fitView]);
+
+  return null;
+}
 
 interface StepRow {
   id: string;
@@ -109,6 +153,8 @@ function buildGraph(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
 
 export function PlaybookGraph({ steps, className }: PlaybookGraphProps) {
   const { nodes, edges } = useMemo(() => buildGraph(steps), [steps]);
+  const focusIds = useMemo(() => focusStepIds(steps), [steps]);
+  const focusKey = useMemo(() => [...focusIds].sort().join(","), [focusIds]);
 
   return (
     <div className={`w-full h-[500px] rounded-lg border border-border bg-background ${className ?? ""}`}>
@@ -116,11 +162,11 @@ export function PlaybookGraph({ steps, className }: PlaybookGraphProps) {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        fitView
         minZoom={0.2}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}
       >
+        <FocusController focusIds={focusIds} focusKey={focusKey} />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#232a3f" />
         <Controls className="!bg-card !border-border !rounded-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-muted-foreground" />
       </ReactFlow>
