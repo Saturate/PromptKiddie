@@ -9,6 +9,16 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pk-exec-check.sh"
+          }
+        ]
+      }
     ]
   }
 }
