@@ -36,8 +36,10 @@ fi
 
 # Build and run migrations so pk + schema are ready.
 if command -v pnpm >/dev/null 2>&1; then
-  pnpm build --silent 2>/dev/null || true
-  pnpm db:migrate --silent 2>/dev/null \
+  # --silent must precede the script name; pnpm forwards trailing args to the
+  # underlying command (tsc/drizzle-kit), which reject an unknown --silent flag.
+  pnpm --silent build 2>/dev/null || true
+  pnpm --silent db:migrate 2>/dev/null \
     && echo "[promptkiddie] migrations applied" \
     || true
   # Apply custom migrations (LISTEN/NOTIFY triggers etc.)
