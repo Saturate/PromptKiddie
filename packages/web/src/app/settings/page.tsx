@@ -236,6 +236,140 @@ function chatSettingsToPayload(s: ChatSettings): Record<string, unknown> {
   };
 }
 
+// --- Embeddings configuration ----------------------------------------------
+
+type EmbedProvider = "onnx" | "ollama" | "openai" | "llamacpp";
+
+const EMBED_MODELS: Record<EmbedProvider, { model: string; dims: number }> = {
+  onnx:    { model: "Xenova/all-MiniLM-L6-v2", dims: 384 },
+  ollama:  { model: "nomic-embed-text", dims: 768 },
+  openai:  { model: "text-embedding-3-small", dims: 1536 },
+  llamacpp: { model: "default", dims: 768 },
+};
+
+function EmbeddingsSettings() {
+  const [embedProvider, setEmbedProvider] = useState<EmbedProvider>("onnx");
+  const [embedModel, setEmbedModel] = useState("");
+  const [embedUrl, setEmbedUrl] = useState("");
+  const [embedDims, setEmbedDims] = useState(384);
+  const [embedApiKey, setEmbedApiKey] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => {
+        if (s["embeddings.provider"]) setEmbedProvider(s["embeddings.provider"] as EmbedProvider);
+        if (s["embeddings.model"]) setEmbedModel(s["embeddings.model"] as string);
+        if (s["embeddings.url"]) setEmbedUrl(s["embeddings.url"] as string);
+        if (s["embeddings.dimensions"]) setEmbedDims(Number(s["embeddings.dimensions"]));
+        if (s["embeddings.api_key"]) setEmbedApiKey("••••••••");
+      })
+      .catch(() => {});
+  }, []);
+
+  function switchProvider(p: EmbedProvider) {
+    setEmbedProvider(p);
+    const defaults = EMBED_MODELS[p];
+    setEmbedModel(defaults.model);
+    setEmbedDims(defaults.dims);
+    if (p === "onnx") setEmbedUrl("");
+  }
+
+  async function save() {
+    setSaving(true);
+    const body: Record<string, unknown> = {
+      "embeddings.provider": embedProvider,
+      "embeddings.model": embedModel,
+      "embeddings.url": embedUrl,
+      "embeddings.dimensions": embedDims,
+    };
+    if (embedApiKey && !embedApiKey.startsWith("••")) {
+      body["embeddings.api_key"] = embedApiKey;
+    }
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    setSaving(false);
+    toast.success("Embedding config saved");
+  }
+
+  return (
+    <>
+      <div className="space-y-2">
+        <Label className="font-mono text-xs uppercase tracking-wider">Provider</Label>
+        <ToggleGroup
+          options={[
+            { label: "ONNX (local)", value: "onnx" },
+            { label: "Ollama", value: "ollama" },
+            { label: "OpenAI", value: "openai" },
+            { label: "LlamaCpp", value: "llamacpp" },
+          ]}
+          value={embedProvider}
+          onChange={(v) => switchProvider(v as EmbedProvider)}
+        />
+        <p className="text-[11px] text-muted-foreground font-mono">
+          ONNX runs in-process on CPU, no server needed. Others require an endpoint.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="font-mono text-xs uppercase tracking-wider">Model</Label>
+        <Input
+          value={embedModel}
+          onChange={(e) => setEmbedModel(e.target.value)}
+          placeholder={EMBED_MODELS[embedProvider].model}
+          className="font-mono text-sm"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="font-mono text-xs uppercase tracking-wider">Dimensions</Label>
+          <Input
+            type="number"
+            value={embedDims}
+            onChange={(e) => setEmbedDims(Number(e.target.value))}
+            className="font-mono text-sm"
+          />
+        </div>
+        {embedProvider !== "onnx" && (
+          <div className="space-y-2">
+            <Label className="font-mono text-xs uppercase tracking-wider">URL</Label>
+            <Input
+              value={embedUrl}
+              onChange={(e) => setEmbedUrl(e.target.value)}
+              placeholder={embedProvider === "ollama" ? "http://localhost:11434" : "http://localhost:8080/v1"}
+              className="font-mono text-sm"
+            />
+          </div>
+        )}
+      </div>
+
+      {embedProvider === "openai" && (
+        <div className="space-y-2">
+          <Label className="font-mono text-xs uppercase tracking-wider">API Key</Label>
+          <Input
+            value={embedApiKey}
+            onChange={(e) => setEmbedApiKey(e.target.value)}
+            type="password"
+            placeholder="sk-..."
+            className="font-mono text-sm"
+          />
+        </div>
+      )}
+
+      <div className="pt-2">
+        <Button onClick={save} disabled={saving} className="font-mono text-sm">
+          {saving ? "Saving..." : "Save"}
+        </Button>
+      </div>
+    </>
+  );
+}
+
 // --- Page component --------------------------------------------------------
 
 export default function SettingsPage() {
@@ -521,6 +655,19 @@ pk engagement show   # get full context`}
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Embeddings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-mono">Embeddings / Knowledge Base</CardTitle>
+          <CardDescription className="text-xs font-mono">
+            Configure the embedding model for the knowledge base (technique search). ONNX runs locally on CPU. Use Ollama or OpenAI for higher-dimensional models.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <EmbeddingsSettings />
         </CardContent>
       </Card>
 
