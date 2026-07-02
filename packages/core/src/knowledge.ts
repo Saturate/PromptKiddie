@@ -179,10 +179,10 @@ export async function searchKnowledge(
   if (mode === "keyword") {
     const rows = await db.execute(sql`
       SELECT id, content, metadata,
-        ts_rank(tsv, plainto_tsquery('english', ${query})) AS score
+        ts_rank(tsv, websearch_to_tsquery('english', ${query})) AS score
       FROM embeddings
       WHERE source_type = 'knowledge'
-        AND tsv @@ plainto_tsquery('english', ${query})
+        AND tsv @@ websearch_to_tsquery('english', ${query})
         ${sourceFilter}
       ORDER BY score DESC
       LIMIT ${limit}
@@ -199,9 +199,16 @@ export async function searchKnowledge(
     }));
   }
 
-  const provider = getEmbeddingProvider();
-  const queryVector = await provider.embed(query);
-  const vectorStr = `[${queryVector.join(",")}]`;
+  let queryVector: number[] | null = null;
+  let vectorStr = "";
+  try {
+    const provider = getEmbeddingProvider();
+    queryVector = await provider.embed(query);
+    vectorStr = `[${queryVector.join(",")}]`;
+  } catch {
+    if (mode === "vector") return [];
+    // hybrid falls back to keyword-only
+  }
 
   if (mode === "vector") {
     const rows = await db.execute(sql`
@@ -226,26 +233,28 @@ export async function searchKnowledge(
     }));
   }
 
-  // Hybrid: Reciprocal Rank Fusion (RRF)
+  // Hybrid: Reciprocal Rank Fusion (RRF), falls back to keyword-only
   const k = 60;
 
-  const vectorRows = await db.execute(sql`
-    SELECT id, content, metadata,
-      1 - (embedding <=> ${vectorStr}::vector) AS score
-    FROM embeddings
-    WHERE source_type = 'knowledge'
-      AND embedding IS NOT NULL
-      ${sourceFilter}
-    ORDER BY embedding <=> ${vectorStr}::vector
-    LIMIT ${limit * 2}
-  `);
+  const vectorRows = queryVector
+    ? await db.execute(sql`
+        SELECT id, content, metadata,
+          1 - (embedding <=> ${vectorStr}::vector) AS score
+        FROM embeddings
+        WHERE source_type = 'knowledge'
+          AND embedding IS NOT NULL
+          ${sourceFilter}
+        ORDER BY embedding <=> ${vectorStr}::vector
+        LIMIT ${limit * 2}
+      `)
+    : { rows: [] };
 
   const keywordRows = await db.execute(sql`
     SELECT id, content, metadata,
-      ts_rank(tsv, plainto_tsquery('english', ${query})) AS score
+      ts_rank(tsv, websearch_to_tsquery('english', ${query})) AS score
     FROM embeddings
     WHERE source_type = 'knowledge'
-      AND tsv @@ plainto_tsquery('english', ${query})
+      AND tsv @@ websearch_to_tsquery('english', ${query})
       ${sourceFilter}
     ORDER BY score DESC
     LIMIT ${limit * 2}
