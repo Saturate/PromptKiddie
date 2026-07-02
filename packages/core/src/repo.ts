@@ -523,13 +523,14 @@ export async function listEvidence(engagementId: string) {
     .orderBy(desc(evidence.capturedAt));
 }
 
-export async function listActivity(engagementId: string) {
+export async function listActivity(engagementId: string, limit?: number) {
   const db = getDb();
-  return db
+  const q = db
     .select()
     .from(activityLog)
     .where(eq(activityLog.engagementId, engagementId))
     .orderBy(desc(activityLog.createdAt));
+  return limit ? q.limit(limit) : q;
 }
 
 export async function deleteEngagement(id: string) {

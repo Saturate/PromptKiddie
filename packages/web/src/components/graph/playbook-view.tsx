@@ -26,7 +26,8 @@ export function PlaybookView({ steps }: { steps: Step[] }) {
   const doneCount = steps.filter((s) => s.status === "done").length;
   const skippedCount = steps.filter((s) => s.status === "skipped").length;
   const totalCount = steps.length;
-  const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+  const completedCount = doneCount + skippedCount;
+  const pct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
   const currentPhase = phases.find((p) => steps.some((s) => s.phase === p && s.status !== "done" && s.status !== "skipped")) ?? phases[0];
 
   const PHASE_COLORS: Record<string, string> = {
@@ -42,7 +43,7 @@ export function PlaybookView({ steps }: { steps: Step[] }) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-mono font-semibold">
-            Playbook <span className="text-muted-foreground">({doneCount}/{totalCount} done{skippedCount ? `, ${skippedCount} skipped` : ""})</span>
+            Playbook <span className="text-muted-foreground">({completedCount}/{totalCount} complete{skippedCount ? ` (${skippedCount} skipped)` : ""})</span>
           </span>
           <span className="font-mono text-xs text-pk-amber font-bold">{pct}%</span>
         </div>

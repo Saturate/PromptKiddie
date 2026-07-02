@@ -77,16 +77,20 @@ export default async function EngagementPage({
   const engagement = await getEngagement(id);
   if (!engagement) notFound();
 
+  const DISPLAY_LIMIT = 50;
   const [targets, findings, activity, evidence, agentRuns, objectives, agentLogEntries, steps] = await Promise.all([
     listTargets(id),
     listFindings(id),
-    listActivity(id),
+    listActivity(id, DISPLAY_LIMIT),
     listEvidence(id),
     listAgentRuns(id),
     listObjectives(id),
     listAgentLog(id),
     listEngagementSteps(id),
   ]);
+
+  const activityTotal = activity.length >= DISPLAY_LIMIT ? `${DISPLAY_LIMIT}+` : activity.length;
+  const evidenceTotal = evidence.length;
 
   const hasRunningAgent = agentRuns.some((r) => r.status === "running");
 
@@ -438,7 +442,7 @@ export default async function EngagementPage({
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-mono">
-              Activity Log <span className="text-muted-foreground">({activity.length})</span>
+              Activity Log <span className="text-muted-foreground">({activityTotal})</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -539,7 +543,7 @@ export default async function EngagementPage({
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-mono">
-              Evidence <span className="text-muted-foreground">({evidence.length})</span>
+              Evidence <span className="text-muted-foreground">({evidenceTotal})</span>
             </CardTitle>
           </CardHeader>
           <CardContent>

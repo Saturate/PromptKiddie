@@ -141,7 +141,7 @@ export function getProgress(state: GraphState) {
     complete: isPhaseComplete(state, p),
   }));
 
-  return { total, done, skipped, running, pending, ready, totalCost, pct: Math.round((done / total) * 100), phaseProgress };
+  return { total, done, skipped, running, pending, ready, totalCost, pct: Math.round(((done + skipped) / total) * 100), phaseProgress };
 }
 
 /**
