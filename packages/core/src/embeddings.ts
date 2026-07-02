@@ -114,7 +114,8 @@ class OnnxProvider implements EmbeddingProvider {
     if (this.loading) return this.loading;
 
     this.loading = (async () => {
-      const { pipeline, env } = await import("@huggingface/transformers");
+      const mod = "@huggingface/transformers";
+      const { pipeline, env } = await (Function('return import("' + mod + '")')() as Promise<typeof import("@huggingface/transformers")>);
       env.allowLocalModels = true;
       env.useBrowserCache = false;
       const pipe = await pipeline("feature-extraction", this.model, {
