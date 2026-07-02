@@ -25,6 +25,7 @@ import {
   MessageSquareIcon,
   WrenchIcon,
   ListChecksIcon,
+  SearchIcon,
 } from "lucide-react"
 
 const navMain = [
@@ -56,6 +57,11 @@ const navMain = [
 ]
 
 const navSecondary = [
+  {
+    title: "Knowledge",
+    url: "/knowledge",
+    icon: <SearchIcon />,
+  },
   {
     title: "Playbooks",
     url: "/settings/playbooks",
