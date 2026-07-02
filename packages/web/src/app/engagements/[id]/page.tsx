@@ -173,14 +173,17 @@ export default async function EngagementPage({
       {steps.length > 0 && (
         <Card>
           <CardContent className="pt-4">
-            <PlaybookView steps={steps.map((s) => ({
-              ...s,
-              dependsOn: s.dependsOn ?? [],
-              nodeType: s.nodeType ?? "action",
-              priority: s.priority ?? 50,
-              positionX: s.positionX ?? 0,
-              positionY: s.positionY ?? 0,
-            }))} />
+            <PlaybookView
+              defaultCollapsed={engagement.status === "done"}
+              steps={steps.map((s) => ({
+                ...s,
+                dependsOn: s.dependsOn ?? [],
+                nodeType: s.nodeType ?? "action",
+                priority: s.priority ?? 50,
+                positionX: s.positionX ?? 0,
+                positionY: s.positionY ?? 0,
+              }))}
+            />
           </CardContent>
         </Card>
       )}
