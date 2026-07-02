@@ -21,6 +21,7 @@ import {
   playbookToMermaid,
   updatePlaybook,
 } from "@promptkiddie/core";
+import { execFileSync } from "node:child_process";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
 const config = loadConfig();
@@ -755,6 +756,126 @@ events
 
     // Keep process alive
     await new Promise(() => {});
+  });
+
+// --- knowledge (RAG technique search) --------------------------------------
+const knowledge = program.command("knowledge").description("Technique knowledge base (vector + keyword search)");
+
+knowledge
+  .command("pull")
+  .description("Clone and ingest a registered knowledge source")
+  .argument("[source]", "Source name (PayloadsAllTheThings, GTFObins, HackTricks) or --all")
+  .option("--all", "Pull all registered sources")
+  .action(async (sourceName, o) => {
+    const { KNOWLEDGE_SOURCES, getKnowledgeSource, ingestDirectory, clearSource } = await import("@promptkiddie/core");
+    const { mkdtempSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+
+    const sources = o.all ? KNOWLEDGE_SOURCES : sourceName ? [getKnowledgeSource(sourceName)].filter(Boolean) : [];
+    if (sources.length === 0) {
+      console.error("Available sources:", KNOWLEDGE_SOURCES.map((s) => s.name).join(", "));
+      process.exit(1);
+    }
+
+    for (const src of sources) {
+      if (!src) continue;
+      console.error(`[knowledge] Pulling ${src.name}...`);
+      const tmpDir = mkdtempSync(join(tmpdir(), "pk-knowledge-"));
+      try {
+        execFileSync("git", ["clone", "--depth", "1", src.repo, tmpDir], { stdio: "pipe" });
+      } catch (err) {
+        console.error(`[knowledge] Failed to clone ${src.repo}: ${err instanceof Error ? err.message : err}`);
+        continue;
+      }
+
+      console.error(`[knowledge] Clearing old ${src.name} chunks...`);
+      const cleared = await clearSource(src.name);
+      if (cleared > 0) console.error(`[knowledge] Removed ${cleared} old chunks`);
+
+      for (const subPath of src.paths) {
+        const ingestPath = subPath === "." ? tmpDir : join(tmpDir, subPath);
+        console.error(`[knowledge] Ingesting ${ingestPath}...`);
+        const result = await ingestDirectory(ingestPath, {
+          source: src.name,
+          extensions: src.extensions,
+          chunkStrategy: src.chunkStrategy,
+          onProgress: (file, chunks) => console.error(`  ${file} (${chunks} chunks)`),
+        });
+        console.error(`[knowledge] ${src.name}: ${result.files} files, ${result.chunks} chunks, ${result.skipped} skipped`);
+        if (result.errors.length > 0) {
+          result.errors.forEach((e) => console.error(`  ERROR: ${e}`));
+        }
+      }
+    }
+  });
+
+knowledge
+  .command("ingest")
+  .description("Ingest an arbitrary directory of technique docs")
+  .argument("<path>", "Directory to ingest")
+  .requiredOption("--source <name>", "Source name for tracking")
+  .option("--strategy <s>", "Chunk strategy: heading, file, fixed", "heading")
+  .option("--ext <exts>", "File extensions (comma-separated)", ".md,.txt")
+  .action(async (dirPath, o) => {
+    const { ingestDirectory } = await import("@promptkiddie/core");
+    const result = await ingestDirectory(dirPath, {
+      source: o.source,
+      extensions: o.ext.split(","),
+      chunkStrategy: o.strategy,
+      onProgress: (file, chunks) => console.error(`  ${file} (${chunks} chunks)`),
+    });
+    console.error(`Ingested: ${result.files} files, ${result.chunks} chunks, ${result.skipped} skipped`);
+    if (result.errors.length > 0) result.errors.forEach((e) => console.error(`  ERROR: ${e}`));
+  });
+
+knowledge
+  .command("search")
+  .description("Search the knowledge base")
+  .argument("<query>", "Search query")
+  .option("--limit <n>", "Max results", "5")
+  .option("--mode <m>", "Search mode: hybrid, vector, keyword", "hybrid")
+  .option("--source <s>", "Filter by source name")
+  .action(async (query, o) => {
+    const { searchKnowledge } = await import("@promptkiddie/core");
+    const results = await searchKnowledge(query, {
+      limit: parseInt(o.limit, 10),
+      mode: o.mode,
+      source: o.source,
+    });
+    if (results.length === 0) {
+      console.log("No results found.");
+      return;
+    }
+    for (const r of results) {
+      console.log(`\n--- ${r.source}${r.path ? ` / ${r.path}` : ""} (${r.matchType}, score: ${r.score.toFixed(4)}) ---`);
+      console.log(r.content.slice(0, 500) + (r.content.length > 500 ? "\n..." : ""));
+    }
+  });
+
+knowledge
+  .command("sources")
+  .description("List ingested knowledge sources with chunk counts")
+  .action(async () => {
+    const { listSources } = await import("@promptkiddie/core");
+    const sources = await listSources();
+    if (sources.length === 0) {
+      console.log("No sources ingested. Run: pk knowledge pull --all");
+      return;
+    }
+    for (const s of sources) {
+      console.log(`${s.source}: ${s.chunks} chunks (last updated ${s.lastIngested.toISOString().split("T")[0]})`);
+    }
+  });
+
+knowledge
+  .command("clear")
+  .description("Remove all chunks from a source")
+  .requiredOption("--source <name>", "Source name to clear")
+  .action(async (o) => {
+    const { clearSource } = await import("@promptkiddie/core");
+    const count = await clearSource(o.source);
+    console.log(`Cleared ${count} chunks from ${o.source}`);
   });
 
 // --- exec (run command + auto-log) -----------------------------------------
