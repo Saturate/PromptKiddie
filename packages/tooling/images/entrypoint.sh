@@ -11,8 +11,9 @@ if [ -f "/etc/pk-motd.sh" ]; then
     sh /etc/pk-motd.sh
 fi
 
-if [ -f /vpn/config.ovpn ]; then
-    echo "  VPN config found at /vpn/config.ovpn"
+VPN_COUNT=$(find /vpn -maxdepth 1 -name '*.ovpn' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$VPN_COUNT" -gt 0 ]; then
+    echo "  $VPN_COUNT VPN profile(s) available: pk vpn up [name]"
 fi
 
 exec sleep infinity

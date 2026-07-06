@@ -5,7 +5,9 @@
  */
 import "dotenv/config";
 import { Command } from "commander";
-import { readFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFileSync, existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import {
   addEvidence,
   closeDb,
@@ -607,33 +609,78 @@ program
     }));
   });
 
-// --- vpn (manage VPN in tooling container) ---------------------------------
-const vpn = program.command("vpn").description("Manage VPN in the tooling container");
+// --- vpn (manage VPN profiles in tooling container) -------------------------
+const vpn = program.command("vpn").description("Manage VPN profiles in the tooling container");
 
-vpn
-  .command("up")
-  .description("Start OpenVPN in the tooling container")
-  .option("--config <path>", "config file path inside container", "/vpn/config.ovpn")
-  .action(async (o) => {
-    const { execFile: exec } = await import("node:child_process");
-    const container = config.attackbox.container;
-
-    const run = (args: string[]) => new Promise<string>((resolve, reject) => {
-      exec("docker", ["exec", container, ...args], { timeout: 30000 }, (err, stdout) => {
+function dockerExec(container: string) {
+  return async (args: string[], timeout = 30000) => {
+    const { execFile } = await import("node:child_process");
+    return new Promise<string>((resolve, reject) => {
+      execFile("docker", ["exec", container, ...args], { timeout }, (err, stdout) => {
         if (err) reject(err);
         else resolve(stdout);
       });
     });
+  };
+}
 
-    console.error("[vpn] Starting OpenVPN...");
-    await run(["openvpn", "--config", o.config, "--daemon", "--log", "/var/log/openvpn.log"]);
+function listProfiles(): string[] {
+  const vpnDir = config.vpn.config_path;
+  try {
+    return readdirSync(vpnDir)
+      .filter((f) => f.endsWith(".ovpn"))
+      .map((f) => f.replace(/\.ovpn$/, ""));
+  } catch {
+    return [];
+  }
+}
+
+vpn
+  .command("up")
+  .description("Connect a VPN profile (auto-selects if only one exists)")
+  .argument("[name]", "profile name (filename without .ovpn)")
+  .action(async (name?: string) => {
+    const profiles = listProfiles();
+
+    if (profiles.length === 0) {
+      console.error("[vpn] No .ovpn files found in " + config.vpn.config_path + "/");
+      console.error("[vpn] Add one with: pk vpn add <name> /path/to/config.ovpn");
+      process.exit(1);
+    }
+
+    if (!name) {
+      if (profiles.length === 1) {
+        name = profiles[0];
+      } else {
+        console.error("[vpn] Multiple profiles found. Specify one:");
+        for (const p of profiles) console.error(`  pk vpn up ${p}`);
+        process.exit(1);
+      }
+    }
+
+    if (!profiles.includes(name)) {
+      console.error(`[vpn] Profile "${name}" not found. Available: ${profiles.join(", ")}`);
+      process.exit(1);
+    }
+
+    const container = config.attackbox.container;
+    const run = dockerExec(container);
+
+    // Kill any running VPN first
+    try { await run(["pkill", "-9", "openvpn"]); } catch {}
+    await new Promise((r) => setTimeout(r, 500));
+
+    const configPath = `/vpn/${name}.ovpn`;
+    console.error(`[vpn] Connecting profile "${name}"...`);
+    await run(["openvpn", "--config", configPath, "--daemon", "--log", "/var/log/openvpn.log"]);
+    await run(["sh", "-c", `echo "${name}" > /tmp/.pk-vpn-profile`]);
 
     for (let i = 0; i < 30; i++) {
       try {
         const out = await run(["ip", "-4", "addr", "show", "tun0"]);
         const match = out.match(/inet ([\d.]+)/);
         if (match) {
-          console.error(`[vpn] Connected: tun0 = ${match[1]}`);
+          console.error(`[vpn] Connected: tun0 = ${match[1]} [${name}]`);
           return;
         }
       } catch {}
@@ -644,29 +691,72 @@ vpn
 
 vpn
   .command("down")
-  .description("Stop OpenVPN in the tooling container")
+  .description("Disconnect the active VPN")
   .action(async () => {
-    const { execFile: exec } = await import("node:child_process");
     const container = config.attackbox.container;
-    exec("docker", ["exec", container, "killall", "openvpn"], (err) => {
-      if (err) console.error("[vpn] OpenVPN not running or kill failed");
-      else console.error("[vpn] Stopped");
-    });
+    const run = dockerExec(container);
+    try {
+      await run(["pkill", "-9", "openvpn"]);
+      try { await run(["rm", "-f", "/tmp/.pk-vpn-profile"]); } catch {}
+      console.error("[vpn] Stopped");
+    } catch {
+      console.error("[vpn] OpenVPN not running or kill failed");
+    }
   });
 
 vpn
   .command("status")
-  .description("Check VPN status in the tooling container")
+  .description("Show active VPN connection and profile")
   .action(async () => {
-    const { execFile: exec } = await import("node:child_process");
     const container = config.attackbox.container;
-    exec("docker", ["exec", container, "ip", "-4", "addr", "show", "tun0"], (err, stdout) => {
-      if (err || !stdout) console.log("VPN: disconnected");
-      else {
-        const match = stdout.match(/inet ([\d.]+)/);
-        console.log(match ? `VPN: connected (${match[1]})` : "VPN: disconnected");
-      }
-    });
+    const run = dockerExec(container);
+    try {
+      const out = await run(["ip", "-4", "addr", "show", "tun0"]);
+      const ipMatch = out.match(/inet ([\d.]+)/);
+      if (!ipMatch) { console.log("VPN: disconnected"); return; }
+      let profile = "";
+      try { profile = (await run(["cat", "/tmp/.pk-vpn-profile"])).trim(); } catch {}
+      console.log(profile ? `VPN: connected (${ipMatch[1]}) [${profile}]` : `VPN: connected (${ipMatch[1]})`);
+    } catch {
+      console.log("VPN: disconnected");
+    }
+  });
+
+vpn
+  .command("list")
+  .description("List available VPN profiles")
+  .action(async () => {
+    const profiles = listProfiles();
+    if (profiles.length === 0) {
+      console.error("No .ovpn files in " + config.vpn.config_path + "/");
+      console.error("Add one with: pk vpn add <name> /path/to/config.ovpn");
+      return;
+    }
+    let activeProfile = "";
+    try {
+      const container = config.attackbox.container;
+      const run = dockerExec(container);
+      activeProfile = (await run(["cat", "/tmp/.pk-vpn-profile"])).trim();
+    } catch {}
+    for (const p of profiles) {
+      const marker = p === activeProfile ? " (active)" : "";
+      console.log(`  ${p}${marker}`);
+    }
+  });
+
+vpn
+  .command("add")
+  .description("Import a .ovpn file as a named profile")
+  .argument("<name>", "profile name")
+  .argument("<path>", "path to .ovpn file")
+  .action(async (name: string, srcPath: string) => {
+    if (!existsSync(srcPath)) {
+      console.error(`[vpn] File not found: ${srcPath}`);
+      process.exit(1);
+    }
+    const dest = join(config.vpn.config_path, `${name}.ovpn`);
+    copyFileSync(srcPath, dest);
+    console.error(`[vpn] Added profile "${name}" -> ${dest}`);
   });
 
 // --- shell (tmux sessions inside containers) --------------------------------
