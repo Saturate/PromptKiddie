@@ -666,9 +666,15 @@ vpn
     const container = config.attackbox.container;
     const run = dockerExec(container);
 
-    // Kill any running VPN first
+    // Kill any running VPN and clean up stale tun devices
     try { await run(["pkill", "-9", "openvpn"]); } catch {}
     await new Promise((r) => setTimeout(r, 500));
+    try {
+      const links = await run(["sh", "-c", "ip -o link show | grep tun | awk -F: '{print $2}' | tr -d ' '"]);
+      for (const dev of links.trim().split("\n").filter(Boolean)) {
+        await run(["ip", "link", "delete", dev]);
+      }
+    } catch {}
 
     const configPath = `/vpn/${name}.ovpn`;
     console.error(`[vpn] Connecting profile "${name}"...`);
@@ -1039,18 +1045,32 @@ program
   .option("--host", "run on the host instead of in the Docker container")
   .option("--reason <reason>", "why this command is being run (logged to activity)")
   .option("--max-output <bytes>", "max bytes returned to caller (full output saved to file)", parseInt, 4096)
+  .option("--script <path>", "copy a local script into the container and run it (avoids quoting issues)")
   .option("--engagement <id>")
   .argument("<command...>", "command to run")
   .action(async (cmd: string[], o) => {
     const eid = await resolveEngagementId(o.engagement);
     const eng = await repo.getEngagement(eid) as { phase?: string } | null;
     const phase = o.phase ?? eng?.phase ?? "recon";
-    const cmdStr = cmd.join(" ");
     const start = Date.now();
     const local = o.host || !USE_DOCKER;
     const container = local ? "" : await resolveContainer(phase);
 
     const { execFile: exec } = await import("node:child_process");
+
+    // Script mode: copy file into container, run it, clean up
+    let cmdStr: string;
+    if (o.script && !local) {
+      const remotePath = `/tmp/pk-script-${Date.now()}.sh`;
+      const { execFileSync } = await import("node:child_process");
+      execFileSync("docker", ["cp", o.script, `${container}:${remotePath}`]);
+      execFileSync("docker", ["exec", container, "chmod", "+x", remotePath]);
+      const scriptArgs = cmd.length ? " " + cmd.join(" ") : "";
+      cmdStr = `${remotePath}${scriptArgs}; rm -f ${remotePath}`;
+    } else {
+      cmdStr = cmd.join(" ");
+    }
+
     const execArgs: [string, string[]] = local
       ? ["sh", ["-c", cmdStr]]
       : ["docker", ["exec", "-e", "PK_EXEC=1", container, "sh", "-c", cmdStr]];
