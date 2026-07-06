@@ -82,6 +82,13 @@ step-completion instructions in agent briefs.
 
 Always finish an engagement with the **reporting** phase.
 
+## Known CVEs: PoC-first approach
+
+When a vulnerability has a CVE number, search GitHub for existing PoC scripts and use them
+rather than reimplementing exploits from scratch. Protocol negotiation, deserialization
+gadgets, and timing-sensitive payloads are hard to get right; published PoCs already handle
+these edge cases. Download, adapt parameters, run.
+
 ## Logging: the database is the engagement's memory
 
 Use the `pk` CLI for all state. Everything you do must be reconstructable from the DB.
