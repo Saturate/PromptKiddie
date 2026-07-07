@@ -1047,7 +1047,7 @@ tunnel
 
 const AGENT_DIR = process.env.PK_AGENT_DIR ?? "/opt/gleipnir/agents";
 
-const agentCmd = program.command("agent").description("Manage gleipnir agent binaries");
+const agentCmd = program.command("agents").description("Manage gleipnir agent binaries");
 
 agentCmd
   .command("list")
