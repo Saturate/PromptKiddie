@@ -2,8 +2,11 @@ use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Instant;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::codec::Framed;
@@ -11,6 +14,56 @@ use tracing::{debug, info, warn};
 
 use crate::protocol::{Frame, FrameType, GleipnirCodec};
 use crate::socks::SocksConnection;
+
+pub enum BoxedStream {
+    Tcp(TcpStream),
+    #[cfg(feature = "tls")]
+    Tls(tokio_rustls::server::TlsStream<TcpStream>),
+}
+
+impl AsyncRead for BoxedStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            BoxedStream::Tcp(s) => Pin::new(s).poll_read(cx, buf),
+            #[cfg(feature = "tls")]
+            BoxedStream::Tls(s) => Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for BoxedStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            BoxedStream::Tcp(s) => Pin::new(s).poll_write(cx, buf),
+            #[cfg(feature = "tls")]
+            BoxedStream::Tls(s) => Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            BoxedStream::Tcp(s) => Pin::new(s).poll_flush(cx),
+            #[cfg(feature = "tls")]
+            BoxedStream::Tls(s) => Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            BoxedStream::Tcp(s) => Pin::new(s).poll_shutdown(cx),
+            #[cfg(feature = "tls")]
+            BoxedStream::Tls(s) => Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionInfo {
@@ -34,6 +87,8 @@ pub struct PlatformInfo {
     pub username: String,
     pub pid: u32,
     pub cwd: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 pub enum SessionCommand {
@@ -73,7 +128,7 @@ impl SessionManager {
         }
     }
 
-    pub async fn handle_connection(&self, stream: TcpStream, peer: std::net::SocketAddr) {
+    pub async fn handle_connection(&self, stream: BoxedStream, peer: std::net::SocketAddr) {
         info!("new connection from {peer}");
         let mut framed = Framed::new(stream, GleipnirCodec);
 
@@ -101,11 +156,42 @@ impl SessionManager {
             }
         };
 
-        let name = self.generate_name(&platform).await;
-        info!(
-            "session '{name}' registered: {} {} {}@{}",
-            platform.os, platform.arch, platform.username, platform.hostname
-        );
+        // Resolve session name: use session_id if provided, otherwise generate from hostname
+        let name = if let Some(ref sid) = platform.session_id {
+            sid.clone()
+        } else {
+            self.generate_name(&platform).await
+        };
+
+        // Check for session resume
+        let resumed = if platform.session_id.is_some() {
+            let mut sessions = self.sessions.lock().await;
+            if let Some(existing) = sessions.get_mut(&name) {
+                if existing.info.connected {
+                    info!("session '{name}' takeover: disconnecting old connection");
+                    // Drop the old cmd_tx, which will cause the old session_loop to exit
+                    let (new_tx, _) = mpsc::channel::<SessionCommand>(32);
+                    existing.cmd_tx = new_tx;
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if resumed {
+            info!(
+                "session '{name}' resumed: {} {} {}@{}",
+                platform.os, platform.arch, platform.username, platform.hostname
+            );
+        } else {
+            info!(
+                "session '{name}' registered: {} {} {}@{}",
+                platform.os, platform.arch, platform.username, platform.hostname
+            );
+        }
 
         let (cmd_tx, cmd_rx) = mpsc::channel::<SessionCommand>(32);
         let socks_connections: Arc<Mutex<HashMap<u32, SocksConnection>>> =
@@ -150,7 +236,7 @@ impl SessionManager {
     async fn session_loop(
         &self,
         name: &str,
-        mut framed: Framed<TcpStream, GleipnirCodec>,
+        mut framed: Framed<BoxedStream, GleipnirCodec>,
         mut cmd_rx: mpsc::Receiver<SessionCommand>,
         socks_connections: Arc<Mutex<HashMap<u32, SocksConnection>>>,
     ) {

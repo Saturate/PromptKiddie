@@ -886,6 +886,98 @@ shell
     } catch { /* no active engagement, skip logging */ }
   });
 
+shell
+  .command("attach")
+  .description("Interactive shell on a gleipnir session")
+  .argument("<session>", "session name")
+  .option("--timeout <seconds>", "command timeout", "300")
+  .action(async (session: string, o) => {
+    const timeout = parseInt(o.timeout, 10);
+    const { createInterface } = await import("node:readline");
+
+    // Verify session exists and is connected
+    const check = await gleipnirApi({ action: "session", name: session });
+    if (!check.ok) { console.error(`Error: ${check.error}`); process.exit(1); }
+    const info = check.data as Record<string, unknown>;
+    if (!info.connected) { console.error(`Session '${session}' is disconnected`); process.exit(1); }
+    console.log(`Connected to ${info.username}@${info.hostname} (${info.os}/${info.arch})`);
+    console.log(`Type 'exit' to disconnect. 'upload <local> <remote>' / 'download <remote> <local>' for file transfer.\n`);
+
+    const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: `gleipnir:${session}> ` });
+    rl.prompt();
+
+    rl.on("line", async (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) { rl.prompt(); return; }
+
+      if (trimmed === "exit" || trimmed === "quit") {
+        rl.close();
+        return;
+      }
+
+      if (trimmed.startsWith("upload ")) {
+        const parts = trimmed.split(/\s+/);
+        if (parts.length !== 3) { console.error("Usage: upload <local-src> <remote-dst>"); rl.prompt(); return; }
+        const resp = await gleipnirApi({ action: "upload", session, src: parts[1], dst: parts[2] });
+        if (resp.ok) console.log(`Uploaded ${parts[1]} -> ${parts[2]}`);
+        else console.error(`\x1b[31mError: ${resp.error}\x1b[0m`);
+        rl.prompt();
+        return;
+      }
+
+      if (trimmed.startsWith("download ")) {
+        const parts = trimmed.split(/\s+/);
+        if (parts.length !== 3) { console.error("Usage: download <remote-src> <local-dst>"); rl.prompt(); return; }
+        const resp = await gleipnirApi({ action: "download", session, src: parts[1], dst: parts[2] });
+        if (resp.ok) {
+          const data = resp.data as Record<string, unknown>;
+          console.log(`Downloaded ${parts[1]} -> ${parts[2]} (${data.size} bytes)`);
+        } else {
+          console.error(`\x1b[31mError: ${resp.error}\x1b[0m`);
+        }
+        rl.prompt();
+        return;
+      }
+
+      const resp = await gleipnirApi({ action: "exec", session, command: trimmed, timeout });
+      if (resp.ok) {
+        const data = resp.data as Record<string, unknown>;
+        const output = (data.output ?? "") as string;
+        if (output) {
+          process.stdout.write(output);
+          if (!output.endsWith("\n")) process.stdout.write("\n");
+        }
+      } else {
+        console.error(`\x1b[31mError: ${resp.error}\x1b[0m`);
+      }
+      rl.prompt();
+    });
+
+    rl.on("close", () => {
+      console.log("\nDisconnected.");
+      process.exit(0);
+    });
+
+    // Keep the event loop alive
+    await new Promise(() => {});
+  });
+
+shell
+  .command("info")
+  .description("Show details for a gleipnir session")
+  .argument("<session>", "session name")
+  .action(async (session: string) => {
+    const resp = await gleipnirApi({ action: "session", name: session });
+    if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
+    const s = resp.data as Record<string, unknown>;
+    console.log(`Session:   ${s.name}`);
+    console.log(`Host:      ${s.username}@${s.hostname}`);
+    console.log(`Platform:  ${s.os}/${s.arch}`);
+    console.log(`PID:       ${s.pid}`);
+    console.log(`CWD:       ${s.cwd}`);
+    console.log(`Status:    ${s.connected ? "connected" : "disconnected"}`);
+  });
+
 program
   .command("upload")
   .description("Upload a file to a target via gleipnir session")
@@ -895,7 +987,9 @@ program
   .action(async (session: string, src: string, dst: string) => {
     const resp = await gleipnirApi({ action: "upload", session, src, dst });
     if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
-    console.log(`Uploaded ${src} -> ${dst}`);
+    const data = resp.data as Record<string, unknown>;
+    const sizeKb = ((data.size as number) / 1024).toFixed(1);
+    console.log(`Uploaded ${src} -> ${dst} (${sizeKb} KB, ${data.elapsed_ms}ms)`);
   });
 
 program

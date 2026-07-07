@@ -17,8 +17,9 @@ base64 = "0.22"
 socket2 = "0.5"
 futures-util = { version = "0.3", features = ["sink"] }
 tokio-rustls = { version = "0.26", optional = true }
+rustls = { version = "0.23", features = ["ring"], optional = true }
 rustls-pemfile = { version = "2", optional = true }
 
 [features]
 default = []
-tls = ["tokio-rustls", "rustls-pemfile"]
+tls = ["tokio-rustls", "rustls", "rustls-pemfile"]

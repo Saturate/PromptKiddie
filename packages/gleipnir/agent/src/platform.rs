@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PlatformInfo {
@@ -8,6 +9,8 @@ pub struct PlatformInfo {
     pub username: String,
     pub pid: u32,
     pub cwd: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 impl PlatformInfo {
@@ -21,12 +24,52 @@ impl PlatformInfo {
             cwd: std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default(),
+            session_id: None,
         }
+    }
+
+    pub fn with_session_id(mut self, id: Option<String>) -> Self {
+        self.session_id = id;
+        self
     }
 
     pub fn to_json_bytes(&self) -> Vec<u8> {
         serde_json::to_vec(self).unwrap_or_default()
     }
+}
+
+const SESSION_ID_FILE: &str = "/tmp/.gleipnir-sid";
+
+pub fn resolve_session_id(explicit: Option<String>) -> String {
+    if let Some(id) = explicit {
+        return id;
+    }
+
+    if let Ok(id) = std::fs::read_to_string(SESSION_ID_FILE) {
+        let id = id.trim().to_string();
+        if !id.is_empty() {
+            return id;
+        }
+    }
+
+    let id = format!("{:016x}", rand_id());
+    let _ = std::fs::write(SESSION_ID_FILE, &id);
+    id
+}
+
+fn rand_id() -> u64 {
+    // Lightweight random: mix pid, time, and pointer address
+    let pid = std::process::id() as u64;
+    let ptr = &pid as *const u64 as u64;
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    pid.wrapping_mul(6364136223846793005) ^ time.wrapping_mul(1442695040888963407) ^ ptr
+}
+
+pub fn session_id_path() -> &'static Path {
+    Path::new(SESSION_ID_FILE)
 }
 
 fn hostname() -> String {

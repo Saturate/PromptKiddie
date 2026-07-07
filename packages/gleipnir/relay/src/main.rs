@@ -22,6 +22,16 @@ struct Cli {
 
     #[arg(long, default_value = "/tmp/gleipnir.sock")]
     api_socket: String,
+
+    /// TLS certificate file (PEM). Enables TLS when both --tls-cert and --tls-key are set.
+    #[cfg(feature = "tls")]
+    #[arg(long)]
+    tls_cert: Option<String>,
+
+    /// TLS private key file (PEM)
+    #[cfg(feature = "tls")]
+    #[arg(long)]
+    tls_key: Option<String>,
 }
 
 #[tokio::main]
@@ -46,5 +56,26 @@ async fn main() {
         api::start(&api_socket, api_manager, api_socks).await;
     });
 
-    listener::start(&cli.listen, cli.port, manager).await;
+    #[cfg(feature = "tls")]
+    let tls_config = match (&cli.tls_cert, &cli.tls_key) {
+        (Some(cert), Some(key)) => {
+            let cfg = listener::load_tls_config(cert, key)
+                .unwrap_or_else(|e| panic!("failed to load TLS config: {e}"));
+            info!("TLS enabled (cert: {cert})");
+            Some(cfg)
+        }
+        (Some(_), None) | (None, Some(_)) => {
+            panic!("both --tls-cert and --tls-key must be provided");
+        }
+        _ => None,
+    };
+
+    listener::start(
+        &cli.listen,
+        cli.port,
+        manager,
+        #[cfg(feature = "tls")]
+        tls_config,
+    )
+    .await;
 }

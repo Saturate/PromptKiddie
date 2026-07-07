@@ -144,10 +144,21 @@ async fn handle_request(
         },
 
         ApiRequest::Upload { session, src, dst } => match tokio::fs::read(&src).await {
-            Ok(data) => match manager.upload(&session, data, &dst).await {
-                Ok(()) => ApiResponse::success(serde_json::json!({ "uploaded": dst })),
-                Err(e) => ApiResponse::error(e),
-            },
+            Ok(data) => {
+                let size = data.len();
+                let start = std::time::Instant::now();
+                match manager.upload(&session, data, &dst).await {
+                    Ok(()) => {
+                        let elapsed_ms = start.elapsed().as_millis();
+                        ApiResponse::success(serde_json::json!({
+                            "uploaded": dst,
+                            "size": size,
+                            "elapsed_ms": elapsed_ms,
+                        }))
+                    }
+                    Err(e) => ApiResponse::error(e),
+                }
+            }
             Err(e) => ApiResponse::error(format!("failed to read {src}: {e}")),
         },
 
