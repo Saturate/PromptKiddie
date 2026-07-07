@@ -1,0 +1,19 @@
+# x86_64 build sidecar for ARM64 Macs.
+# Provides native x86 compilation, Go toolchain, and donut-shellcode
+# for generating position-independent shellcode from PE executables.
+FROM --platform=linux/amd64 python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      gcc g++ make cmake mingw-w64 \
+      curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir donut-shellcode
+
+# Install latest stable Go for linux/amd64
+RUN GO_VERSION=$(curl -sL 'https://go.dev/VERSION?m=text' | head -1) \
+    && curl -fsSL "https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz" \
+       | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+WORKDIR /build

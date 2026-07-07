@@ -1,0 +1,86 @@
+name: gleipnir
+
+on:
+  push:
+    paths:
+      - 'packages/gleipnir/**'
+  pull_request:
+    paths:
+      - 'packages/gleipnir/**'
+
+defaults:
+  run:
+    working-directory: packages/gleipnir
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/gleipnir
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test -- --test-threads=1
+
+  build-agent:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: pk-agent-linux-amd64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: pk-agent-linux-arm64
+          - target: x86_64-pc-windows-gnu
+            os: ubuntu-latest
+            artifact: pk-agent-windows-amd64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/gleipnir
+      - name: Install cross
+        run: cargo install cross --locked
+      - name: Build agent
+        run: cross build --release --bin gleipnir-agent --target ${{ matrix.target }}
+      - name: Strip binary
+        if: "!contains(matrix.target, 'windows')"
+        run: |
+          STRIP=$(echo ${{ matrix.target }} | sed 's/-unknown-linux-musl//' | sed 's/-pc-windows-gnu//')-linux-gnu-strip
+          which $STRIP && $STRIP target/${{ matrix.target }}/release/gleipnir-agent || true
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: packages/gleipnir/target/${{ matrix.target }}/release/gleipnir-agent*
+
+  build-relay-image:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: packages/gleipnir
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/gleipnir-relay:latest

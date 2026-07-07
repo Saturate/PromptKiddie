@@ -95,6 +95,30 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
 
+  # --- Gleipnir relay (reverse shell handler) --------------------------------
+  gleipnir:
+    build:
+      context: packages/gleipnir
+    container_name: promptkiddie-gleipnir
+    restart: unless-stopped
+    network_mode: "service:attackbox"
+    volumes:
+      - gleipnir-sock:/tmp
+      - ./engagements:/workspace/engagements
+
+  # --- x86_64 build sidecar (for ARM64 hosts) ------------------------------
+  # Only starts when explicitly invoked: docker compose --profile build up -d builder-x86
+  builder-x86:
+    platform: linux/amd64
+    build:
+      context: packages/tooling/images
+      dockerfile: Dockerfile.builder-x86
+    container_name: promptkiddie-builder-x86
+    profiles: ["build"]
+    volumes:
+      - ./.build:/build
+    command: tail -f /dev/null
+
   # --- App services (optional, for hosted deployment) ----------------------
   web:
     build:
@@ -163,3 +187,4 @@ services:
 
 volumes:
   pgdata:
+  gleipnir-sock:

