@@ -43,6 +43,15 @@ export const KNOWLEDGE_SOURCES: KnowledgeSource[] = [
     chunkStrategy: "heading",
     description: "Pentesting methodology, techniques, and tool usage guides.",
   },
+  {
+    name: "pk-techniques",
+    repo: "",
+    paths: ["."],
+    extensions: [".md"],
+    category: "techniques",
+    chunkStrategy: "heading",
+    description: "Project-local technique cards for uncommon or engagement-derived patterns.",
+  },
 ];
 
 export function getKnowledgeSource(name: string): KnowledgeSource | undefined {

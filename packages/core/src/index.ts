@@ -23,6 +23,7 @@ export {
   clearSource,
   searchKnowledge,
   autoIngestFinding,
+  ingestLocal,
   listSources,
   type KnowledgeResult,
   type IngestResult,

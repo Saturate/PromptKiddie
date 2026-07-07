@@ -6,7 +6,8 @@
  * Past findings are auto-ingested so future engagements learn from them.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, extname, relative } from "node:path";
+import { join, dirname, extname, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { sql, eq, and } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { embeddings } from "./schema.js";
@@ -334,6 +335,20 @@ export async function autoIngestFinding(finding: {
       ${JSON.stringify({ source: "engagement", title: finding.title })}::jsonb,
       ${vectorStr}::vector)
   `);
+}
+
+const TECHNIQUES_DIR = join(dirname(fileURLToPath(import.meta.url)), "knowledge", "techniques");
+
+export async function ingestLocal(
+  onProgress?: (file: string, chunks: number) => void,
+): Promise<IngestResult> {
+  await clearSource("pk-techniques");
+  return ingestDirectory(TECHNIQUES_DIR, {
+    source: "pk-techniques",
+    extensions: [".md"],
+    chunkStrategy: "heading",
+    onProgress,
+  });
 }
 
 export async function listSources(): Promise<Array<{ source: string; chunks: number; lastIngested: Date }>> {
