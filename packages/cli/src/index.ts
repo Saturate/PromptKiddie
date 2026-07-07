@@ -1043,6 +1043,56 @@ tunnel
     }
   });
 
+// --- agent binaries --------------------------------------------------------
+
+const AGENT_DIR = process.env.PK_AGENT_DIR ?? "/opt/gleipnir/agents";
+
+const agentCmd = program.command("agent").description("Manage gleipnir agent binaries");
+
+agentCmd
+  .command("list")
+  .description("List available pre-compiled agent binaries")
+  .action(async () => {
+    const { readdirSync: readDir, statSync } = await import("node:fs");
+    try {
+      const files = readDir(AGENT_DIR).filter((f: string) => f.startsWith("pk-agent-"));
+      if (files.length === 0) {
+        console.log(`No agent binaries found in ${AGENT_DIR}`);
+        console.log("Build with CI or place binaries manually.");
+        return;
+      }
+      for (const f of files) {
+        const size = statSync(`${AGENT_DIR}/${f}`).size;
+        const kb = (size / 1024).toFixed(0);
+        console.log(`  ${f}\t${kb} KB`);
+      }
+    } catch {
+      console.error(`Agent directory not found: ${AGENT_DIR}`);
+      console.error("Set PK_AGENT_DIR or build the attackbox image.");
+      process.exit(1);
+    }
+  });
+
+agentCmd
+  .command("path")
+  .description("Print path to an agent binary for upload")
+  .argument("<target>", "target spec, e.g. linux-amd64, linux-arm64-tls, windows-amd64")
+  .action(async (target: string) => {
+    const { existsSync: exists } = await import("node:fs");
+    const name = target.startsWith("pk-agent-") ? target : `pk-agent-${target}`;
+    const candidates = [name, `${name}.exe`];
+    for (const c of candidates) {
+      const full = `${AGENT_DIR}/${c}`;
+      if (exists(full)) {
+        console.log(full);
+        return;
+      }
+    }
+    console.error(`No agent binary found for '${target}' in ${AGENT_DIR}`);
+    console.error("Available targets: linux-amd64, linux-amd64-tls, linux-arm64, linux-arm64-tls, windows-amd64, windows-amd64-tls");
+    process.exit(1);
+  });
+
 // --- events (Docker exec watcher) ------------------------------------------
 const events = program.command("events").description("Docker container event monitoring");
 

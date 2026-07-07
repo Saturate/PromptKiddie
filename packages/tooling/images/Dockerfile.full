@@ -52,6 +52,17 @@ RUN ARCH=$(dpkg --print-architecture) \
     && unzip /tmp/rustscan.zip -d /usr/local/bin \
     && chmod +x /usr/local/bin/rustscan && rm /tmp/rustscan.zip
 
+# Gleipnir agent binaries (pre-compiled, fetched from GitHub releases)
+RUN mkdir -p /opt/gleipnir/agents && \
+    REPO="Saturate/PromptKiddie" && \
+    TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | jq -r '.tag_name // empty') && \
+    if [ -n "$TAG" ]; then \
+      for bin in pk-agent-linux-amd64 pk-agent-linux-amd64-tls pk-agent-linux-arm64 pk-agent-linux-arm64-tls pk-agent-windows-amd64.exe pk-agent-windows-amd64-tls.exe; do \
+        curl -fsSL "https://github.com/${REPO}/releases/download/${TAG}/${bin}" -o "/opt/gleipnir/agents/${bin}" 2>/dev/null || true; \
+      done; \
+      chmod +x /opt/gleipnir/agents/pk-agent-* 2>/dev/null || true; \
+    fi
+
 COPY exec-logger.sh /usr/local/bin/pk-shell
 RUN chmod +x /usr/local/bin/pk-shell
 

