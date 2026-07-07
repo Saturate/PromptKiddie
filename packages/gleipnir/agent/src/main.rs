@@ -74,6 +74,11 @@ async fn main() {
         )
         .init();
 
+    #[cfg(feature = "tls")]
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("install rustls crypto provider");
+
     let cli = Cli::parse();
 
     // Persistence: install, masquerade, cron before connecting

@@ -26,6 +26,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test -- --test-threads=1
+      - run: cargo build --no-default-features
+      - run: cargo test --no-default-features -- --test-threads=1
 
   build-agent:
     needs: test
@@ -35,12 +37,27 @@ jobs:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             artifact: pk-agent-linux-amd64
+            features: ""
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: pk-agent-linux-amd64-tls
+            features: "--features tls"
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             artifact: pk-agent-linux-arm64
+            features: ""
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: pk-agent-linux-arm64-tls
+            features: "--features tls"
           - target: x86_64-pc-windows-gnu
             os: ubuntu-latest
             artifact: pk-agent-windows-amd64.exe
+            features: ""
+          - target: x86_64-pc-windows-gnu
+            os: ubuntu-latest
+            artifact: pk-agent-windows-amd64-tls.exe
+            features: "--features tls"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +70,7 @@ jobs:
       - name: Install cross
         run: cargo install cross --locked
       - name: Build agent
-        run: cross build --release --bin gleipnir-agent --target ${{ matrix.target }}
+        run: cross build --release --bin gleipnir-agent --target ${{ matrix.target }} ${{ matrix.features }}
       - name: Strip binary
         if: "!contains(matrix.target, 'windows')"
         run: |

@@ -116,3 +116,21 @@ pub fn load_tls_config(
         acceptor: tokio_rustls::TlsAcceptor::from(Arc::new(config)),
     })
 }
+
+#[cfg(feature = "tls")]
+pub fn generate_self_signed_tls() -> Result<TlsConfig, Box<dyn std::error::Error>> {
+    use rustls::ServerConfig;
+
+    let cert = rcgen::generate_simple_self_signed(vec!["gleipnir".to_string()])?;
+    let cert_der = rustls::pki_types::CertificateDer::from(cert.cert.der().to_vec());
+    let key_der =
+        rustls::pki_types::PrivateKeyDer::try_from(cert.key_pair.serialize_der()).unwrap();
+
+    let config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(vec![cert_der], key_der)?;
+
+    Ok(TlsConfig {
+        acceptor: tokio_rustls::TlsAcceptor::from(Arc::new(config)),
+    })
+}

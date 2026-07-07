@@ -49,23 +49,40 @@ fn find_binary(name: &str) -> std::path::PathBuf {
 
 impl TestHarness {
     async fn start() -> Self {
+        Self::start_with_args(&[], &[]).await
+    }
+
+    async fn start_with_args(relay_extra: &[&str], agent_extra: &[&str]) -> Self {
         let _ = tokio::fs::remove_file(API_SOCKET).await;
 
+        let mut relay_args = vec![
+            "--port".to_string(),
+            RELAY_PORT.to_string(),
+            "--api-socket".to_string(),
+            API_SOCKET.to_string(),
+        ];
+        #[cfg(feature = "tls")]
+        relay_args.push("--no-tls".to_string());
+        relay_args.extend(relay_extra.iter().map(|s| s.to_string()));
+
         let relay = Command::new(find_binary("gleipnir-relay"))
-            .args([
-                "--port",
-                &RELAY_PORT.to_string(),
-                "--api-socket",
-                API_SOCKET,
-            ])
+            .args(&relay_args)
             .kill_on_drop(true)
             .spawn()
             .expect("start relay");
 
         tokio::time::sleep(STARTUP_WAIT).await;
 
+        let mut agent_args = vec![
+            "-H".to_string(),
+            "127.0.0.1".to_string(),
+            "-p".to_string(),
+            RELAY_PORT.to_string(),
+        ];
+        agent_args.extend(agent_extra.iter().map(|s| s.to_string()));
+
         let agent = Command::new(find_binary("gleipnir-agent"))
-            .args(["-H", "127.0.0.1", "-p", &RELAY_PORT.to_string()])
+            .args(&agent_args)
             .kill_on_drop(true)
             .spawn()
             .expect("start agent");
@@ -168,4 +185,142 @@ async fn test_session_not_found() {
     let resp = api_request(req).await;
     assert!(!resp["ok"].as_bool().unwrap());
     assert!(resp["error"].as_str().unwrap().contains("not found"));
+}
+
+/// TLS end-to-end: relay with explicit cert, agent with --tls (DangerousVerifier).
+/// Only runs when compiled with the tls feature. Builds the agent with TLS first.
+#[cfg(feature = "tls")]
+#[tokio::test]
+async fn test_tls_connection() {
+    const TLS_RELAY_PORT: u16 = 14445;
+    const TLS_API_SOCKET: &str = "/tmp/gleipnir-test-tls.sock";
+
+    // Build agent with TLS support (it defaults to no-TLS)
+    let workspace_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .canonicalize()
+        .unwrap();
+    let build = std::process::Command::new("cargo")
+        .args(["build", "-p", "gleipnir-agent", "--features", "tls"])
+        .current_dir(&workspace_dir)
+        .status()
+        .expect("build TLS agent");
+    assert!(build.success(), "failed to build agent with TLS feature");
+
+    let _ = tokio::fs::remove_file(TLS_API_SOCKET).await;
+
+    // Generate self-signed cert with rcgen
+    let cert = rcgen::generate_simple_self_signed(vec!["gleipnir".to_string()]).unwrap();
+    let cert_pem = cert.cert.pem();
+    let key_pem = cert.key_pair.serialize_pem();
+
+    let cert_path = "/tmp/gleipnir-test-cert.pem";
+    let key_path = "/tmp/gleipnir-test-key.pem";
+    tokio::fs::write(cert_path, &cert_pem).await.unwrap();
+    tokio::fs::write(key_path, &key_pem).await.unwrap();
+
+    // Start relay with explicit TLS cert (no --no-tls)
+    let relay = Command::new(find_binary("gleipnir-relay"))
+        .args([
+            "--port",
+            &TLS_RELAY_PORT.to_string(),
+            "--api-socket",
+            TLS_API_SOCKET,
+            "--tls-cert",
+            cert_path,
+            "--tls-key",
+            key_path,
+        ])
+        .kill_on_drop(true)
+        .spawn()
+        .expect("start TLS relay");
+
+    tokio::time::sleep(STARTUP_WAIT).await;
+
+    // Start agent with --tls (uses DangerousVerifier to accept self-signed cert)
+    let agent = Command::new(find_binary("gleipnir-agent"))
+        .args([
+            "-H",
+            "127.0.0.1",
+            "-p",
+            &TLS_RELAY_PORT.to_string(),
+            "--tls",
+        ])
+        .kill_on_drop(true)
+        .spawn()
+        .expect("start TLS agent");
+
+    tokio::time::sleep(STARTUP_WAIT).await;
+
+    let _harness = TlsTestHarness {
+        relay,
+        agent,
+        cert_path: cert_path.to_string(),
+        key_path: key_path.to_string(),
+    };
+
+    // Verify session connected through TLS
+    let tls_api_request = |req: &str| {
+        let req = req.to_string();
+        async move {
+            let stream = UnixStream::connect(TLS_API_SOCKET)
+                .await
+                .expect("connect to TLS API socket");
+            let (reader, mut writer) = stream.into_split();
+            let mut line = req;
+            line.push('\n');
+            writer
+                .write_all(line.as_bytes())
+                .await
+                .expect("write request");
+            let mut reader = BufReader::new(reader);
+            let mut response = String::new();
+            timeout(CMD_TIMEOUT, reader.read_line(&mut response))
+                .await
+                .expect("TLS response timeout")
+                .expect("TLS read response");
+            serde_json::from_str::<serde_json::Value>(&response).expect("parse TLS JSON response")
+        }
+    };
+
+    let resp = tls_api_request(r#"{"action":"sessions"}"#).await;
+    assert!(resp["ok"].as_bool().unwrap(), "sessions failed: {resp}");
+    let sessions = resp["data"].as_array().unwrap();
+    assert!(!sessions.is_empty(), "expected a TLS session, got none");
+    assert!(sessions[0]["connected"].as_bool().unwrap());
+
+    // Execute a command through TLS
+    let session_name = sessions[0]["name"].as_str().unwrap().to_string();
+    let req = serde_json::json!({
+        "action": "exec",
+        "session": session_name,
+        "command": "echo tls_works",
+        "timeout": 10
+    });
+    let resp = tls_api_request(&req.to_string()).await;
+    assert!(resp["ok"].as_bool().unwrap(), "TLS exec failed: {resp}");
+    let output = resp["data"]["output"].as_str().unwrap();
+    assert!(
+        output.contains("tls_works"),
+        "unexpected TLS output: {output}"
+    );
+}
+
+#[cfg(feature = "tls")]
+struct TlsTestHarness {
+    relay: tokio::process::Child,
+    agent: tokio::process::Child,
+    cert_path: String,
+    key_path: String,
+}
+
+#[cfg(feature = "tls")]
+impl Drop for TlsTestHarness {
+    fn drop(&mut self) {
+        let _ = self.agent.start_kill();
+        let _ = self.relay.start_kill();
+        let _ = std::fs::remove_file(&self.cert_path);
+        let _ = std::fs::remove_file(&self.key_path);
+        let _ = std::fs::remove_file("/tmp/gleipnir-test-tls.sock");
+    }
 }

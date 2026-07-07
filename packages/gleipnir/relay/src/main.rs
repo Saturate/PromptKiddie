@@ -23,7 +23,7 @@ struct Cli {
     #[arg(long, default_value = "/tmp/gleipnir.sock")]
     api_socket: String,
 
-    /// TLS certificate file (PEM). Enables TLS when both --tls-cert and --tls-key are set.
+    /// TLS certificate file (PEM). When omitted, a self-signed cert is auto-generated.
     #[cfg(feature = "tls")]
     #[arg(long)]
     tls_cert: Option<String>,
@@ -32,6 +32,11 @@ struct Cli {
     #[cfg(feature = "tls")]
     #[arg(long)]
     tls_key: Option<String>,
+
+    /// Disable TLS (plain TCP). Useful for testing or when agents lack TLS support.
+    #[cfg(feature = "tls")]
+    #[arg(long)]
+    no_tls: bool,
 }
 
 #[tokio::main]
@@ -42,6 +47,11 @@ async fn main() {
                 .unwrap_or_else(|_| "gleipnir_relay=info".into()),
         )
         .init();
+
+    #[cfg(feature = "tls")]
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("install rustls crypto provider");
 
     let cli = Cli::parse();
     let manager = Arc::new(SessionManager::new());
@@ -57,17 +67,27 @@ async fn main() {
     });
 
     #[cfg(feature = "tls")]
-    let tls_config = match (&cli.tls_cert, &cli.tls_key) {
-        (Some(cert), Some(key)) => {
-            let cfg = listener::load_tls_config(cert, key)
-                .unwrap_or_else(|e| panic!("failed to load TLS config: {e}"));
-            info!("TLS enabled (cert: {cert})");
-            Some(cfg)
+    let tls_config = if cli.no_tls {
+        info!("TLS disabled (--no-tls)");
+        None
+    } else {
+        match (&cli.tls_cert, &cli.tls_key) {
+            (Some(cert), Some(key)) => {
+                let cfg = listener::load_tls_config(cert, key)
+                    .unwrap_or_else(|e| panic!("failed to load TLS config: {e}"));
+                info!("TLS enabled (cert: {cert})");
+                Some(cfg)
+            }
+            (Some(_), None) | (None, Some(_)) => {
+                panic!("both --tls-cert and --tls-key must be provided");
+            }
+            _ => {
+                let cfg = listener::generate_self_signed_tls()
+                    .unwrap_or_else(|e| panic!("failed to generate self-signed TLS cert: {e}"));
+                info!("TLS enabled (auto-generated self-signed cert)");
+                Some(cfg)
+            }
         }
-        (Some(_), None) | (None, Some(_)) => {
-            panic!("both --tls-cert and --tls-key must be provided");
-        }
-        _ => None,
     };
 
     listener::start(

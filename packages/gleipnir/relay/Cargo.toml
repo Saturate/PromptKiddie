@@ -20,6 +20,13 @@ tokio-rustls = { version = "0.26", optional = true }
 rustls = { version = "0.23", features = ["ring"], optional = true }
 rustls-pemfile = { version = "2", optional = true }
 
+[dev-dependencies]
+rcgen = "0.13"
+
 [features]
-default = []
-tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
+default = ["tls"]
+tls = ["tokio-rustls", "rustls", "rustls-pemfile", "rcgen"]
+
+[dependencies.rcgen]
+version = "0.13"
+optional = true
