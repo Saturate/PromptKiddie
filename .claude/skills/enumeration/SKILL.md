@@ -41,6 +41,25 @@ says "passwords are not in rockyou.txt", CeWL is almost certainly the intended a
 2. Check default/weak credentials where RoE permits.
 3. Note misconfigurations, exposed shares, version-specific CVEs.
 
+## NoSQL / MongoDB
+
+1. **Check the app first.** Read all visible UI text, error messages, and API responses for
+   collection or model name hints before brute-forcing. 400/500 responses often leak names
+   (e.g. `MongoServerError: ns not found`, Mongoose validation errors naming the model).
+2. **Derive names from framework conventions.**
+   - Mongoose: lowercases and pluralizes the model name (`Operator` -> `operators`).
+   - Django: `appname_modelname`.
+   - Rails: pluralized snake_case (`PendingInvite` -> `pending_invites`).
+   Use any model names found in app code, JS bundles, or error messages to generate guesses.
+3. **Efficient existence check.** Use `$facet` + `$lookup` with
+   `$project: {count: {$size: "$data"}}` to test whether a collection has documents without
+   transferring data. Run in parallel batches of 10-20 names.
+4. **Seed wordlist.** Start with these before generating custom lists:
+   `users, sessions, tokens, credentials, invites, accounts, roles, permissions, logs,
+   events, operators, admins, customers, orders, products, settings, configs,
+   notifications, messages, comments, posts, profiles, teams, organizations, keys,
+   secrets, passwords, resets, verifications, pending_invites, onboarding`
+
 ## Record
 
 - Save tool output under `engagements/<slug>/enum/` and `pk evidence add`.
