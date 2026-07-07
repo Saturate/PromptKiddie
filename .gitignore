@@ -15,6 +15,9 @@ build/
 *.pem
 *.key
 
+# Engagement retros — personal, sensitive
+docs/retros/
+
 # Engagement data — evidence, loot, scans. NEVER commit client/target data.
 engagements/*
 !engagements/.gitkeep
