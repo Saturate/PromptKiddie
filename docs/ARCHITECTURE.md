@@ -6,17 +6,21 @@ A web frontend sits on top of persistence for human control.
 
 ```mermaid
 graph TD
-    FE["Web Frontend<br/><small>Next.js: dashboards + chat inbox</small><br/><small>(Milestone 2)</small>"]
+    FE["Web Frontend<br/><small>Next.js: dashboards + chat inbox</small>"]
     ORCH["Agent Orchestrator<br/><small>plans engagement, polls inbox,<br/>delegates to sub-agents,<br/>logs via pk</small>"]
     PG["PostgreSQL<br/><small>engagements, targets, findings,<br/>evidence, activity_log,<br/>agent_runs, messages</small>"]
     SUB["Sub-agents<br/><small>recon, enum, exploit, report</small>"]
-    TOOLS["Tooling layer<br/><small>nmap, ffuf, nuclei, sqlmap<br/>Bash today; Kali MCP later (M3)</small>"]
+    TOOLS["Tooling layer<br/><small>nmap, ffuf, nuclei, sqlmap<br/>runs inside attackbox container</small>"]
+    GLEIPNIR["Gleipnir relay<br/><small>TCP/TLS listener, session manager,<br/>SOCKS proxy, Unix socket API</small>"]
+    TARGETS["Targets<br/><small>gleipnir-agent deployed,<br/>connects back over TCP/TLS</small>"]
 
     FE -- reads/writes --> PG
     ORCH <-- pk CLI / packages/core --> PG
     ORCH -- spawns --> SUB
     SUB -- findings/activity/evidence --> PG
     SUB -- run tools --> TOOLS
+    SUB -- "pk shell / pk upload / pk tunnel" --> GLEIPNIR
+    GLEIPNIR -- "custom wire protocol<br/>(0x504B524C framing)" --> TARGETS
 ```
 
 ## Orchestration layer
@@ -87,11 +91,44 @@ Because both call the same core, behavior stays identical no matter which is use
 
 ## Tooling layer
 
-Today: the orchestrator and sub-agents invoke tools via Bash (assumes a Kali-like host).
+Offensive tools (nmap, ffuf, nuclei, sqlmap, etc.) run inside the **attackbox** Docker
+container. The orchestrator and sub-agents invoke them via `pk exec`, which auto-logs
+commands and output to the engagement activity trail.
 
-Milestone 3: a **Dockerized Kali MCP server** exposes a curated toolset (nmap, ffuf,
-nuclei, sqlmap, gobuster, etc.) as structured MCP tools, giving reproducible, isolated,
-portable tooling and clean structured output that maps straight into `findings`/`evidence`.
+A **tooling MCP server** (`packages/tooling-mcp`) exposes the same tools as structured MCP
+tools for type-safe invocation.
+
+## Gleipnir (reverse shell handler)
+
+Gleipnir is PK's persistent reverse shell handler. It replaces ad-hoc netcat/chisel setups
+with a structured C2 channel.
+
+**Relay** (`packages/gleipnir/relay`): runs as a Docker service sharing the attackbox
+network (and VPN tunnel). Listens for agent callbacks on TCP with TLS enabled by default
+(auto-generates a self-signed cert if none provided). Exposes a Unix socket API
+(`/tmp/gleipnir.sock`) for the CLI and MCP server to send commands.
+
+**Agent** (`packages/gleipnir/agent`): a single static Rust binary cross-compiled per
+target (linux-amd64, linux-arm64, windows-amd64; slim and TLS variants). Deployed to
+targets via file upload. Connects back to the relay, auto-reconnects with exponential
+backoff, and resumes the same session across reboots via a persistent session ID.
+
+**Wire protocol**: custom binary framing (`0x504B524C` magic), not HTTP or protobuf.
+Frame types: CMD, CMD_OUTPUT, FILE_UP, FILE_DOWN, SOCKS_OPEN/DATA/CLOSE, PING/PONG, INFO.
+No recognizable protocol signatures for DPI.
+
+**Key features**:
+- Named sessions with platform detection (OS, arch, user, hostname)
+- Command execution with timeout and process cleanup
+- Chunked binary file transfer (upload and download)
+- Built-in SOCKS5 proxy (replaces chisel for pivoting)
+- KotH persistence: cron (Linux), schtasks/registry (Windows), process masquerade,
+  hidden install, self-delete, multi-host callback fallback
+
+**Integration**: `pk shell`/`pk upload`/`pk download`/`pk tunnel` CLI commands and
+`gleipnir_exec`/`gleipnir_upload`/`gleipnir_download`/`gleipnir_sessions`/`gleipnir_tunnel`
+MCP tools. Pre-compiled agent binaries are fetched from GitHub releases into the attackbox
+at `/opt/gleipnir/agents/`.
 
 ## Frameworks
 

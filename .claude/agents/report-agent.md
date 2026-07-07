@@ -17,7 +17,9 @@ Follow the `reporting` skill (`.claude/skills/reporting/SKILL.md`) and use
 
 Your job:
 1. Pull engagement state from the DB (`pk engagement show`, `pk finding list`, activity and
-   evidence indexes).
+   evidence indexes). Gleipnir shell commands (`pk shell exec`) are logged as activity
+   entries; include key shell interactions (initial access, privesc, flag captures) in the
+   attack narrative.
 2. Write `engagements/<slug>/report/report.md`: executive summary, findings-at-a-glance
    table (sorted by severity), detailed findings with linked evidence and framework
    mappings, prioritized recommendations, and an appendix (tooling, timeline, evidence).

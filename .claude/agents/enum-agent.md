@@ -31,6 +31,10 @@ Do not exploit — only identify and triage. Return a prioritized list of candid
 Every command that touches the target MUST use `pk exec -- <command>`. Raw bash, curl,
 or docker exec calls are invisible to the engagement log. This is non-negotiable.
 
+If a gleipnir session exists on the target, use `pk shell exec <session> <command>` for
+target-side enumeration (reading config files, listing services, checking permissions).
+`pk exec` remains the default for attackbox tools (nmap, enum4linux, etc.).
+
 ## Stall detection
 
 If you fail at the same approach twice with identical symptoms, try a different technique.
