@@ -16,8 +16,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     binutils tcpdump tshark \
     && rm -rf /var/lib/apt/lists/*
 
-# impacket
-RUN pip3 install --break-system-packages --no-cache-dir impacket
+# AD attack tools + impacket
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    evil-winrm responder proxychains4 mingw-w64 mono-devel \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --break-system-packages --no-cache-dir \
+    impacket certipy-ad bloodyAD pywinrm pysocks donut-shellcode
+
+# Pre-download Windows attack binaries
+RUN mkdir -p /opt/windows-tools /opt/pivot && \
+    curl -fsSL "https://github.com/r3motecontrol/Ghostpack-CompiledBinaries/raw/master/Rubeus.exe" \
+      -o /opt/windows-tools/Rubeus.exe && \
+    curl -fsSL "https://github.com/BeichenDream/GodPotato/releases/download/V1.20/GodPotato-NET4.exe" \
+      -o /opt/windows-tools/GodPotato.exe && \
+    ARCH=$(dpkg --print-architecture) && \
+    TAG=$(curl -fsSL https://api.github.com/repos/jpillora/chisel/releases/latest | jq -r .tag_name) && \
+    curl -fsSL "https://github.com/jpillora/chisel/releases/download/${TAG}/chisel_${TAG#v}_linux_amd64.gz" | gunzip > /opt/pivot/chisel-linux-amd64 && \
+    chmod +x /opt/pivot/chisel-linux-amd64 && \
+    curl -fsSL "https://github.com/jpillora/chisel/releases/download/${TAG}/chisel_${TAG#v}_linux_${ARCH}.gz" | gunzip > /usr/local/bin/chisel && \
+    chmod +x /usr/local/bin/chisel
 
 # rustcat
 RUN apt-get update && apt-get install -y --no-install-recommends cargo rustc \
