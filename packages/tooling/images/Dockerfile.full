@@ -3,6 +3,7 @@ FROM kalilinux/kali-rolling
 ENV PK_IMAGE_TYPE=full
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    tini \
     nmap ncat netcat-traditional ffuf nuclei gobuster nikto sqlmap httpx-toolkit \
     seclists wordlists \
     metasploit-framework \
@@ -14,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip \
     openssh-client sshpass \
     binutils tcpdump tshark \
+    faketime ntpdate kpcli \
     && rm -rf /var/lib/apt/lists/*
 
 # AD attack tools + impacket
@@ -22,7 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install --break-system-packages --no-cache-dir \
-    impacket certipy-ad bloodyAD pywinrm pysocks donut-shellcode
+    impacket certipy-ad bloodyAD pywinrm pysocks donut-shellcode \
+    regipy pykeepass
 
 # Pre-download Windows attack binaries
 RUN mkdir -p /opt/windows-tools /opt/pivot && \
@@ -75,4 +78,4 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /workspace
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
