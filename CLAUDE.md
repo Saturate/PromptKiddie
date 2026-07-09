@@ -70,6 +70,12 @@ makes the playbook better over time.
 after completing the step or after 200 tool calls, whichever comes first. If stuck after
 3 failed attempts at the same approach, report what you tried and ask for redirection."
 
+**Delegation heuristic.** If you have been running tools directly (curl, nmap, relay
+scripts, password spraying) for more than 15 minutes without delegating, stop and spawn
+an agent. Orchestrator context is expensive; filling it with raw tool output (relay logs,
+HTTP responses, spray results) causes investigation loops. A well-briefed agent with
+exact commands and file paths handles grunt work faster than the orchestrator.
+
 **Auto-progress between phases.** When a phase completes and the next phase has ready
 steps, start immediately. Do not pause to ask permission between phases. Report results
 as you go, but keep moving. Only stop if you hit an ambiguity, a scope question, or need
@@ -81,6 +87,24 @@ results, completes the step, and advances the phase. Do not include phase-advanc
 step-completion instructions in agent briefs.
 
 Always finish an engagement with the **reporting** phase.
+
+## Agent brief template
+
+When spawning a sub-agent, include these sections in the brief:
+
+1. **Engagement context**: engagement ID, in-scope targets, current phase, specific step(s)
+   to complete.
+2. **What to do**: exact objectives, ordered by priority. Include file paths, endpoints,
+   credentials, and vulnerability details already discovered.
+3. **PK tooling inventory**: agents have the PK tooling reference in their system prompt,
+   but call out specific tools relevant to this task (e.g. "use `pk tunnel up` for SOCKS,
+   not chisel" or "use `pk knowledge search` for technique guidance").
+4. **Constraints**: tool call budget (default 200), forbidden actions (do not brute-force,
+   do not modify service X), and any RoE limits.
+5. **Report format**: what to report back (findings, credentials, flags, evidence paths).
+
+Do not include phase-advancement or step-completion instructions; that is the
+orchestrator's job.
 
 ## Known CVEs: PoC-first approach
 
