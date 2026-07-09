@@ -18,6 +18,24 @@ in `triage` status; promote them later during exploitation.
 3. Quick vuln scan: `nuclei -t <templates>`, `nikto` — triage results, don't trust blindly.
 4. Tag candidates with OWASP refs (e.g. `A03:2021`, `WSTG-INPV-*`).
 
+### Web app attack surface checklist
+
+When you discover a web endpoint (especially file operations, APIs, or authenticated
+areas), test these systematically before moving on:
+
+- **Path traversal**: plain (`../`), single-encoded (`%2e%2e%2f`), double-encoded
+  (`%252e%252e%252f`), unicode normalization (`..%5c`), null byte (`%00`)
+- **IDOR**: increment/decrement IDs, swap UUIDs, access other users' resources
+- **Encoding bypass**: URL-encode special chars, double-encode, mix encodings
+- **File upload abuse**: double extensions (`.php.jpg`), null bytes, content-type
+  manipulation, magic byte spoofing
+- **Auth bypass**: access endpoints without tokens, expired tokens, other users' tokens
+- **Rate limiting**: test if brute-force protection exists
+- **Error disclosure**: trigger errors to reveal stack traces, paths, versions
+
+This checklist applies after any file download/upload endpoint, API, or authenticated
+web app is discovered. Do not skip it.
+
 ## Custom wordlists
 
 Standard wordlists (rockyou.txt, SecLists) won't always work. Generate target-specific
@@ -74,6 +92,20 @@ Keep the human informed via the inbox:
 
 Send a message when starting, when you find something notable, and when done.
 Check for inbound messages with `pk msg poll` and respond if any.
+
+## Knowledge base
+
+When you encounter an unfamiliar service, endpoint, or protocol, search the knowledge base
+before improvising:
+
+```bash
+pk knowledge search "file download path traversal"
+pk knowledge search "mqtt enumeration"
+pk knowledge search "<service name> default credentials"
+```
+
+The knowledge base returns ranked technique cards with payloads and exploitation steps.
+Use them as a starting point rather than guessing.
 
 ## Tips
 

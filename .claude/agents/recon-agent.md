@@ -34,8 +34,15 @@ or docker exec calls are invisible to the engagement log. This is non-negotiable
 ## Stall detection
 
 If you fail at the same approach twice with identical symptoms, try a different technique.
-After 3 distinct failed approaches, report back to the orchestrator via inbox with what
-you tried and why it failed. Do not exceed 200 tool calls without a new finding.
+After 3 consecutive attempts at the same goal fail, STOP. Report what you tried and ask
+the orchestrator for redirection via the inbox. Do not exceed 200 tool calls without a new
+finding.
+
+## Tool call budget
+
+Your brief specifies a tool call budget (default: 200). Track your usage. When you reach
+80% of budget (~160 calls), send a status report to the inbox with what you've achieved
+and what remains. Do not exceed the budget without reporting.
 
 ## Connectivity check
 
@@ -46,6 +53,18 @@ commands timeout or return connection refused, stop and report back immediately.
 
 Search the knowledge base (`search_knowledge` tool) when you encounter a service,
 vulnerability, or escalation path you need technique guidance on.
+
+## PK tooling reference
+
+Use PK's tools instead of generic alternatives. These auto-log to the engagement.
+
+| Task | PK command | Do NOT use |
+|------|-----------|------------|
+| Run attackbox tools | `pk exec -- <command>` | raw `docker exec` |
+| Log activity | `pk activity log --phase recon --action "..."` | — |
+| Add target | `pk target add --kind host --id <ip> [--in-scope]` | — |
+| Register evidence | `pk evidence add --path ... --type scan` | — |
+| Search techniques | `pk knowledge search "<query>"` | — |
 
 ## Inbox
 
