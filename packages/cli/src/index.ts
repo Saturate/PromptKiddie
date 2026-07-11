@@ -1536,9 +1536,13 @@ program
       cmdStr = cmd.join(" ");
     }
 
+    const needsShell = /[|&;<>`$"'\\*?#~(){}[\]!\n]/.test(cmdStr) || o.script;
+
     const execArgs: [string, string[]] = local
       ? ["sh", ["-c", cmdStr]]
-      : ["docker", ["exec", "-e", "PK_EXEC=1", container, "sh", "-c", cmdStr]];
+      : needsShell
+        ? ["docker", ["exec", "-e", "PK_EXEC=1", container, "sh", "-c", cmdStr]]
+        : ["docker", ["exec", "-e", "PK_EXEC=1", container, ...cmd]];
 
     const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
       const proc = exec(
