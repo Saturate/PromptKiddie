@@ -26,6 +26,9 @@ engagements/*
 # Postgres volume (if bind-mounted)
 pgdata/
 
+# x86 build sidecar output
+.build/
+
 # Logs / scratch
 *.log
 .DS_Store
