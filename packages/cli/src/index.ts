@@ -7,7 +7,7 @@ import "dotenv/config";
 import { Command } from "commander";
 import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
 import { copyFileSync, existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   addEvidence,
   closeDb,
@@ -609,8 +609,41 @@ program
     }));
   });
 
-// --- vpn (manage VPN profiles in tooling container) -------------------------
-const vpn = program.command("vpn").description("Manage VPN profiles in the tooling container");
+// --- vpn (manage VPN profiles) -----------------------------------------------
+
+const VPN_SUBNETS = ["10.129.0.0/16", "10.10.0.0/15", "10.13.37.0/24"];
+
+function exec(cmd: string, args: string[], opts: { timeout?: number; stdio?: string } = {}): string {
+  return execFileSync(cmd, args, { timeout: opts.timeout ?? 10000, stdio: opts.stdio as any ?? "pipe" }).toString().trim();
+}
+
+function detectColima(): { isColima: boolean; vmIP: string | null } {
+  try {
+    const list = exec("colima", ["list", "--json"]);
+    const info = JSON.parse(list);
+    if (info?.status === "Running" && info?.address) {
+      return { isColima: true, vmIP: info.address };
+    }
+  } catch {}
+  return { isColima: false, vmIP: null };
+}
+
+function colimaExec(args: string, timeout = 15000): string {
+  return execFileSync("colima", ["ssh", "--", "sudo", "sh", "-c", args],
+    { timeout, stdio: "pipe" }).toString().trim();
+}
+
+function checkDualVPN() {
+  try {
+    const ps = exec("ps", ["aux"]);
+    if (/OpenVPN Connect/i.test(ps)) {
+      console.error("[vpn] WARNING: OpenVPN Connect is running on the host.");
+      console.error("[vpn] Disconnect it to avoid routing conflicts.");
+    }
+  } catch {}
+}
+
+const vpn = program.command("vpn").description("Manage VPN connections");
 
 function dockerExec(container: string) {
   return async (args: string[], timeout = 30000) => {
@@ -637,7 +670,7 @@ function listProfiles(): string[] {
 
 vpn
   .command("up")
-  .description("Connect a VPN profile (auto-selects if only one exists)")
+  .description("Connect a VPN profile")
   .argument("[name]", "profile name (filename without .ovpn)")
   .action(async (name?: string) => {
     const profiles = listProfiles();
@@ -663,8 +696,102 @@ vpn
       process.exit(1);
     }
 
+    checkDualVPN();
+
+    const colima = detectColima();
+    const configFile = join(config.vpn.config_path, `${name}.ovpn`);
     const container = config.attackbox.container;
     const run = dockerExec(container);
+
+    if (colima.isColima && colima.vmIP) {
+      // --- macOS + Colima: VPN in the VM for transparent host routing ---
+      console.error(`[vpn] Colima detected (${colima.vmIP}). Running VPN in VM for transparent host access.`);
+
+      // Resolve absolute config path for VM (host fs is mounted)
+      const absConfig = resolve(configFile);
+
+      // Kill any existing VPN
+      try { colimaExec("pkill -9 openvpn || true"); } catch {}
+      // Also kill any VPN in the container to avoid dual connections
+      try { await run(["sh", "-c", "pkill -9 openvpn || true"]); } catch {}
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Start OpenVPN in VM
+      console.error(`[vpn] Connecting profile "${name}"...`);
+      let vmStarted = true;
+      try {
+        colimaExec(`openvpn --config "${absConfig}" --daemon --log /var/log/openvpn.log`);
+      } catch (e: any) {
+        console.error(`[vpn] Failed to start OpenVPN in VM: ${e.message}`);
+        console.error("[vpn] Falling back to container mode...");
+        vmStarted = false;
+      }
+
+      // Wait for tun0 (skip if openvpn failed to start)
+      let tunIP = "";
+      for (let i = 0; vmStarted && i < 30; i++) {
+        try {
+          const out = colimaExec("ip -4 addr show tun0");
+          const m = out.match(/inet ([\d.]+)/);
+          if (m) { tunIP = m[1]; break; }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      if (tunIP) {
+        console.error(`[vpn] Connected: tun0 = ${tunIP} [${name}]`);
+
+        // Enable forwarding + NAT in VM
+        try {
+          colimaExec("echo 1 > /proc/sys/net/ipv4/ip_forward");
+          colimaExec(
+            "iptables -t nat -C POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || " +
+            "iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE"
+          );
+          // Accept forwarded traffic on the routable interface (col0)
+          colimaExec(
+            "iptables -C FORWARD -i col0 -o tun0 -j ACCEPT 2>/dev/null || " +
+            "iptables -A FORWARD -i col0 -o tun0 -j ACCEPT"
+          );
+          colimaExec(
+            "iptables -C FORWARD -i tun0 -o col0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || " +
+            "iptables -A FORWARD -i tun0 -o col0 -m state --state RELATED,ESTABLISHED -j ACCEPT"
+          );
+        } catch {
+          console.error("[vpn] Warning: could not configure VM forwarding");
+        }
+
+        // Add host routes
+        const isMac = process.platform === "darwin";
+        let routesNeeded = false;
+        for (const subnet of VPN_SUBNETS) {
+          try {
+            if (isMac) {
+              exec("sudo", ["route", "-n", "add", "-net", subnet, colima.vmIP!], { timeout: 15000, stdio: "inherit" });
+            } else {
+              exec("sudo", ["ip", "route", "add", subnet, "via", colima.vmIP!], { timeout: 15000, stdio: "inherit" });
+            }
+            routesNeeded = true;
+          } catch {}
+        }
+
+        if (routesNeeded) {
+          console.error(`[vpn] Host routes -> ${colima.vmIP} (transparent from host)`);
+        } else {
+          console.error(`[vpn] Host routes already configured (${colima.vmIP})`);
+        }
+
+        // Save state (sanitize for shell)
+        const safeName = name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        try { colimaExec(`printf '%s' "${safeName}" > /tmp/.pk-vpn-profile`); } catch {}
+        return;
+      } else {
+        console.error("[vpn] WARNING: tun0 not up in VM after 30s, falling back to container mode");
+      }
+    }
+
+    // --- Linux / fallback: VPN in the container ---
+    console.error("[vpn] Running VPN in attackbox container.");
 
     // Kill any running VPN and clean up stale tun devices
     try { await run(["pkill", "-9", "openvpn"]); } catch {}
@@ -687,6 +814,28 @@ vpn
         const match = out.match(/inet ([\d.]+)/);
         if (match) {
           console.error(`[vpn] Connected: tun0 = ${match[1]} [${name}]`);
+
+          // On Linux, container IPs are routable - set up host routes
+          if (process.platform === "linux") {
+            try {
+              const cIP = exec("docker", ["inspect", container, "--format",
+                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"]);
+              if (cIP) {
+                await run(["sh", "-c", "echo 1 > /proc/sys/net/ipv4/ip_forward"]);
+                await run(["sh", "-c",
+                  "iptables -t nat -C POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || " +
+                  "iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE"
+                ]);
+                for (const subnet of VPN_SUBNETS) {
+                  try {
+                    exec("sudo", ["ip", "route", "add", subnet, "via", cIP],
+                      { timeout: 15000, stdio: "inherit" });
+                  } catch {}
+                }
+                console.error(`[vpn] Host routes -> ${cIP} (transparent from host)`);
+              }
+            } catch {}
+          }
           return;
         }
       } catch {}
@@ -701,12 +850,32 @@ vpn
   .action(async () => {
     const container = config.attackbox.container;
     const run = dockerExec(container);
-    try {
-      await run(["pkill", "-9", "openvpn"]);
-      try { await run(["rm", "-f", "/tmp/.pk-vpn-profile"]); } catch {}
+    const colima = detectColima();
+
+    // Always kill VPN in the container (covers fallback mode)
+    try { await run(["pkill", "-9", "openvpn"]); } catch {}
+    try { await run(["rm", "-f", "/tmp/.pk-vpn-profile"]); } catch {}
+
+    if (colima.isColima && colima.vmIP) {
+      // Also kill VPN in VM and clean up host routes
+      try { colimaExec("pkill -9 openvpn || true"); } catch {}
+      try { colimaExec("rm -f /tmp/.pk-vpn-profile"); } catch {}
+
+      const isMac = process.platform === "darwin";
+      for (const subnet of VPN_SUBNETS) {
+        try {
+          if (isMac) {
+            exec("sudo", ["route", "-n", "delete", "-net", subnet, colima.vmIP!],
+              { timeout: 15000, stdio: "inherit" });
+          } else {
+            exec("sudo", ["ip", "route", "del", subnet, "via", colima.vmIP!],
+              { timeout: 15000, stdio: "inherit" });
+          }
+        } catch {}
+      }
+      console.error("[vpn] Stopped (routes removed)");
+    } else {
       console.error("[vpn] Stopped");
-    } catch {
-      console.error("[vpn] OpenVPN not running or kill failed");
     }
   });
 
@@ -716,13 +885,34 @@ vpn
   .action(async () => {
     const container = config.attackbox.container;
     const run = dockerExec(container);
+    const colima = detectColima();
+
+    // Check VM first (Colima mode)
+    if (colima.isColima) {
+      try {
+        const out = colimaExec("ip -4 addr show tun0 2>/dev/null || true");
+        const ipMatch = out.match(/inet ([\d.]+)/);
+        if (ipMatch) {
+          let profile = "";
+          try { profile = colimaExec("cat /tmp/.pk-vpn-profile 2>/dev/null || true").trim(); } catch {}
+          console.log(profile
+            ? `VPN: connected (${ipMatch[1]}) [${profile}] (VM mode, host transparent via ${colima.vmIP})`
+            : `VPN: connected (${ipMatch[1]}) (VM mode, host transparent via ${colima.vmIP})`);
+          return;
+        }
+      } catch {}
+    }
+
+    // Check container
     try {
       const out = await run(["ip", "-4", "addr", "show", "tun0"]);
       const ipMatch = out.match(/inet ([\d.]+)/);
       if (!ipMatch) { console.log("VPN: disconnected"); return; }
       let profile = "";
       try { profile = (await run(["cat", "/tmp/.pk-vpn-profile"])).trim(); } catch {}
-      console.log(profile ? `VPN: connected (${ipMatch[1]}) [${profile}]` : `VPN: connected (${ipMatch[1]})`);
+      console.log(profile
+        ? `VPN: connected (${ipMatch[1]}) [${profile}] (container mode)`
+        : `VPN: connected (${ipMatch[1]}) (container mode)`);
     } catch {
       console.log("VPN: disconnected");
     }

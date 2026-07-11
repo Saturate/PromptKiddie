@@ -276,13 +276,51 @@ exploitation steps.
 For engagements behind a VPN (THM, HTB, etc.), the tooling container runs OpenVPN:
 
 ```bash
-pk vpn up                         # start OpenVPN (config at /vpn/config.ovpn)
-pk vpn down                       # stop OpenVPN
+pk vpn up                         # start OpenVPN + SOCKS proxy
+pk vpn up htb                     # connect a specific profile
+pk vpn down                       # stop OpenVPN + SOCKS proxy
 pk vpn status                     # check connection status + tun0 IP
+pk vpn list                       # list available .ovpn profiles
 ```
 
 Place your `.ovpn` config in the `vpn/` directory (mounted read-only to the container at
 `/vpn`). Override the mount path with `PK_VPN_CONFIG` in `.env`.
+
+### How it works
+
+`pk vpn up` detects the runtime environment and picks the best VPN mode:
+
+- **macOS + Colima** (auto-detected): runs OpenVPN in the Colima VM. The VM has a
+  routable IP via `--network-address`, so host routes send HTB/THM traffic through the
+  VM transparently. `curl`, `ssh`, browsers, `nmap` all work from the host with no proxy
+  flags. Requires Colima started with `colima start --network-address`.
+- **Linux** (native Docker): runs OpenVPN in the attackbox container. Container IPs are
+  directly routable on Linux, so host routes work the same way.
+- **Fallback**: if Colima has no `--network-address` or detection fails, VPN runs in the
+  container (agents and `pk exec` still work, but host can't reach targets directly).
+
+On first use, `pk vpn up` prompts for `sudo` to add host routes. These persist until
+`pk vpn down` or reboot.
+
+### Dual VPN warning
+
+**Do not run a VPN client on the host and in the container at the same time.** Dual
+connections to the same VPN server cause routing conflicts that look like rate limiting
+(intermittent timeouts, dropped packets, ICMP blackholes). `pk vpn up` checks for this
+and warns if it detects OpenVPN running on the host. Disconnect OpenVPN Connect (or any
+host VPN client) before using `pk vpn up`.
+
+### Colima setup (one-time)
+
+If using Colima on macOS, restart it with `--network-address` to enable transparent
+host routing:
+
+```bash
+colima stop
+colima start --network-address --cpu 2 --memory 2 --disk 100
+```
+
+This gives the VM a routable IP. `pk vpn up` detects this automatically.
 
 Before running recon/enum/exploit on external targets, verify the VPN is connected. If
 scanning returns all-filtered or times out, check `pk vpn status` first.

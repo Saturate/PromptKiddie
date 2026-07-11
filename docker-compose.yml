@@ -29,6 +29,7 @@ services:
     restart: unless-stopped
     ports:
       - "${PK_BROWSER_PORT:-9222}:9222"
+      - "${PK_SOCKS_PORT:-1080}:1080"
     volumes:
       - ./engagements:/workspace/engagements
       - ${PK_VPN_CONFIG:-./vpn}:/vpn:ro
@@ -39,6 +40,7 @@ services:
       - /dev/net/tun:/dev/net/tun
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.ip_forward=1
 
   # Headless Chrome sharing the attackbox network (routes through VPN)
   browser:
