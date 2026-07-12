@@ -5,7 +5,7 @@ Items 1-2 (exploit cards, chunking fix) are already shipped.
 
 ## Task 1: Events table + NOTIFY trigger
 
-**Status**: pending
+**Status**: done
 **Depends on**: none
 **Files**: `packages/core/src/schema.ts`, SQL migration
 
@@ -21,7 +21,7 @@ Postgres NOTIFY trigger so the future supervisor can LISTEN for new events.
 
 ## Task 2: Discoveries table
 
-**Status**: pending
+**Status**: done
 **Depends on**: Task 1
 **Files**: `packages/core/src/schema.ts`, SQL migration
 
@@ -36,7 +36,7 @@ Add the `discoveries` table.
 
 ## Task 3: Event + discovery repo functions
 
-**Status**: pending
+**Status**: done
 **Depends on**: Task 2
 **Files**: `packages/core/src/repo.ts`
 
@@ -55,7 +55,7 @@ Add CRUD functions for events and discoveries: `emitEvent`, `addDiscovery`,
 
 ## Task 4: CLI commands for events + discoveries
 
-**Status**: pending
+**Status**: done
 **Depends on**: Task 3
 **Files**: `packages/cli/src/index.ts` (or relevant command file)
 
@@ -71,7 +71,7 @@ Wire up CLI commands so agents and the orchestrator can emit events and discover
 
 ## Task 5: Execution log dedup index
 
-**Status**: pending
+**Status**: done
 **Depends on**: none (parallel with Tasks 1-4)
 **Files**: `packages/core/src/schema.ts`, `packages/core/src/repo.ts`
 
@@ -93,7 +93,7 @@ dedup layer.
 
 ## Task 6: LLM context payload builder
 
-**Status**: pending
+**Status**: done
 **Depends on**: Task 3, Task 5
 **Files**: `packages/core/src/context-builder.ts` (new)
 
@@ -110,7 +110,7 @@ discoveries, exec dedup, findings, and artifacts into the format from spec S4.
 
 ## Task 7: MCP tool for context payload
 
-**Status**: pending
+**Status**: done
 **Depends on**: Task 6
 **Files**: MCP server tool definition
 
