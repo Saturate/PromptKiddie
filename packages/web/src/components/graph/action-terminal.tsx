@@ -18,6 +18,7 @@ interface ActionTerminalProps {
 export function ActionTerminal({ output, className }: ActionTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const prevOutputRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -54,6 +55,7 @@ export function ActionTerminal({ output, className }: ActionTerminalProps) {
         for (const line of output.split("\n")) {
           terminal.writeln(line);
         }
+        prevOutputRef.current = output;
       } else {
         terminal.writeln("\x1b[2mWaiting for action output...\x1b[0m");
       }
@@ -62,10 +64,49 @@ export function ActionTerminal({ output, className }: ActionTerminalProps) {
         observer.disconnect();
         terminal.dispose();
         termRef.current = null;
+        prevOutputRef.current = undefined;
       };
     })();
 
     return () => cleanup?.();
+    // Re-create terminal only when the component remounts (output identity isn't stable)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Append new lines when output grows (streaming mode)
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+
+    if (output === undefined && prevOutputRef.current === undefined) return;
+
+    if (output === undefined) {
+      // Cleared: reset terminal
+      term.clear();
+      term.writeln("\x1b[2mWaiting for action output...\x1b[0m");
+      prevOutputRef.current = undefined;
+      return;
+    }
+
+    const prev = prevOutputRef.current ?? "";
+    if (output === prev) return;
+
+    if (output.startsWith(prev) && prev.length > 0) {
+      // Append only the new portion
+      const newContent = output.slice(prev.length);
+      const lines = newContent.split("\n");
+      for (const line of lines) {
+        if (line) term.writeln(line);
+      }
+    } else {
+      // Full replace
+      term.clear();
+      for (const line of output.split("\n")) {
+        term.writeln(line);
+      }
+    }
+
+    prevOutputRef.current = output;
   }, [output]);
 
   return (

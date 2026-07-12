@@ -627,6 +627,23 @@ program
     out(await repo.getDiscoverySummary(eid));
   });
 
+// --- supervisor ------------------------------------------------------------
+program
+  .command("supervisor")
+  .description("Start the event-driven supervisor for an engagement")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    const { startSupervisor } = await import("@promptkiddie/supervisor");
+    await startSupervisor({
+      engagementId: eid,
+      onEvent: (e) => console.log(`[event] ${e.type}: ${JSON.stringify(e.payload).slice(0, 100)}`),
+      onActionStart: (name) => console.log(`[action] started: ${name}`),
+      onActionEnd: (name) => console.log(`[action] finished: ${name}`),
+      onOutput: (action, line) => console.log(`[${action}] ${line}`),
+    });
+  });
+
 // --- agent run bookkeeping -------------------------------------------------
 const agent = program.command("agent").description("Sub-agent run bookkeeping");
 
