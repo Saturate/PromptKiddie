@@ -1,0 +1,23 @@
+{
+  "name": "@promptkiddie/supervisor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@promptkiddie/core": "workspace:*",
+    "pg": "^8.13.3",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.11",
+    "tsx": "^4.22.4",
+    "typescript": "^5.8.3"
+  }
+}

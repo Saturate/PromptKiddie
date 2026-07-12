@@ -63,6 +63,9 @@ importers:
       '@promptkiddie/core':
         specifier: workspace:*
         version: link:../core
+      '@promptkiddie/supervisor':
+        specifier: workspace:*
+        version: link:../supervisor
       commander:
         specifier: ^13.0.0
         version: 13.1.0
@@ -122,6 +125,28 @@ importers:
         version: 22.19.21
       typescript:
         specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/supervisor:
+    dependencies:
+      '@promptkiddie/core':
+        specifier: workspace:*
+        version: link:../core
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+      pg:
+        specifier: ^8.13.3
+        version: 8.21.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.11
+        version: 8.20.0
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: ^5.8.3
         version: 5.9.3
 
   packages/tooling-mcp:
@@ -184,6 +209,9 @@ importers:
       '@tanstack/react-table':
         specifier: ^8.21.3
         version: 8.21.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@xterm/addon-fit':
+        specifier: ^0.11.0
+        version: 0.11.0
       '@xyflow/react':
         specifier: ^12.11.1
         version: 12.11.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(immer@11.1.8)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -238,6 +266,9 @@ importers:
       vaul:
         specifier: ^1.1.2
         version: 1.1.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      xterm:
+        specifier: ^5.3.0
+        version: 5.3.0
       zod:
         specifier: ^3.25.0
         version: 3.25.76
@@ -1616,6 +1647,9 @@ packages:
 
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
+
+  '@xterm/addon-fit@0.11.0':
+    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
 
   '@xyflow/react@12.11.1':
     resolution: {integrity: sha512-L+zBoLGSXham0MnlY8QqjfR7/C5JNw0zxkaey5aZ5XmCgJBAdH4+WRIu8CR40d3l/BdU635V6YbhBK1jMo8/6Q==}
@@ -3442,6 +3476,10 @@ packages:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
     engines: {node: '>=0.4'}
 
+  xterm@5.3.0:
+    resolution: {integrity: sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg==}
+    deprecated: This package is now deprecated. Move to @xterm/xterm instead.
+
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
 
@@ -4596,6 +4634,8 @@ snapshots:
   '@vercel/oidc@3.2.0': {}
 
   '@workflow/serde@4.1.0': {}
+
+  '@xterm/addon-fit@0.11.0': {}
 
   '@xyflow/react@12.11.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(immer@11.1.8)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
@@ -6325,6 +6365,8 @@ snapshots:
       powershell-utils: 0.1.0
 
   xtend@4.0.2: {}
+
+  xterm@5.3.0: {}
 
   yallist@3.1.1: {}
 

@@ -45,6 +45,8 @@ export {
   type ExecOpts,
   type LlmRunner,
   type MockContext,
+  type ExploitHit,
+  type LlmOpts,
   createMockContext,
 } from "./sdk.js";
 export { CTF_PLAYBOOK as CTF_ACTIONS } from "./actions/index.js";
