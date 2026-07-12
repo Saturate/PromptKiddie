@@ -61,4 +61,4 @@ CREATE TABLE IF NOT EXISTS exec_dedup (
 );
 
 CREATE INDEX IF NOT EXISTS exec_dedup_engagement_idx ON exec_dedup(engagement_id);
-CREATE INDEX IF NOT EXISTS exec_dedup_lookup_idx ON exec_dedup(engagement_id, command_normalized, target, exit_code);
+CREATE UNIQUE INDEX IF NOT EXISTS exec_dedup_lookup_idx ON exec_dedup(engagement_id, command_normalized, target, exit_code);

@@ -15,6 +15,7 @@ import {
   jsonb,
   timestamp,
   index,
+  uniqueIndex,
   customType,
 } from "drizzle-orm/pg-core";
 
@@ -556,6 +557,6 @@ export const execDedup = pgTable(
   },
   (t) => [
     index("exec_dedup_engagement_idx").on(t.engagementId),
-    index("exec_dedup_lookup_idx").on(t.engagementId, t.commandNormalized, t.target, t.exitCode),
+    uniqueIndex("exec_dedup_lookup_idx").on(t.engagementId, t.commandNormalized, t.target, t.exitCode),
   ],
 );
