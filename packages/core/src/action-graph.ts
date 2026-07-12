@@ -123,3 +123,34 @@ export function buildActionGraph(actions: Action[]): ActionGraph {
 
   return { nodes, edges };
 }
+
+/**
+ * Export an {@link ActionGraph} as a Mermaid flowchart string.
+ *
+ * @example
+ * ```ts
+ * const graph = buildActionGraph(CTF_PLAYBOOK.actions);
+ * console.log(actionGraphToMermaid(graph));
+ * ```
+ */
+export function actionGraphToMermaid(graph: ActionGraph): string {
+  const lines = ["graph TD"];
+
+  const kindShape: Record<string, [string, string]> = {
+    script: ["[", "]"],
+    agent: ["{{", "}}"],
+    both: ["([", "])"],
+  };
+
+  for (const node of graph.nodes) {
+    const [open, close] = kindShape[node.kind] ?? ["[", "]"];
+    const label = node.description ? `${node.name}\\n${node.description}` : node.name;
+    lines.push(`  ${node.id}${open}"${label}"${close}`);
+  }
+
+  for (const edge of graph.edges) {
+    lines.push(`  ${edge.from} -->|${edge.event}| ${edge.to}`);
+  }
+
+  return lines.join("\n");
+}
