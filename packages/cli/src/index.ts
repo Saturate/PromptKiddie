@@ -1712,6 +1712,9 @@ program
       actor: "agent",
     });
 
+    const target = local ? "localhost" : container;
+    await repo.recordExecOutcome(eid, cmdStr, target, result.code).catch(() => {});
+
     const fullOutput = result.stdout + result.stderr;
     const maxBytes = o.maxOutput;
 

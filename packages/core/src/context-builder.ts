@@ -30,18 +30,13 @@ function estimateTokens(obj: unknown): number {
 export async function buildLlmContext(engagementId: string): Promise<LlmContext> {
   const tgts = await listTargets(engagementId);
 
-  const allPorts: LlmContext["ports"] = [];
-  for (const t of tgts) {
-    const p = await listPorts(t.id);
-    for (const port of p) {
-      allPorts.push({
-        port: port.port,
-        service: port.service,
-        version: port.version,
-        banner: port.banner,
-      });
-    }
-  }
+  const portsByTarget = await Promise.all(tgts.map((t) => listPorts(t.id)));
+  const allPorts: LlmContext["ports"] = portsByTarget.flat().map((port) => ({
+    port: port.port,
+    service: port.service,
+    version: port.version,
+    banner: port.banner,
+  }));
 
   const [discs, execRows, fds, arts, evs] = await Promise.all([
     listDiscoveries(engagementId),
