@@ -41,6 +41,11 @@ export async function startSupervisor(opts: SupervisorOpts) {
   const bus = new EventBus();
   let stallTimer: ReturnType<typeof setTimeout> | null = null;
   const STALL_TIMEOUT = 5 * 60 * 1000;
+  const priorityOverrides = new Map<string, number>();
+
+  function getActionPriority(action: Action): number {
+    return priorityOverrides.get(action.name) ?? 50;
+  }
 
   // WebSocket server for frontend event streaming
   const wsPort = parseInt(process.env.PK_WS_PORT ?? "3200", 10);
@@ -119,6 +124,10 @@ export async function startSupervisor(opts: SupervisorOpts) {
             phase: engagement.phase,
             mode: "standard",
           },
+          onReprioritize: (name, priority) => {
+            priorityOverrides.set(name, priority);
+            console.log(`[supervisor] reprioritized: ${name} -> p${priority}`);
+          },
           onOutput: (line) => opts.onOutput?.(action.name, line),
           signal: ac.signal,
         });
@@ -157,6 +166,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     resetStallTimer();
     opts.onEvent?.(event);
 
+    const matched: Action[] = [];
     for (const action of playbook.actions) {
       try {
         const synthetic = {
@@ -169,11 +179,16 @@ export async function startSupervisor(opts: SupervisorOpts) {
         };
 
         if (action.on(synthetic)) {
-          dispatchAction(action, event);
+          matched.push(action);
         }
       } catch {
         // trigger threw; skip
       }
+    }
+
+    matched.sort((a, b) => getActionPriority(a) - getActionPriority(b));
+    for (const action of matched) {
+      dispatchAction(action, event);
     }
   }
 

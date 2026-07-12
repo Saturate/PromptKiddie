@@ -28,12 +28,13 @@ interface RunContextOpts {
   target: string;
   event: EngagementEvent;
   engagement: EngagementState;
+  onReprioritize?: (actionName: string, priority: number) => void;
   onOutput?: (line: string) => void;
   signal?: AbortSignal;
 }
 
 export function createRunContext(opts: RunContextOpts): RunContext {
-  const { engagementId, target, event, engagement, onOutput, signal } = opts;
+  const { engagementId, target, event, engagement, onReprioritize, onOutput, signal } = opts;
 
   return {
     target,
@@ -121,8 +122,8 @@ export function createRunContext(opts: RunContextOpts): RunContext {
       return searchKB(query, { limit: 5 });
     },
 
-    reprioritize(_actionName: string, _newPriority: number): void {
-      // Priority management will be implemented with the task queue
+    reprioritize(actionName: string, newPriority: number): void {
+      onReprioritize?.(actionName, newPriority);
     },
 
     async spawnLlm(task: string, _llmOpts?: LlmOpts): Promise<string> {
