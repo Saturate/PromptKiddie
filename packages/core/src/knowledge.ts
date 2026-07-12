@@ -32,19 +32,61 @@ export interface IngestResult {
 
 export type SearchMode = "hybrid" | "vector" | "keyword";
 
-function chunkByHeadings(content: string, maxTokens = 500): string[] {
+function parseFrontmatter(content: string): { frontmatter: Record<string, unknown> | null; body: string } {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!match) return { frontmatter: null, body: content };
+
+  const raw = match[1];
+  const body = match[2];
+  const fm: Record<string, unknown> = {};
+
+  for (const line of raw.split("\n")) {
+    const kvMatch = line.match(/^(\w[\w-]*):\s*(.+)$/);
+    if (!kvMatch) continue;
+    const [, key, value] = kvMatch;
+    const trimmed = value.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      fm[key] = trimmed.slice(1, -1).split(",").map((s) => s.trim().replace(/^["']|["']$/g, ""));
+    } else if (trimmed === "true") {
+      fm[key] = true;
+    } else if (trimmed === "false") {
+      fm[key] = false;
+    } else if (/^\d+(\.\d+)?$/.test(trimmed)) {
+      fm[key] = parseFloat(trimmed);
+    } else {
+      fm[key] = trimmed.replace(/^["']|["']$/g, "");
+    }
+  }
+
+  return { frontmatter: Object.keys(fm).length > 0 ? fm : null, body };
+}
+
+function chunkByHeadings(content: string, maxTokens = 500, overlapLines = 3): string[] {
   const lines = content.split("\n");
   const chunks: string[] = [];
   let current: string[] = [];
   let tokenEstimate = 0;
+  let activeHeading = "";
 
   for (const line of lines) {
-    const isHeading = /^#{1,3}\s/.test(line);
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
 
-    if (isHeading && current.length > 0 && tokenEstimate > 50) {
-      chunks.push(current.join("\n").trim());
-      current = [];
-      tokenEstimate = 0;
+    if (headingMatch) {
+      if (current.length > 0 && tokenEstimate > 50) {
+        chunks.push(current.join("\n").trim());
+        const tail = current.slice(-overlapLines);
+        current = [];
+        tokenEstimate = 0;
+        if (activeHeading) {
+          current.push(activeHeading);
+          tokenEstimate += Math.ceil(activeHeading.length / 4);
+        }
+        for (const t of tail) {
+          current.push(t);
+          tokenEstimate += Math.ceil(t.length / 4);
+        }
+      }
+      activeHeading = line;
     }
 
     current.push(line);
@@ -52,8 +94,17 @@ function chunkByHeadings(content: string, maxTokens = 500): string[] {
 
     if (tokenEstimate >= maxTokens && current.length > 0) {
       chunks.push(current.join("\n").trim());
+      const tail = current.slice(-overlapLines);
       current = [];
       tokenEstimate = 0;
+      if (activeHeading && !tail.some((t) => t === activeHeading)) {
+        current.push(activeHeading);
+        tokenEstimate += Math.ceil(activeHeading.length / 4);
+      }
+      for (const t of tail) {
+        current.push(t);
+        tokenEstimate += Math.ceil(t.length / 4);
+      }
     }
   }
 
@@ -78,9 +129,13 @@ export async function ingestDocument(
   const db = getDb();
   const provider = getEmbeddingProvider();
 
+  const { frontmatter, body } = parseFrontmatter(content);
+  const mergedMeta = frontmatter ? { ...metadata, ...frontmatter } : metadata;
+  const textToChunk = frontmatter ? body : content;
+
   const chunks = chunkStrategy === "file"
-    ? chunkByFile(content)
-    : chunkByHeadings(content);
+    ? chunkByFile(textToChunk)
+    : chunkByHeadings(textToChunk);
 
   for (const chunk of chunks) {
     let vector: number[];
@@ -94,7 +149,7 @@ export async function ingestDocument(
 
     await db.execute(sql`
       INSERT INTO embeddings (id, source_type, content, metadata, embedding)
-      VALUES (gen_random_uuid(), 'knowledge', ${chunk}, ${JSON.stringify(metadata)}::jsonb, ${vectorStr}::vector)
+      VALUES (gen_random_uuid(), 'knowledge', ${chunk}, ${JSON.stringify(mergedMeta)}::jsonb, ${vectorStr}::vector)
     `);
   }
 
@@ -337,18 +392,37 @@ export async function autoIngestFinding(finding: {
   `);
 }
 
-const TECHNIQUES_DIR = join(dirname(fileURLToPath(import.meta.url)), "knowledge", "techniques");
+const KNOWLEDGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "knowledge");
+const TECHNIQUES_DIR = join(KNOWLEDGE_DIR, "techniques");
+const EXPLOITS_DIR = join(KNOWLEDGE_DIR, "exploits");
 
 export async function ingestLocal(
   onProgress?: (file: string, chunks: number) => void,
 ): Promise<IngestResult> {
+  const combined: IngestResult = { files: 0, chunks: 0, skipped: 0, errors: [] };
+
   await clearSource("pk-techniques");
-  return ingestDirectory(TECHNIQUES_DIR, {
+  const techniques = await ingestDirectory(TECHNIQUES_DIR, {
     source: "pk-techniques",
     extensions: [".md"],
     chunkStrategy: "heading",
     onProgress,
   });
+
+  await clearSource("pk-exploits");
+  const exploits = await ingestDirectory(EXPLOITS_DIR, {
+    source: "pk-exploits",
+    extensions: [".md"],
+    chunkStrategy: "heading",
+    onProgress,
+  });
+
+  combined.files = techniques.files + exploits.files;
+  combined.chunks = techniques.chunks + exploits.chunks;
+  combined.skipped = techniques.skipped + exploits.skipped;
+  combined.errors = [...techniques.errors, ...exploits.errors];
+
+  return combined;
 }
 
 export async function listSources(): Promise<Array<{ source: string; chunks: number; lastIngested: Date }>> {

@@ -15,6 +15,9 @@ build/
 *.pem
 *.key
 
+# Specs — working design docs, may contain engagement data
+docs/specs/
+
 # Engagement retros — personal, sensitive
 docs/retros/
 
