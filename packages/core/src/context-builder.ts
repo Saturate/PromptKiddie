@@ -1,0 +1,122 @@
+import {
+  listTargets,
+  listPorts,
+  listDiscoveries,
+  getExecDedup,
+  listFindings,
+  listArtifacts,
+  listEvidence,
+} from "./repo.js";
+
+export interface LlmContext {
+  target: string;
+  ports: Array<{ port: number; service: string | null; version: string | null; banner: string | null }>;
+  hostnames: string[];
+  versions: Array<{ product: string; version: string | null; cve_hits: number }>;
+  downloaded_files: Array<{ path: string; type: string | null }>;
+  discoveries: Array<{ type: string; category: string; summary: string }>;
+  already_ran: Array<{ cmd: string; exit: number; result: string | null }>;
+  failed_attempts: Array<{ cmd: string; exit: number; error: string | null; count: number }>;
+  findings: Array<{ id: string; title: string; severity: string; status: string }>;
+  artifacts: Array<{ id: string; title: string; type: string }>;
+  estimated_tokens: number;
+}
+
+function estimateTokens(obj: unknown): number {
+  const json = JSON.stringify(obj);
+  return Math.ceil(json.length / 4);
+}
+
+export async function buildLlmContext(engagementId: string): Promise<LlmContext> {
+  const tgts = await listTargets(engagementId);
+
+  const portsByTarget = await Promise.all(tgts.map((t) => listPorts(t.id)));
+  const allPorts: LlmContext["ports"] = portsByTarget.flat().map((port) => ({
+    port: port.port,
+    service: port.service,
+    version: port.version,
+    banner: port.banner,
+  }));
+
+  const [discs, execRows, fds, arts, evs] = await Promise.all([
+    listDiscoveries(engagementId),
+    getExecDedup(engagementId),
+    listFindings(engagementId),
+    listArtifacts(engagementId),
+    listEvidence(engagementId),
+  ]);
+
+  const hostnames = discs
+    .filter((d) => d.category === "hostname" && d.type === "positive")
+    .map((d) => d.summary);
+
+  const versions = discs
+    .filter((d) => d.category === "version" && d.type === "positive")
+    .map((d) => ({
+      product: d.summary,
+      version: (d.detail as Record<string, unknown> | null)?.version as string | null ?? null,
+      cve_hits: (d.detail as Record<string, unknown> | null)?.cve_hits as number ?? 0,
+    }));
+
+  const downloaded_files = evs
+    .filter((e) => e.type === "file" && e.path)
+    .map((e) => ({
+      path: e.path!,
+      type: (e.meta as Record<string, unknown> | null)?.fileType as string | null ?? null,
+    }));
+
+  const discoveryList = discs.map((d) => ({
+    type: d.type,
+    category: d.category,
+    summary: d.summary,
+  }));
+
+  const already_ran = execRows
+    .filter((r) => r.exitCode === 0)
+    .map((r) => ({
+      cmd: r.commandNormalized,
+      exit: r.exitCode,
+      result: r.outcomeSummary,
+    }));
+
+  const failed_attempts = execRows
+    .filter((r) => r.exitCode !== 0)
+    .map((r) => ({
+      cmd: r.commandNormalized,
+      exit: r.exitCode,
+      error: r.outcomeSummary,
+      count: r.count,
+    }));
+
+  const findingsList = fds.map((f) => ({
+    id: f.id,
+    title: f.title,
+    severity: f.severity,
+    status: f.status,
+  }));
+
+  const artifactsList = arts.map((a) => ({
+    id: a.id,
+    title: a.title,
+    type: a.type,
+  }));
+
+  const targetStr = tgts.map((t) => t.identifier).join(", ");
+
+  const ctx: LlmContext = {
+    target: targetStr,
+    ports: allPorts,
+    hostnames,
+    versions,
+    downloaded_files,
+    discoveries: discoveryList,
+    already_ran,
+    failed_attempts,
+    findings: findingsList,
+    artifacts: artifactsList,
+    estimated_tokens: 0,
+  };
+
+  ctx.estimated_tokens = estimateTokens(ctx);
+  return ctx;
+}

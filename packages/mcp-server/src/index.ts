@@ -450,6 +450,17 @@ server.tool(
   async (input) => json(await repo.sendMessage(input)),
 );
 
+// --- Context payload ---------------------------------------------------------
+
+server.tool(
+  "get_context",
+  "Get the structured LLM context payload for an engagement. Returns ports, hostnames, versions, discoveries, already-ran commands, failed attempts, findings, and artifacts with a token estimate.",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => {
+    return json(await repo.getDiscoverySummary(engagementId));
+  },
+);
+
 // ---------------------------------------------------------------------------
 
 async function main() {

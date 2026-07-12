@@ -23,7 +23,7 @@ import {
   playbookToMermaid,
   updatePlaybook,
 } from "@promptkiddie/core";
-import { execFileSync } from "node:child_process";
+import { execFileSync, type StdioOptions } from "node:child_process";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
 const config = loadConfig();
@@ -538,6 +538,95 @@ act.command("list")
   .option("--engagement <id>")
   .action(async (o) => out(await repo.listActivity(await resolveEngagementId(o.engagement))));
 
+// --- event -------------------------------------------------------------------
+const event = program.command("event").description("Domain events for reactive playbooks");
+
+event
+  .command("emit")
+  .requiredOption("--type <type>", "event type, e.g. PortDiscovered")
+  .requiredOption("--payload <json>", "JSON payload")
+  .option("--source <source>", "event source", "cli")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(o.payload) as Record<string, unknown>;
+    } catch {
+      return program.error(`Invalid JSON payload: ${o.payload}`);
+    }
+    out(await repo.emitEvent(eid, o.type, payload, o.source));
+  });
+
+event
+  .command("list")
+  .option("--type <type>", "filter by event type")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.listEvents(eid, o.type ? { type: o.type } : undefined));
+  });
+
+// --- discovery ---------------------------------------------------------------
+const discovery = program.command("discovery").description("Knowledge atoms (positive/negative/attempted)");
+
+discovery
+  .command("add")
+  .requiredOption("--type <type>", "positive | negative | attempted")
+  .requiredOption("--category <category>", "e.g. port, hostname, version, vuln")
+  .requiredOption("--summary <summary>")
+  .option("--detail <json>", "JSON detail object")
+  .option("--source-event <id>", "source event UUID")
+  .option("--parent <id>", "parent discovery UUID")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const validTypes = ["positive", "negative", "attempted"];
+    if (!validTypes.includes(o.type)) {
+      return program.error(`Invalid type "${o.type}". Must be: ${validTypes.join(", ")}`);
+    }
+    const eid = await resolveEngagementId(o.engagement);
+    let detail: Record<string, unknown> | undefined;
+    if (o.detail) {
+      try {
+        detail = JSON.parse(o.detail) as Record<string, unknown>;
+      } catch {
+        return program.error(`Invalid JSON detail: ${o.detail}`);
+      }
+    }
+    out(await repo.addDiscovery({
+      engagementId: eid,
+      type: o.type,
+      category: o.category,
+      summary: o.summary,
+      detail,
+      sourceEventId: o.sourceEvent,
+      parentId: o.parent,
+    }));
+  });
+
+discovery
+  .command("list")
+  .option("--category <category>", "filter by category")
+  .option("--type <type>", "filter by type: positive | negative | attempted")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.listDiscoveries(eid, {
+      category: o.category,
+      type: o.type,
+    }));
+  });
+
+// --- context (LLM context payload) ------------------------------------------
+program
+  .command("context")
+  .description("Output the structured LLM context payload for the active engagement")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.getDiscoverySummary(eid));
+  });
+
 // --- agent run bookkeeping -------------------------------------------------
 const agent = program.command("agent").description("Sub-agent run bookkeeping");
 
@@ -613,8 +702,8 @@ program
 
 const VPN_SUBNETS = ["10.129.0.0/16", "10.10.0.0/15", "10.13.37.0/24"];
 
-function exec(cmd: string, args: string[], opts: { timeout?: number; stdio?: string } = {}): string {
-  return execFileSync(cmd, args, { timeout: opts.timeout ?? 10000, stdio: opts.stdio as any ?? "pipe" }).toString().trim();
+function exec(cmd: string, args: string[], opts: { timeout?: number; stdio?: StdioOptions } = {}): string {
+  return execFileSync(cmd, args, { timeout: opts.timeout ?? 10000, stdio: opts.stdio ?? "pipe" }).toString().trim();
 }
 
 function detectColima(): { isColima: boolean; vmIP: string | null } {
@@ -1622,6 +1711,9 @@ program
       command: cmdStr,
       actor: "agent",
     });
+
+    const target = local ? "localhost" : container;
+    await repo.recordExecOutcome(eid, cmdStr, target, result.code).catch(() => {});
 
     const fullOutput = result.stdout + result.stderr;
     const maxBytes = o.maxOutput;

