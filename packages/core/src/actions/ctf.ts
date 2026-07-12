@@ -5,9 +5,7 @@ import { crackHashes } from "./shared/cred-cracking.js";
 import { sysinfo, localCreds, internalNet } from "./shared/post-exploit.js";
 import { pathTraversal } from "./shared/path-traversal.js";
 
-// ---------------------------------------------------------------------------
-// Recon (auto)
-// ---------------------------------------------------------------------------
+/** @module Recon */
 
 const portScan: Action = {
   name: "port_scan",
@@ -120,9 +118,7 @@ const vhostBrute: Action = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Enumeration (auto + agent)
-// ---------------------------------------------------------------------------
+/** @module Enumeration */
 
 const nucleiScan: Action = {
   name: "nuclei_scan",
@@ -256,9 +252,7 @@ const pathTraversalAction: Action = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Exploitation (agent)
-// ---------------------------------------------------------------------------
+/** @module Exploitation */
 
 const exploit: Action = {
   name: "exploit",
@@ -269,9 +263,7 @@ const exploit: Action = {
   llm: { agent: "exploit-agent", model: "opus", session: "fresh", priority: 1 },
 };
 
-// ---------------------------------------------------------------------------
-// Post-exploitation (auto + agent)
-// ---------------------------------------------------------------------------
+/** @module Post-exploitation */
 
 const postExploitEnum: Action = {
   name: "post_exploit_enum",
@@ -329,9 +321,7 @@ const flagCapture: Action = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Fallback
-// ---------------------------------------------------------------------------
+/** @module Fallback */
 
 const stallDetection: Action = {
   name: "stall_detection",
@@ -340,9 +330,7 @@ const stallDetection: Action = {
   prompt: "No new discoveries in {minutes} minutes. Review engagement state and suggest what to try next. Consider: services not enumerated, attack paths not attempted, lateral movement opportunities.",
 };
 
-// ---------------------------------------------------------------------------
-// Playbook
-// ---------------------------------------------------------------------------
+/** @module Playbook */
 
 export const CTF_PLAYBOOK: Playbook = {
   name: "CTF Default",
