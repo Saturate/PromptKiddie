@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { ActionGraphView } from "@/components/graph/action-graph";
+import { ActionDetail, type ActionDetailData } from "@/components/graph/action-detail";
+import type { ActionNodeData } from "@/components/graph/action-node";
 import { Copy, Check, Play, Pause, RotateCcw, Zap } from "lucide-react";
 import type { ActionGraph, ActionNode } from "@promptkiddie/core";
 
@@ -275,6 +277,7 @@ export default function PlaybookPage() {
   const [view, setView] = useState<"graph" | "mermaid">("graph");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedAction, setSelectedAction] = useState<ActionDetailData | null>(null);
   const sim = useSimulation(data?.graph ?? null);
 
   useEffect(() => {
@@ -402,6 +405,24 @@ export default function PlaybookPage() {
             activeNodes={sim.state.activeNodes}
             doneNodes={sim.state.doneNodes}
             activeEdges={sim.state.activeEdges}
+            onNodeClick={(nodeId, nodeData) => {
+              const node = data.graph.nodes.find((n) => n.id === nodeId);
+              if (!node) return;
+              const triggeredByEvents = data.graph.edges
+                .filter((e) => e.to === nodeId)
+                .map((e) => e.event)
+                .filter((v, i, a) => a.indexOf(v) === i);
+              const triggersActions = data.graph.edges
+                .filter((e) => e.from === nodeId)
+                .map((e) => e.to)
+                .filter((v, i, a) => a.indexOf(v) === i);
+              setSelectedAction({
+                ...nodeData,
+                id: nodeId,
+                triggeredBy: triggeredByEvents,
+                triggers: triggersActions,
+              });
+            }}
           />
         </ReactFlowProvider>
       ) : (
@@ -445,6 +466,12 @@ export default function PlaybookPage() {
           </div>
         </div>
       )}
+
+      <ActionDetail
+        action={selectedAction}
+        open={selectedAction !== null}
+        onClose={() => setSelectedAction(null)}
+      />
     </div>
   );
 }

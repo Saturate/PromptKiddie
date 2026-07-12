@@ -6,12 +6,13 @@ import {
   Controls,
   type Node,
   type Edge,
+  type NodeMouseHandler,
   BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ActionNode, type ActionNodeData } from "./action-node";
 import { layoutGraph } from "./layout";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { ActionGraph, ActionEdge, ActionNode as ActionNodeType } from "@promptkiddie/core";
 
 interface ActionNodeWithState extends ActionNodeType {
@@ -21,12 +22,10 @@ interface ActionNodeWithState extends ActionNodeType {
 
 interface ActionGraphProps {
   graph: ActionGraph & { nodes: ActionNodeWithState[] };
-  /** Set of node IDs currently active (for simulation highlighting) */
   activeNodes?: Set<string>;
-  /** Set of node IDs that are "done" in the simulation */
   doneNodes?: Set<string>;
-  /** Set of edge keys ("from->to") currently animated */
   activeEdges?: Set<string>;
+  onNodeClick?: (nodeId: string, data: ActionNodeData) => void;
   className?: string;
 }
 
@@ -56,7 +55,6 @@ function buildFlowGraph(
     const edgeKey = `${e.from}->${e.to}`;
     const isActive = activeNodes?.has(e.to) || activeEdges?.has(edgeKey);
     const isDone = doneNodes?.has(e.from) && doneNodes?.has(e.to);
-
     const color = isActive ? "#e8a040" : isDone ? "#50b880" : "#3a4260";
     return {
       id: `${e.from}-${e.to}-${e.event}`,
@@ -75,11 +73,16 @@ function buildFlowGraph(
   return layoutGraph(nodes, edges, "TB");
 }
 
-export function ActionGraphView({ graph, activeNodes, doneNodes, activeEdges, className }: ActionGraphProps) {
+export function ActionGraphView({ graph, activeNodes, doneNodes, activeEdges, onNodeClick, className }: ActionGraphProps) {
   const { nodes, edges } = useMemo(
     () => buildFlowGraph(graph, activeNodes, doneNodes, activeEdges),
     [graph, activeNodes, doneNodes, activeEdges],
   );
+
+  const handleNodeClick: NodeMouseHandler = useCallback((_event, node) => {
+    if (node.id === "__start__") return;
+    onNodeClick?.(node.id, node.data as unknown as ActionNodeData);
+  }, [onNodeClick]);
 
   return (
     <div className={`w-full h-[600px] rounded-lg border border-border bg-background ${className ?? ""}`}>
@@ -87,6 +90,7 @@ export function ActionGraphView({ graph, activeNodes, doneNodes, activeEdges, cl
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        onNodeClick={handleNodeClick}
         minZoom={0.15}
         maxZoom={1.5}
         fitView
