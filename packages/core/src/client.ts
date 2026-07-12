@@ -51,6 +51,15 @@ export interface Repo {
   listMessages(engagementId: string): Promise<unknown[]>;
   pollInbox(engagementId?: string): Promise<unknown[]>;
 
+  emitEvent(engagementId: string, type: string, payload: Record<string, unknown>, source: string): Promise<unknown>;
+  listEvents(engagementId: string, opts?: { type?: string }): Promise<unknown[]>;
+  addDiscovery(input: { engagementId: string; type: string; category: string; summary: string; detail?: Record<string, unknown>; sourceEventId?: string; parentId?: string }): Promise<unknown>;
+  listDiscoveries(engagementId: string, opts?: { category?: string; type?: string }): Promise<unknown[]>;
+  getDiscoverySummary(engagementId: string): Promise<unknown>;
+  recordExecOutcome(engagementId: string, command: string, target: string, exitCode: number, outcomeSummary?: string): Promise<unknown>;
+  getExecDedup(engagementId: string): Promise<unknown[]>;
+  isExecBlocked(engagementId: string, command: string, target: string): Promise<unknown>;
+
   listEngagementSteps(engagementId: string): Promise<unknown[]>;
   completeStep(engagementId: string, stepKey: string, result?: { type: string; id: string }): Promise<unknown>;
   skipStep(engagementId: string, stepKey: string, reason: string): Promise<unknown>;
@@ -98,6 +107,14 @@ function createLocalRepo(): Repo {
     sendMessage: async (i) => (await r).sendMessage(i as Parameters<Awaited<typeof r>["sendMessage"]>[0]),
     listMessages: async (eid) => (await r).listMessages(eid),
     pollInbox: async (eid) => (await r).pollInbox(eid),
+    emitEvent: async (eid, type, payload, source) => (await r).emitEvent(eid, type, payload, source),
+    listEvents: async (eid, opts) => (await r).listEvents(eid, opts),
+    addDiscovery: async (i) => (await r).addDiscovery(i as Parameters<Awaited<typeof r>["addDiscovery"]>[0]),
+    listDiscoveries: async (eid, opts) => (await r).listDiscoveries(eid, opts as Parameters<Awaited<typeof r>["listDiscoveries"]>[1]),
+    getDiscoverySummary: async (eid) => (await r).getDiscoverySummary(eid),
+    recordExecOutcome: async (eid, cmd, tgt, exit, summary) => (await r).recordExecOutcome(eid, cmd, tgt, exit, summary),
+    getExecDedup: async (eid) => (await r).getExecDedup(eid),
+    isExecBlocked: async (eid, cmd, tgt) => (await r).isExecBlocked(eid, cmd, tgt),
     listEngagementSteps: async (eid) => (await r).listEngagementSteps(eid),
     completeStep: async (eid, key, result) => (await r).completeStep(eid, key, result),
     skipStep: async (eid, key, reason) => (await r).skipStep(eid, key, reason),
@@ -174,6 +191,20 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     sendMessage: (i) => post("/messages", i),
     listMessages: (eid) => get<unknown[]>(`/messages?engagementId=${eid}`),
     pollInbox: (eid) => get<unknown[]>(`/messages/poll${eid ? `?engagementId=${eid}` : ""}`),
+    emitEvent: (eid, type, payload, source) => post(`/engagements/${eid}/events`, { type, payload, source }),
+    listEvents: (eid, opts) => get<unknown[]>(`/engagements/${eid}/events${opts?.type ? `?type=${opts.type}` : ""}`),
+    addDiscovery: (i) => post(`/engagements/${i.engagementId}/discoveries`, i),
+    listDiscoveries: (eid, opts) => {
+      const params = new URLSearchParams();
+      if (opts?.category) params.set("category", opts.category);
+      if (opts?.type) params.set("type", opts.type);
+      const qs = params.toString();
+      return get<unknown[]>(`/engagements/${eid}/discoveries${qs ? `?${qs}` : ""}`);
+    },
+    getDiscoverySummary: (eid) => get(`/engagements/${eid}/discoveries/summary`),
+    recordExecOutcome: (eid, cmd, tgt, exit, summary) => post(`/engagements/${eid}/exec-dedup`, { command: cmd, target: tgt, exitCode: exit, outcomeSummary: summary }),
+    getExecDedup: (eid) => get<unknown[]>(`/engagements/${eid}/exec-dedup`),
+    isExecBlocked: (eid, cmd, tgt) => get(`/engagements/${eid}/exec-dedup/blocked?command=${encodeURIComponent(cmd)}&target=${encodeURIComponent(tgt)}`),
     listEngagementSteps: (eid) => get<unknown[]>(`/engagements/${eid}/steps`),
     completeStep: (eid, key, result) => put(`/engagements/${eid}/steps/${key}/complete`, result ?? {}),
     skipStep: (eid, key, reason) => put(`/engagements/${eid}/steps/${key}/skip`, { reason }),
