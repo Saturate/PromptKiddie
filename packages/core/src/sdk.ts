@@ -131,6 +131,29 @@ export interface LlmOpts {
 }
 
 /**
+ * LLM runner configuration for prompt-based actions.
+ *
+ * When an action has a {@link Action.prompt} field, the supervisor sends it to
+ * Cartridge. This config controls how.
+ */
+export interface LlmRunner {
+  /** Agent type (e.g. `"exploit-agent"`). Default: `"general-purpose"`. */
+  agent?: string;
+  /** Model override. Default: inherited from engagement/global config. */
+  model?: string;
+  /** Scheduling priority. Lower = runs first. Default: `50`. */
+  priority?: number;
+  /**
+   * Session strategy.
+   * - `"persistent"` (default): reuses a long-lived Cartridge session. Cheaper
+   *   for short focused tasks (no boot cost after first call).
+   * - `"fresh"`: new session per invocation. Clean context, better for long-running
+   *   exploitation chains where accumulated context matters.
+   */
+  session?: "persistent" | "fresh";
+}
+
+/**
  * Execution context passed to every {@link Action.run} call. Provides all
  * interaction with the engagement: run commands, emit events, search knowledge,
  * delegate to LLMs.
@@ -237,32 +260,51 @@ export interface RunContext {
 }
 
 /**
- * Execution tier. Controls when the supervisor fires the action.
- *
- * - `"auto"` - Scripted, runs immediately on trigger. Free (no LLM tokens).
- * - `"llm"` - Delegates entirely to an LLM agent. Scheduling depends on mode.
- * - `"both"` - Runs auto steps first, then invokes LLM for judgment.
- */
-export type Tier = "auto" | "llm" | "both";
-
-/**
  * A playbook action. The core building block.
  *
- * Define a trigger condition, an async handler, and metadata. The supervisor
- * evaluates {@link on} against each incoming event; when it returns `true`,
- * {@link run} is called with a {@link RunContext}.
+ * The supervisor evaluates {@link on} against each incoming event. When it
+ * returns `true`, the action fires. What happens depends on which fields
+ * are set:
  *
- * @example
+ * | `run` | `prompt` | Behavior |
+ * |-------|----------|----------|
+ * | yes   | no       | **Script.** Supervisor calls `run()` directly. |
+ * | no    | yes      | **Agent.** Supervisor sends `prompt` + context to Cartridge. |
+ * | yes   | yes      | **Both.** Supervisor calls `run()` first, then sends `prompt`. |
+ *
+ * @example Script action (auto-tier)
  * ```ts
  * const portScan: Action = {
  *   name: "port_scan",
- *   description: "Full TCP port scan with service detection",
  *   on: (e) => e.type === "EngagementStarted",
- *   tier: "auto",
- *   emits: ["PortDiscovered", "VersionIdentified"],
+ *   emits: ["PortDiscovered"],
  *   async run(ctx) {
- *     const result = await ctx.exec("rustscan", ["-a", ctx.target, "--", "-sV", "-sC"]);
- *     // parse and emit events...
+ *     const result = await ctx.exec("rustscan", ["-a", ctx.target, "--", "-sV"]);
+ *     // parse and emit...
+ *   },
+ * };
+ * ```
+ *
+ * @example Prompt action (agent-tier)
+ * ```ts
+ * const exploit: Action = {
+ *   name: "exploit",
+ *   on: (e) => e.type === "FindingAdded" && e.payload.severity === "critical",
+ *   emits: ["ShellObtained"],
+ *   prompt: "Exploit this finding and get a shell.",
+ *   llm: { agent: "exploit-agent", model: "opus", session: "fresh" },
+ * };
+ * ```
+ *
+ * @example Both (script + agent)
+ * ```ts
+ * const cveSearch: Action = {
+ *   name: "cve_search",
+ *   on: (e) => e.type === "VersionIdentified",
+ *   emits: ["ExploitAvailable"],
+ *   prompt: "Search web for CVEs and PoC exploits for {product} {version}.",
+ *   async run(ctx) {
+ *     await ctx.exec("searchsploit", [ctx.event.payload.product, ctx.event.payload.version]);
  *   },
  * };
  * ```
@@ -278,16 +320,28 @@ export interface Action {
    */
   on: (event: EngagementEvent) => boolean;
   /**
-   * Action handler. Receives a {@link RunContext} with methods for exec, emit,
+   * Script handler. Receives a {@link RunContext} with methods for exec, emit,
    * LLM delegation, and discovery logging. The supervisor calls this when
    * {@link on} returns `true`.
+   *
+   * If both `run` and `prompt` are set, `run` executes first (auto-tier work),
+   * then `prompt` is sent to Cartridge (LLM judgment).
    */
-  run: (ctx: RunContext) => Promise<void>;
+  run?: (ctx: RunContext) => Promise<void>;
   /**
-   * Execution tier. Default: `"auto"`.
-   * @see {@link Tier}
+   * LLM task prompt. When set, the supervisor sends this string + the structured
+   * engagement context to a Cartridge agent session. Template variables like
+   * `{target}`, `{product}`, `{version}` are interpolated from the event payload.
+   *
+   * The agent uses PK's MCP tools to emit events, add findings, and log
+   * discoveries. Results flow back through the event system.
    */
-  tier?: Tier;
+  prompt?: string;
+  /**
+   * LLM runner configuration. Only used when {@link prompt} is set.
+   * @see {@link LlmRunner}
+   */
+  llm?: LlmRunner;
   /**
    * Event types this action may emit. Used to build the visualization graph.
    * Not enforced at runtime; treat as documentation that stays close to the code.

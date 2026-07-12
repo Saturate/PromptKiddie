@@ -12,7 +12,7 @@ export interface ActionNode {
   id: string;
   name: string;
   description?: string;
-  tier?: string;
+  kind: "script" | "agent" | "both";
   emits: string[];
 }
 
@@ -76,7 +76,7 @@ export function buildActionGraph(actions: Action[]): ActionGraph {
     id: a.name,
     name: a.name,
     description: a.description,
-    tier: a.tier,
+    kind: a.run && a.prompt ? "both" : a.prompt ? "agent" : "script",
     emits: a.emits ?? [],
   }));
 
@@ -118,7 +118,7 @@ export function buildActionGraph(actions: Action[]): ActionGraph {
   }
 
   if (edges.some((e) => e.from === "__start__")) {
-    nodes.unshift({ id: "__start__", name: "Start", tier: "auto", emits: ["EngagementStarted"] });
+    nodes.unshift({ id: "__start__", name: "Start", kind: "script", emits: ["EngagementStarted"] });
   }
 
   return { nodes, edges };
