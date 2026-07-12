@@ -35,3 +35,26 @@ export {
   type KnowledgeSource,
 } from "./knowledge-sources.js";
 export { buildLlmContext, type LlmContext } from "./context-builder.js";
+export {
+  type Action,
+  type RunContext,
+  type Playbook,
+  type EngagementEvent,
+  type EngagementState,
+  type ExecResult,
+  type ExecOpts,
+  type LlmRunner,
+  type MockContext,
+  createMockContext,
+} from "./sdk.js";
+export { CTF_PLAYBOOK as CTF_ACTIONS } from "./actions/index.js";
+export { buildActionGraph, actionGraphToMermaid, simulateGraph, type ActionGraph, type ActionNode, type ActionEdge, type SimulationStep } from "./action-graph.js";
+export { DEMO_EVENTS } from "./demo-events.js";
+export {
+  webFingerprint, headerInspect, wafDetect,
+  linuxPrivesc, windowsPrivesc,
+  crackHashes, passwordSpray,
+  sysinfo, localCreds, internalNet,
+  pathTraversal,
+  windowsForensics, lateralMovement,
+} from "./actions/index.js";

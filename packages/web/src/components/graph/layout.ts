@@ -18,11 +18,11 @@ export function layoutGraph(
   const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: direction,
-    nodesep: 80,
-    ranksep: 120,
-    edgesep: 40,
-    marginx: 50,
-    marginy: 50,
+    nodesep: 100,
+    ranksep: 160,
+    edgesep: 50,
+    marginx: 60,
+    marginy: 60,
   });
 
   for (const node of nodes) {
