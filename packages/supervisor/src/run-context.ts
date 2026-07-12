@@ -150,7 +150,10 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     },
 
     async evidence(path: string, type: "screenshot" | "scan" | "output" | "file" | "flag"): Promise<void> {
-      await addEvidence({ engagementId, path, type }).catch(() => {});
+      // Ensure path is relative to the engagement directory
+      const slug = engagement.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const fullPath = path.startsWith("engagements/") ? path : `engagements/${slug}/${path}`;
+      await addEvidence({ engagementId, path: fullPath, type }).catch(() => {});
     },
 
     async readFile(path: string): Promise<string> {
