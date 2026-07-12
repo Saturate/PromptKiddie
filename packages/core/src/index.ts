@@ -35,3 +35,17 @@ export {
   type KnowledgeSource,
 } from "./knowledge-sources.js";
 export { buildLlmContext, type LlmContext } from "./context-builder.js";
+export {
+  type Action,
+  type RunContext,
+  type Playbook,
+  type EngagementEvent,
+  type EngagementState,
+  type ExecResult,
+  type ExecOpts,
+  type Tier,
+  type MockContext,
+  createMockContext,
+} from "./sdk.js";
+export { CTF_PLAYBOOK as CTF_ACTIONS } from "./actions/index.js";
+export { webFingerprint, headerInspect, wafDetect, linuxPrivesc, windowsPrivesc, crackHashes, passwordSpray } from "./actions/index.js";
