@@ -13,7 +13,7 @@ const portScan: Action = {
   on: (e) => e.type === "EngagementStarted",
   emits: ["PortDiscovered", "VersionIdentified"],
   async run(ctx) {
-    const result = await ctx.exec("rustscan", ["-a", ctx.target, "--", "-sV", "-sC", "-oX", "-"], { stream: true });
+    const result = await ctx.exec("rustscan", ["-a", ctx.target, "--", "-sV", "-sC"], { stream: true });
     await ctx.evidence(`exec/rustscan-${Date.now()}.txt`, "scan");
     const lines = result.stdout.split("\n");
     for (const line of lines) {

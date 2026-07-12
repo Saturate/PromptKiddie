@@ -9,6 +9,7 @@ import {
   addDiscovery,
   addEvidence,
   recordExecOutcome,
+  isExecBlocked,
   searchKnowledge as searchKB,
   logActivity,
   addAgentLog,
@@ -42,6 +43,12 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     async exec(tool: string, args: string[], execOpts?: ExecOpts): Promise<ExecResult> {
       const start = Date.now();
       const cmdStr = `${tool} ${args.join(" ")}`;
+
+      const blocked = await isExecBlocked(engagementId, cmdStr, target);
+      if (blocked) {
+        onOutput?.(`[blocked] ${cmdStr} (failed 2+ times, skipping)`);
+        return { stdout: "", stderr: "blocked by exec dedup", code: -1, durationMs: 0 };
+      }
 
       return new Promise<ExecResult>((resolve) => {
         const proc = execFile(
@@ -119,15 +126,22 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     },
 
     async spawnLlm(task: string, _llmOpts?: LlmOpts): Promise<string> {
+      const { sendMessage } = await import("@promptkiddie/core");
       console.log(`[supervisor] LLM task: ${task.slice(0, 100)}...`);
+      await sendMessage({
+        engagementId,
+        direction: "outbound",
+        author: "supervisor",
+        body: `[LLM task] ${_llmOpts?.agentType ?? "general-purpose"}: ${task}`,
+      });
       await addAgentLog({
         engagementId,
         agent: "supervisor",
         phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
-        message: `LLM task queued: ${task.slice(0, 200)}`,
+        message: `LLM task sent to inbox: ${task.slice(0, 200)}`,
         category: "llm-task",
       });
-      return "LLM dispatch pending (supervisor will route to Cartridge)";
+      return "Task sent to orchestrator inbox";
     },
 
     async discover(type: "positive" | "negative" | "attempted", category: string, summary: string, detail?: Record<string, unknown>): Promise<void> {
