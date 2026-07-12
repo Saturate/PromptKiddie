@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { ReactFlowProvider } from "@xyflow/react";
 import { ActionGraphView } from "@/components/graph/action-graph";
 import { ActionDetail, type ActionDetailData } from "@/components/graph/action-detail";
 import type { ActionNodeData } from "@/components/graph/action-node";
-import { Copy, Check, Play, Pause, RotateCcw, Zap } from "lucide-react";
+import { Copy, Check, Play, Pause, RotateCcw, Zap, Radio, X, ChevronDown } from "lucide-react";
+import { useLiveMode, type LiveEvent, type LiveOutputLine } from "@/hooks/use-live-mode";
 import type { ActionGraph, ActionNode } from "@promptkiddie/core";
 
 // ---------------------------------------------------------------------------
@@ -20,6 +22,14 @@ interface ActionNodeWithState extends ActionNode {
 interface GraphResponse {
   graph: ActionGraph & { nodes: ActionNodeWithState[] };
   mermaid: string;
+}
+
+interface EngagementSummary {
+  id: string;
+  name: string;
+  phase: string;
+  group: string | null;
+  status: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,7 +59,7 @@ const DEMO_EVENTS: DemoEvent[] = [
   { type: "FlagCaptured", payload: { type: "root", value: "1544d3d2..." }, delay: 2000 },
 ];
 
-function eventSummary(e: DemoEvent): string {
+function eventSummary(e: DemoEvent | LiveEvent): string {
   const p = e.payload;
   switch (e.type) {
     case "PortDiscovered":
@@ -267,18 +277,131 @@ function useSimulation(graph: GraphResponse["graph"] | null) {
 }
 
 // ---------------------------------------------------------------------------
+// Engagement selector
+// ---------------------------------------------------------------------------
+
+function EngagementSelector({
+  onSelect,
+  selected,
+}: {
+  onSelect: (id: string) => void;
+  selected: string | null;
+}) {
+  const [engagements, setEngagements] = useState<EngagementSummary[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const fetchEngagements = useCallback(() => {
+    setLoading(true);
+    fetch("/api/engagements")
+      .then((r) => r.json())
+      .then((data: EngagementSummary[]) => {
+        setEngagements(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleToggle = useCallback(() => {
+    if (!open) fetchEngagements();
+    setOpen((prev) => !prev);
+  }, [open, fetchEngagements]);
+
+  const selectedName = engagements.find((e) => e.id === selected)?.name;
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <button
+        onClick={handleToggle}
+        className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-muted text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {selectedName ?? "Select engagement"}
+        <ChevronDown className="size-3" />
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 mt-1 z-50 min-w-[240px] rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+          {loading ? (
+            <div className="px-3 py-2 text-[10px] font-mono text-muted-foreground animate-pulse">
+              Loading...
+            </div>
+          ) : engagements.length === 0 ? (
+            <div className="px-3 py-2 text-[10px] font-mono text-muted-foreground">
+              No engagements found
+            </div>
+          ) : (
+            engagements.map((eng) => (
+              <button
+                key={eng.id}
+                onClick={() => {
+                  onSelect(eng.id);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-[10px] font-mono hover:bg-muted transition-colors ${
+                  eng.id === selected ? "bg-pk-amber/10 text-pk-amber" : "text-foreground"
+                }`}
+              >
+                <div className="font-semibold truncate">{eng.name}</div>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span>{eng.phase}</span>
+                  <span className="text-muted-foreground/50">|</span>
+                  <span>{eng.status}</span>
+                  {eng.group && (
+                    <>
+                      <span className="text-muted-foreground/50">|</span>
+                      <span>{eng.group}</span>
+                    </>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page component
 // ---------------------------------------------------------------------------
+
+type Mode = "idle" | "simulate" | "live";
 
 const SPEED_OPTIONS = [1, 2, 4];
 
 export default function PlaybookPage() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<GraphResponse | null>(null);
   const [view, setView] = useState<"graph" | "mermaid">("graph");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedAction, setSelectedAction] = useState<ActionDetailData | null>(null);
+  const [mode, setMode] = useState<Mode>("idle");
+  const [engagementId, setEngagementId] = useState<string | null>(
+    searchParams.get("engagement"),
+  );
+
   const sim = useSimulation(data?.graph ?? null);
+  const live = useLiveMode({
+    graph: data?.graph ?? null,
+    engagementId,
+  });
+
+  // Derive which set of nodes/edges to pass to the graph
+  const activeNodes = mode === "live" ? live.state.activeNodes : sim.state.activeNodes;
+  const doneNodes = mode === "live" ? live.state.doneNodes : sim.state.doneNodes;
+  const activeEdges = mode === "live" ? live.state.activeEdges : sim.state.activeEdges;
 
   useEffect(() => {
     fetch("/api/playbook/actions")
@@ -290,6 +413,47 @@ export default function PlaybookPage() {
       .catch(() => setLoading(false));
   }, []);
 
+  // If engagement comes from URL, auto-start live mode once graph is loaded
+  useEffect(() => {
+    const urlEngagement = searchParams.get("engagement");
+    if (urlEngagement && data && mode === "idle") {
+      setEngagementId(urlEngagement);
+      setMode("live");
+    }
+  }, [searchParams, data, mode]);
+
+  // Connect/disconnect WebSocket when live mode toggles
+  useEffect(() => {
+    if (mode === "live" && engagementId) {
+      live.connect();
+    } else {
+      live.disconnect();
+    }
+    // Only react to mode and engagementId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, engagementId]);
+
+  const startSimulation = useCallback(() => {
+    if (mode === "live") {
+      live.disconnect();
+    }
+    setMode("simulate");
+    sim.play();
+  }, [mode, live, sim]);
+
+  const startLive = useCallback((id: string) => {
+    if (mode === "simulate") {
+      sim.reset();
+    }
+    setEngagementId(id);
+    setMode("live");
+  }, [mode, sim]);
+
+  const stopLive = useCallback(() => {
+    live.disconnect();
+    setMode("idle");
+  }, [live]);
+
   const copyMermaid = useCallback(() => {
     if (!data) return;
     navigator.clipboard.writeText(data.mermaid).then(() => {
@@ -297,6 +461,20 @@ export default function PlaybookPage() {
       setTimeout(() => setCopied(false), 2000);
     });
   }, [data]);
+
+  // Filter output lines for the selected action in the sidebar
+  const selectedActionOutputLines = selectedAction
+    ? live.state.outputLines.filter(
+        (l) => l.action.toLowerCase() === selectedAction.name.toLowerCase(),
+      )
+    : [];
+
+  // Filter live events for the selected action (by source matching action name)
+  const selectedActionEvents = selectedAction
+    ? live.state.log.filter(
+        (e) => e.source.toLowerCase() === selectedAction.name.toLowerCase(),
+      )
+    : [];
 
   if (loading) {
     return (
@@ -330,49 +508,100 @@ export default function PlaybookPage() {
         <div className="flex items-center gap-2">
           {/* Simulate controls */}
           <div className="flex items-center gap-1 mr-2">
-            {!sim.state.playing ? (
-              <button
-                onClick={sim.play}
-                disabled={sim.state.currentIndex >= DEMO_EVENTS.length - 1 && isSimulating}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-pk-amber/10 text-pk-amber hover:bg-pk-amber/20 transition-colors disabled:opacity-40"
-              >
-                <Play className="size-3" />
-                {isSimulating ? "Resume" : "Simulate"}
-              </button>
-            ) : (
-              <button
-                onClick={sim.pause}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-pk-amber/10 text-pk-amber hover:bg-pk-amber/20 transition-colors"
-              >
-                <Pause className="size-3" />
-                Pause
-              </button>
+            {mode !== "live" && (
+              <>
+                {!sim.state.playing ? (
+                  <button
+                    onClick={startSimulation}
+                    disabled={sim.state.currentIndex >= DEMO_EVENTS.length - 1 && isSimulating}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-pk-amber/10 text-pk-amber hover:bg-pk-amber/20 transition-colors disabled:opacity-40"
+                  >
+                    <Play className="size-3" />
+                    {isSimulating ? "Resume" : "Simulate"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={sim.pause}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-pk-amber/10 text-pk-amber hover:bg-pk-amber/20 transition-colors"
+                  >
+                    <Pause className="size-3" />
+                    Pause
+                  </button>
+                )}
+                {isSimulating && (
+                  <button
+                    onClick={() => {
+                      sim.reset();
+                      setMode("idle");
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <RotateCcw className="size-3" />
+                    Reset
+                  </button>
+                )}
+                {mode === "simulate" && (
+                  <div className="flex items-center gap-0.5 ml-1">
+                    <Zap className="size-3 text-muted-foreground" />
+                    {SPEED_OPTIONS.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => sim.setSpeed(s)}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-colors ${
+                          sim.state.speed === s
+                            ? "bg-pk-amber/20 text-pk-amber"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {s}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
-            {isSimulating && (
-              <button
-                onClick={sim.reset}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <RotateCcw className="size-3" />
-                Reset
-              </button>
-            )}
-            <div className="flex items-center gap-0.5 ml-1">
-              <Zap className="size-3 text-muted-foreground" />
-              {SPEED_OPTIONS.map((s) => (
+
+            {/* Live mode controls */}
+            {mode === "live" ? (
+              <div className="flex items-center gap-1">
+                <span className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-red-500/10 text-red-400">
+                  <Radio className="size-3 animate-pulse" />
+                  Live
+                  {live.state.connected ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 ml-0.5" />
+                  ) : (
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-400 ml-0.5" />
+                  )}
+                </span>
+                <EngagementSelector
+                  selected={engagementId}
+                  onSelect={startLive}
+                />
                 <button
-                  key={s}
-                  onClick={() => sim.setSpeed(s)}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-colors ${
-                    sim.state.speed === s
-                      ? "bg-pk-amber/20 text-pk-amber"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  onClick={stopLive}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-muted text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {s}x
+                  <X className="size-3" />
+                  Stop
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <EngagementSelector
+                  selected={engagementId}
+                  onSelect={startLive}
+                />
+                {engagementId && (
+                  <button
+                    onClick={() => startLive(engagementId)}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                  >
+                    <Radio className="size-3" />
+                    Live
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* View toggle */}
@@ -402,9 +631,9 @@ export default function PlaybookPage() {
         <ReactFlowProvider>
           <ActionGraphView
             graph={data.graph}
-            activeNodes={sim.state.activeNodes}
-            doneNodes={sim.state.doneNodes}
-            activeEdges={sim.state.activeEdges}
+            activeNodes={activeNodes}
+            doneNodes={doneNodes}
+            activeEdges={activeEdges}
             onNodeClick={(nodeId, nodeData) => {
               const node = data.graph.nodes.find((n) => n.id === nodeId);
               if (!node) return;
@@ -441,7 +670,7 @@ export default function PlaybookPage() {
       )}
 
       {/* Simulation event log */}
-      {isSimulating && (
+      {mode === "simulate" && isSimulating && (
         <div className="rounded-lg border border-border bg-card p-3">
           <h3 className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-wider mb-2">
             Event Log
@@ -467,10 +696,51 @@ export default function PlaybookPage() {
         </div>
       )}
 
+      {/* Live event log */}
+      {mode === "live" && live.state.log.length > 0 && (
+        <div className="rounded-lg border border-border bg-card p-3">
+          <h3 className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            <span className="flex items-center gap-1.5">
+              <Radio className="size-3 text-red-400 animate-pulse" />
+              Live Event Log
+              <span className="text-muted-foreground/50 tabular-nums">{live.state.log.length} events</span>
+            </span>
+          </h3>
+          <div className="space-y-0.5 max-h-[200px] overflow-y-auto">
+            {live.state.log.map((entry, i) => {
+              const time = new Date(entry.time);
+              const ts = `${time.getHours().toString().padStart(2, "0")}:${time.getMinutes().toString().padStart(2, "0")}:${time.getSeconds().toString().padStart(2, "0")}`;
+              return (
+                <div
+                  key={i}
+                  className={`flex items-baseline gap-2 text-[10px] font-mono ${
+                    i === live.state.log.length - 1 ? "text-pk-amber" : "text-muted-foreground"
+                  }`}
+                >
+                  <span className="text-muted-foreground/50 tabular-nums shrink-0 w-[7ch] text-right">
+                    {ts}
+                  </span>
+                  <span className="font-semibold">{entry.type}</span>
+                  <span className="text-muted-foreground/60 truncate">
+                    {eventSummary(entry)}
+                  </span>
+                  <span className="text-muted-foreground/30 ml-auto shrink-0">
+                    {entry.source}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <ActionDetail
         action={selectedAction}
         open={selectedAction !== null}
         onClose={() => setSelectedAction(null)}
+        liveOutputLines={mode === "live" ? selectedActionOutputLines : undefined}
+        liveEvents={mode === "live" ? selectedActionEvents : undefined}
+        isLive={mode === "live"}
       />
     </div>
   );

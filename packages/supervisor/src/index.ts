@@ -20,6 +20,7 @@ import {
 } from "@promptkiddie/core";
 import { createRunContext } from "./run-context.js";
 import { EventBus } from "./event-bus.js";
+import { createWsServer, type WsBroadcaster } from "./ws-server.js";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie";
 
@@ -40,6 +41,32 @@ export async function startSupervisor(opts: SupervisorOpts) {
   const bus = new EventBus();
   let stallTimer: ReturnType<typeof setTimeout> | null = null;
   const STALL_TIMEOUT = 5 * 60 * 1000;
+
+  // WebSocket server for frontend event streaming
+  const wsPort = parseInt(process.env.PK_WS_PORT ?? "3200", 10);
+  const ws: WsBroadcaster = createWsServer(wsPort);
+
+  // Wrap caller-provided callbacks so they also broadcast over WebSocket
+  const origOnEvent = opts.onEvent;
+  opts.onEvent = (event) => {
+    ws.sendEvent(event);
+    origOnEvent?.(event);
+  };
+  const origOnActionStart = opts.onActionStart;
+  opts.onActionStart = (name) => {
+    ws.sendActionStart(name);
+    origOnActionStart?.(name);
+  };
+  const origOnActionEnd = opts.onActionEnd;
+  opts.onActionEnd = (name) => {
+    ws.sendActionEnd(name);
+    origOnActionEnd?.(name);
+  };
+  const origOnOutput = opts.onOutput;
+  opts.onOutput = (actionName, line) => {
+    ws.sendOutput(actionName, line);
+    origOnOutput?.(actionName, line);
+  };
 
   const engagement = await getEngagement(opts.engagementId);
   if (!engagement) throw new Error(`Engagement ${opts.engagementId} not found`);
@@ -186,6 +213,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     console.log("\n[supervisor] shutting down...");
     if (stallTimer) clearTimeout(stallTimer);
     for (const [, ac] of activeActions) ac.abort();
+    await ws.close();
     await client.end();
     process.exit(0);
   };
@@ -197,6 +225,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
   return {
     stop: shutdown,
     dispatch: evaluateAndDispatch,
+    ws,
   };
 }
 
