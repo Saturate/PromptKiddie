@@ -63,7 +63,12 @@ const navSecondary = [
     icon: <SearchIcon />,
   },
   {
-    title: "Playbooks",
+    title: "Playbook",
+    url: "/playbook",
+    icon: <ListChecksIcon />,
+  },
+  {
+    title: "Playbook Editor",
     url: "/settings/playbooks",
     icon: <ListChecksIcon />,
   },
