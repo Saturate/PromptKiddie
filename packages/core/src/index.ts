@@ -34,3 +34,4 @@ export {
   getKnowledgeSource,
   type KnowledgeSource,
 } from "./knowledge-sources.js";
+export { buildLlmContext, type LlmContext } from "./context-builder.js";
