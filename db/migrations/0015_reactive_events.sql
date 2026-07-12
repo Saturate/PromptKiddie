@@ -23,6 +23,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS events_notify ON events;
 CREATE TRIGGER events_notify AFTER INSERT ON events FOR EACH ROW EXECUTE FUNCTION notify_event();
 
 -- Discoveries table: knowledge atoms (positive/negative/attempted)

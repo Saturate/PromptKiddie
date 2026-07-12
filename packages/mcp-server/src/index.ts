@@ -457,8 +457,7 @@ server.tool(
   "Get the structured LLM context payload for an engagement. Returns ports, hostnames, versions, discoveries, already-ran commands, failed attempts, findings, and artifacts with a token estimate.",
   { engagementId: z.string().uuid() },
   async ({ engagementId }) => {
-    const { buildLlmContext } = await import("@promptkiddie/core");
-    return json(await buildLlmContext(engagementId));
+    return json(await repo.getDiscoverySummary(engagementId));
   },
 );
 

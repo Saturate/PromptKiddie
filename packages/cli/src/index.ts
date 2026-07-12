@@ -23,7 +23,7 @@ import {
   playbookToMermaid,
   updatePlaybook,
 } from "@promptkiddie/core";
-import { execFileSync } from "node:child_process";
+import { execFileSync, type StdioOptions } from "node:child_process";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
 const config = loadConfig();
@@ -580,6 +580,10 @@ discovery
   .option("--parent <id>", "parent discovery UUID")
   .option("--engagement <id>")
   .action(async (o) => {
+    const validTypes = ["positive", "negative", "attempted"];
+    if (!validTypes.includes(o.type)) {
+      return program.error(`Invalid type "${o.type}". Must be: ${validTypes.join(", ")}`);
+    }
     const eid = await resolveEngagementId(o.engagement);
     let detail: Record<string, unknown> | undefined;
     if (o.detail) {
@@ -698,8 +702,8 @@ program
 
 const VPN_SUBNETS = ["10.129.0.0/16", "10.10.0.0/15", "10.13.37.0/24"];
 
-function exec(cmd: string, args: string[], opts: { timeout?: number; stdio?: string } = {}): string {
-  return execFileSync(cmd, args, { timeout: opts.timeout ?? 10000, stdio: opts.stdio as any ?? "pipe" }).toString().trim();
+function exec(cmd: string, args: string[], opts: { timeout?: number; stdio?: StdioOptions } = {}): string {
+  return execFileSync(cmd, args, { timeout: opts.timeout ?? 10000, stdio: opts.stdio ?? "pipe" }).toString().trim();
 }
 
 function detectColima(): { isColima: boolean; vmIP: string | null } {

@@ -58,7 +58,7 @@ export interface Repo {
   getDiscoverySummary(engagementId: string): Promise<unknown>;
   recordExecOutcome(engagementId: string, command: string, target: string, exitCode: number, outcomeSummary?: string): Promise<unknown>;
   getExecDedup(engagementId: string): Promise<unknown[]>;
-  isExecBlocked(engagementId: string, command: string, target: string): Promise<unknown>;
+  isExecBlocked(engagementId: string, command: string, target: string): Promise<boolean>;
 
   listEngagementSteps(engagementId: string): Promise<unknown[]>;
   completeStep(engagementId: string, stepKey: string, result?: { type: string; id: string }): Promise<unknown>;
