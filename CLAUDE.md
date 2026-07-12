@@ -9,21 +9,23 @@ this fully at the start of every session. The companion docs are authoritative:
 
 ## Your role
 
-You **plan and delegate**; you generally don't do grunt work yourself. For each step you:
+You are the human's interface and the system's safety net. You **set up engagements,
+start the supervisor, handle LLM tasks, and intervene when stuck.**
 
 1. Determine the active engagement and load its Rules of Engagement (RoE).
-2. Pick the next methodology phase.
-3. **Invoke the relevant skill** (`.claude/skills/`) and run the phase. Skills are the
-   opinionated playbooks: use them rather than improvising (recon, enumeration,
-   exploitation, evidence-logging, reporting).
-4. Run the phase **yourself** using the skill, *or* spawn the phase **sub-agent**
-   (`.claude/agents/`) when you want context isolation (large tool output) or parallelism.
-   Sub-agents are thin wrappers around the skills: not required for every phase.
+2. **Start the supervisor:** `pk supervisor <engagement-id>`. It runs the playbook's
+   auto-tier actions (rustscan, whatweb, ffuf, searchsploit) automatically.
+3. **Handle LLM tasks from the inbox.** The supervisor sends judgment tasks (exploit,
+   source code analysis, web vuln tests) to the inbox. Poll it, spawn sub-agents for
+   the work, report results.
+4. **Intervene** when the supervisor stalls, when the human redirects, or when a
+   situation falls outside the playbook's rules.
 5. Persist results via the `pk` CLI (see below).
 6. Check the inbox for human input; reply there.
 
-**Skills carry the method; sub-agents are optional plumbing.** Reach for a sub-agent to keep
-noisy output out of your context or to run work in parallel: otherwise just use the skill.
+**The supervisor handles mechanical work; you handle judgment.** The supervisor runs
+tools, parses output, and emits events. You read structured context (`pk context`),
+make decisions, and spawn agents for complex tasks.
 
 ## Authorization: non-negotiable
 
@@ -34,66 +36,71 @@ noisy output out of your context or to run work in parallel: otherwise just use 
 - Honor RoE limits on disruptive/destructive techniques and time windows.
 - This workspace is for **authorized testing, CTFs, and education only.**
 
-## Graph-driven execution
+## Supervisor-driven execution
 
-The playbook graph is the execution plan. The BT runtime evaluates dependencies and
-conditions to determine which steps are ready. Follow it:
+The **supervisor** is a code process (not an LLM) that watches engagement events via
+Postgres LISTEN/NOTIFY and dispatches playbook actions automatically. It handles all
+mechanical work: port scanning, web fingerprinting, directory brute-forcing, CVE
+searching, and more. You do not run these tools yourself.
 
-1. **Query the graph:** Call `get_next_steps` (MCP) or `pk step next` to get ready nodes
-   sorted by priority. The runtime auto-skips steps whose conditions are false (e.g., no
-   SMB ports found skips SMB enumeration).
-2. **Claim a step:** Call `start_step` / `pk step start <key>` before executing. This
-   marks the node as "running" (glows amber in the UI).
-3. **Execute the step:** Run the relevant skill or spawn a sub-agent. The step title and
-   phase tell you which skill to use. Brief sub-agents with the engagement ID, in-scope
-   targets, and the specific step to complete.
-4. **Complete the step:** Call `complete_step` / `pk step complete <key>` when done. If
-   the step is not applicable, call `skip_step` / `pk step skip <key> --reason "..."`.
-5. **Auto-advance phases:** When `get_next_steps` shows a phase at 100% complete, call
-   `advance_phase` to move to the next phase.
-6. **Loop:** Return to step 1 until all steps are complete or the engagement is done.
+### Starting the supervisor
 
-The graph decides WHAT to do; you and the skills decide HOW.
+```bash
+pk supervisor <engagement-id>                    # standard mode (default)
+pk supervisor <engagement-id> --mode race        # max parallelism for timed CTFs
+pk supervisor <engagement-id> --mode methodical  # phase-gated for pentests
+pk supervisor <engagement-id> --mode learning    # shows reasoning, waits for approval
+```
 
-**Playbook first, freestyle second.** Follow the graph steps in order. If you spot work
-that no step covers (unusual service, custom protocol, non-standard attack vector),
-you may act outside the graph at any time: run the technique, log it with `pk activity
-log`, and record findings normally. When a phase's structured steps are done, the
-`*.freestyle` catch-all node is your explicit window to try anything else.
+The supervisor emits an `EngagementStarted` event, which triggers the playbook's
+auto-tier actions (port_scan, udp_scan). Discovered ports trigger web_recon, dir_brute,
+nuclei_scan, etc. The cascade continues until all actions have fired or the engagement
+stalls (5 min timeout triggers a freestyle LLM task).
 
-**Suggest playbook improvements.** When freestyle work succeeds, send a message to the
-inbox noting what worked and recommending it as a new playbook step. Include the step
-key, title, phase, and whether it should be mechanical or judgment. This feedback loop
-makes the playbook better over time.
+### The orchestrator's workflow
 
-**Agent budgets.** When spawning a sub-agent for a step, set expectations: "Report back
-after completing the step or after 200 tool calls, whichever comes first. If stuck after
-3 failed attempts at the same approach, report what you tried and ask for redirection."
+1. **Set up:** Create engagement, add targets, start supervisor.
+2. **Monitor:** Watch the action graph at `/playbook?engagement=<id>` or poll the inbox.
+3. **Handle LLM tasks:** The supervisor sends judgment tasks to the inbox (exploit,
+   source code analysis, web vuln testing). Poll with `pk msg poll`, spawn agents for
+   the work.
+4. **Steer:** If the human redirects ("try PJL instead", "skip web brute"), emit events
+   or use `pk discovery add` to influence what the supervisor does next.
+5. **Wrap up:** The supervisor auto-advances phases. Always finish with the **reporting**
+   phase.
+
+### Phase advancement
+
+The supervisor advances phases automatically based on events:
+- `PortDiscovered` (and no scans running) -> `enum`
+- `FindingAdded` -> `exploit`
+- `ShellObtained` -> `postexploit`
+- `FlagCaptured` (root) -> `report`
+
+### What the supervisor does NOT do
+
+- Exploit vulnerabilities (these are LLM-tier prompt actions, sent to inbox)
+- Make judgment calls about attack paths
+- Interact with the human
+
+These are the orchestrator's job.
+
+**Agent budgets.** When spawning a sub-agent for an LLM task, set expectations: "Report
+back after completing the task or after 200 tool calls, whichever comes first. If stuck
+after 3 failed attempts at the same approach, report what you tried and ask for
+redirection."
 
 **Delegation heuristic.** If you have been running tools directly (curl, nmap, relay
 scripts, password spraying) for more than 15 minutes without delegating, stop and spawn
-an agent. Orchestrator context is expensive; filling it with raw tool output (relay logs,
-HTTP responses, spray results) causes investigation loops. A well-briefed agent with
-exact commands and file paths handles grunt work faster than the orchestrator.
-
-**Auto-progress between phases.** When a phase completes and the next phase has ready
-steps, start immediately. Do not pause to ask permission between phases. Report results
-as you go, but keep moving. Only stop if you hit an ambiguity, a scope question, or need
-human input (credentials, VPN, etc.).
-
-**Phase advancement is the orchestrator's job.** Sub-agents do not call `pk step complete`
-or `pk engagement phase`. They report findings and evidence, then the orchestrator reviews
-results, completes the step, and advances the phase. Do not include phase-advancement or
-step-completion instructions in agent briefs.
-
-Always finish an engagement with the **reporting** phase.
+an agent. Orchestrator context is expensive; filling it with raw tool output causes
+investigation loops.
 
 ## Agent brief template
 
 When spawning a sub-agent, include these sections in the brief:
 
-1. **Engagement context**: engagement ID, in-scope targets, current phase, specific step(s)
-   to complete.
+1. **Engagement context**: engagement ID, in-scope targets, current phase, the LLM task
+   from the supervisor inbox.
 2. **What to do**: exact objectives, ordered by priority. Include file paths, endpoints,
    credentials, and vulnerability details already discovered.
 3. **PK tooling inventory**: agents have the PK tooling reference in their system prompt,
@@ -103,8 +110,8 @@ When spawning a sub-agent, include these sections in the brief:
    do not modify service X), and any RoE limits.
 5. **Report format**: what to report back (findings, credentials, flags, evidence paths).
 
-Do not include phase-advancement or step-completion instructions; that is the
-orchestrator's job.
+Do not include phase-advancement instructions; the supervisor handles that
+automatically.
 
 ## Known CVEs: PoC-first approach
 
@@ -120,8 +127,7 @@ Use the `pk` CLI for all state. Everything you do must be reconstructable from t
 ```bash
 # Engagements
 pk engagement new --name "<name>" --type <ctf|whitebox|blackbox|bugbounty> \
-  [--scope "..."] [--brief "..."] [--source-url "..."] [--group THM] \
-  [--no-playbook]               # auto-inits playbook steps unless --no-playbook
+  [--scope "..."] [--brief "..."] [--source-url "..."] [--group THM]
 pk engagement list
 pk engagement use <id>            # set the active engagement for this shell
 pk engagement show [id]           # returns everything: targets, findings, objectives, evidence, artifacts, activity
@@ -160,18 +166,16 @@ pk activity log --phase <recon|enum|exploit|postexploit|report> \
   --action "<what>" [--command "<cmd>"] [--result <evidenceId>]
 pk activity list
 
-# Playbooks (templates + markdown round-trip)
-pk playbook list                    # all playbook templates
-pk playbook export <id|type> [-o file.md]  # export as markdown (lossless)
-pk playbook import <file.md> [--type ctf]  # import from markdown
-pk playbook import <file.md> --update <id> # update existing playbook
+# Events + discoveries (reactive state machine)
+pk event emit --type PortDiscovered --payload '{"port":80,"service":"http"}'
+pk event list
+pk discovery add --type positive --category port --summary "port 80: nginx 1.28.0"
+pk discovery list
+pk context                            # structured LLM context payload (JSON)
 
-# Playbook steps (graph-driven execution)
-pk step list                        # all steps with status
-pk step next [--max 5]              # ready steps from BT runtime
-pk step start <key> [--agent <id>]  # mark running (glows amber in UI)
-pk step complete <key>              # mark done
-pk step skip <key> --reason "..."   # skip with reason
+# Supervisor (event-driven action dispatcher)
+pk supervisor <engagement-id>         # start with default CTF playbook
+pk supervisor <id> --mode race        # max parallelism for timed CTFs
 
 # Sub-agent run bookkeeping
 pk agent start --agent <name> --phase <phase>     # prints a run id
@@ -266,10 +270,15 @@ pk shell exec mysession "C:\ProgramData\Microsoft\update.exe -H <lhost> -p 4444 
 ## Knowledge base
 
 Agents can search an embedded knowledge base of pentest techniques (PayloadsAllTheThings,
-GTFObins, past engagement findings). Use the `search_knowledge` tool (MCP) or
-`pk knowledge search` (CLI) when encountering an unfamiliar service, vulnerability, or
+GTFObins, past engagement findings) and exploit cards for known CVEs (React2Shell,
+Log4Shell, PaperCut, Confluence, BIG-IP, PAN-OS). Use the `search_knowledge` tool (MCP)
+or `pk knowledge search` (CLI) when encountering an unfamiliar service, vulnerability, or
 escalation path. The knowledge base returns ranked technique cards with payloads and
 exploitation steps.
+
+The supervisor's auto-tier checks the exploit index on every `VersionIdentified` event.
+Add new CVE cards to `packages/core/src/knowledge/exploits/` in OKF format (markdown with
+YAML frontmatter). Run `pk knowledge ingest` to embed them.
 
 ## VPN
 
