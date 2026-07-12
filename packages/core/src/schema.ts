@@ -489,3 +489,73 @@ export const embeddings = pgTable(
     index("embeddings_source_type_idx").on(t.sourceType),
   ],
 );
+
+/** Domain events emitted by agents/orchestrator. Drives reactive playbook evaluation. */
+export const events = pgTable(
+  "events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    source: text("source").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("events_engagement_idx").on(t.engagementId),
+    index("events_type_idx").on(t.type),
+  ],
+);
+
+export const discoveryType = pgEnum("discovery_type", [
+  "positive",
+  "negative",
+  "attempted",
+]);
+
+/** Knowledge atoms: what we know (positive), ruled out (negative), or tried (attempted). */
+export const discoveries = pgTable(
+  "discoveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    type: discoveryType("type").notNull(),
+    category: text("category").notNull(),
+    summary: text("summary").notNull(),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    sourceEventId: uuid("source_event_id").references(() => events.id, { onDelete: "set null" }),
+    parentId: uuid("parent_id"),
+    supersededBy: uuid("superseded_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("discoveries_engagement_idx").on(t.engagementId),
+    index("discoveries_engagement_category_idx").on(t.engagementId, t.category),
+  ],
+);
+
+/** Deduplication index for executed commands. Tracks normalized command + exit code pairs. */
+export const execDedup = pgTable(
+  "exec_dedup",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    commandNormalized: text("command_normalized").notNull(),
+    target: text("target").notNull(),
+    exitCode: integer("exit_code").notNull(),
+    count: integer("count").notNull().default(1),
+    firstAt: timestamp("first_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAt: timestamp("last_at", { withTimezone: true }).notNull().defaultNow(),
+    outcomeSummary: text("outcome_summary"),
+  },
+  (t) => [
+    index("exec_dedup_engagement_idx").on(t.engagementId),
+    index("exec_dedup_lookup_idx").on(t.engagementId, t.commandNormalized, t.target, t.exitCode),
+  ],
+);
