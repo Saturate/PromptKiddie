@@ -5,6 +5,7 @@ import {
   getExecDedup,
   listFindings,
   listArtifacts,
+  listEvidence,
 } from "./repo.js";
 
 export interface LlmContext {
@@ -12,6 +13,7 @@ export interface LlmContext {
   ports: Array<{ port: number; service: string | null; version: string | null; banner: string | null }>;
   hostnames: string[];
   versions: Array<{ product: string; version: string | null; cve_hits: number }>;
+  downloaded_files: Array<{ path: string; type: string | null }>;
   discoveries: Array<{ type: string; category: string; summary: string }>;
   already_ran: Array<{ cmd: string; exit: number; result: string | null }>;
   failed_attempts: Array<{ cmd: string; exit: number; error: string | null; count: number }>;
@@ -41,7 +43,13 @@ export async function buildLlmContext(engagementId: string): Promise<LlmContext>
     }
   }
 
-  const discs = await listDiscoveries(engagementId);
+  const [discs, execRows, fds, arts, evs] = await Promise.all([
+    listDiscoveries(engagementId),
+    getExecDedup(engagementId),
+    listFindings(engagementId),
+    listArtifacts(engagementId),
+    listEvidence(engagementId),
+  ]);
 
   const hostnames = discs
     .filter((d) => d.category === "hostname" && d.type === "positive")
@@ -55,13 +63,18 @@ export async function buildLlmContext(engagementId: string): Promise<LlmContext>
       cve_hits: (d.detail as Record<string, unknown> | null)?.cve_hits as number ?? 0,
     }));
 
+  const downloaded_files = evs
+    .filter((e) => e.type === "file" && e.path)
+    .map((e) => ({
+      path: e.path!,
+      type: (e.meta as Record<string, unknown> | null)?.fileType as string | null ?? null,
+    }));
+
   const discoveryList = discs.map((d) => ({
     type: d.type,
     category: d.category,
     summary: d.summary,
   }));
-
-  const execRows = await getExecDedup(engagementId);
 
   const already_ran = execRows
     .filter((r) => r.exitCode === 0)
@@ -80,7 +93,6 @@ export async function buildLlmContext(engagementId: string): Promise<LlmContext>
       count: r.count,
     }));
 
-  const fds = await listFindings(engagementId);
   const findingsList = fds.map((f) => ({
     id: f.id,
     title: f.title,
@@ -88,7 +100,6 @@ export async function buildLlmContext(engagementId: string): Promise<LlmContext>
     status: f.status,
   }));
 
-  const arts = await listArtifacts(engagementId);
   const artifactsList = arts.map((a) => ({
     id: a.id,
     title: a.title,
@@ -102,6 +113,7 @@ export async function buildLlmContext(engagementId: string): Promise<LlmContext>
     ports: allPorts,
     hostnames,
     versions,
+    downloaded_files,
     discoveries: discoveryList,
     already_ran,
     failed_attempts,

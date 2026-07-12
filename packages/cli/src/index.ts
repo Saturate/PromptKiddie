@@ -549,7 +549,12 @@ event
   .option("--engagement <id>")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
-    const payload = JSON.parse(o.payload) as Record<string, unknown>;
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(o.payload) as Record<string, unknown>;
+    } catch {
+      return program.error(`Invalid JSON payload: ${o.payload}`);
+    }
     out(await repo.emitEvent(eid, o.type, payload, o.source));
   });
 
@@ -576,7 +581,14 @@ discovery
   .option("--engagement <id>")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
-    const detail = o.detail ? JSON.parse(o.detail) as Record<string, unknown> : undefined;
+    let detail: Record<string, unknown> | undefined;
+    if (o.detail) {
+      try {
+        detail = JSON.parse(o.detail) as Record<string, unknown>;
+      } catch {
+        return program.error(`Invalid JSON detail: ${o.detail}`);
+      }
+    }
     out(await repo.addDiscovery({
       engagementId: eid,
       type: o.type,

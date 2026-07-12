@@ -775,59 +775,7 @@ export async function listDiscoveries(
     .orderBy(desc(discoveries.createdAt));
 }
 
-export async function getDiscoverySummary(engagementId: string) {
-  const tgts = await listTargets(engagementId);
-  const allPorts = [];
-  for (const t of tgts) {
-    const p = await listPorts(t.id);
-    allPorts.push(...p.map((port) => ({
-      port: port.port,
-      service: port.service,
-      version: port.version,
-      banner: port.banner,
-      target: t.identifier,
-    })));
-  }
-
-  const discs = await listDiscoveries(engagementId);
-  const fds = await listFindings(engagementId);
-  const arts = await listArtifacts(engagementId);
-
-  const hostnames = discs
-    .filter((d) => d.category === "hostname" && d.type === "positive")
-    .map((d) => d.summary);
-
-  const versions = discs
-    .filter((d) => d.category === "version" && d.type === "positive")
-    .map((d) => ({
-      product: d.summary,
-      version: (d.detail as Record<string, unknown> | null)?.version as string | null ?? null,
-      cve_hits: (d.detail as Record<string, unknown> | null)?.cve_hits as number ?? 0,
-    }));
-
-  return {
-    targets: tgts.map((t) => t.identifier),
-    ports: allPorts,
-    hostnames,
-    versions,
-    discoveries: discs.map((d) => ({
-      type: d.type,
-      category: d.category,
-      summary: d.summary,
-    })),
-    findings: fds.map((f) => ({
-      id: f.id,
-      title: f.title,
-      severity: f.severity,
-      status: f.status,
-    })),
-    artifacts: arts.map((a) => ({
-      id: a.id,
-      title: a.title,
-      type: a.type,
-    })),
-  };
-}
+export { buildLlmContext as getDiscoverySummary } from "./context-builder.js";
 
 // --- Exec dedup --------------------------------------------------------------
 
@@ -886,8 +834,7 @@ export async function isExecBlocked(
         sql`${execDedup.exitCode} != 0`,
       ),
     );
-  const totalFailures = rows.reduce((sum, r) => sum + r.count, 0);
-  return totalFailures >= 2;
+  return rows.some((r) => r.count >= 2);
 }
 
 // --- Settings ----------------------------------------------------------------
