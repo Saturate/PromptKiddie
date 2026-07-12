@@ -48,4 +48,5 @@ export {
   createMockContext,
 } from "./sdk.js";
 export { CTF_PLAYBOOK as CTF_ACTIONS } from "./actions/index.js";
+export { buildActionGraph, type ActionGraph, type ActionNode, type ActionEdge } from "./action-graph.js";
 export { webFingerprint, headerInspect, wafDetect, linuxPrivesc, windowsPrivesc, crackHashes, passwordSpray } from "./actions/index.js";
