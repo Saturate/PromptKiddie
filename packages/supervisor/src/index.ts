@@ -14,7 +14,9 @@ import {
   addDiscovery,
   listTargets,
   getEngagement,
+  advancePhase,
   buildLlmContext,
+  sendMessage,
   type Action,
   type Playbook,
 } from "@promptkiddie/core";
@@ -24,9 +26,25 @@ import { createWsServer, type WsBroadcaster } from "./ws-server.js";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie";
 
+/** Execution mode controls concurrency and LLM dispatch scheduling. */
+export type SupervisorMode = "race" | "standard" | "methodical" | "learning";
+
+const MODE_CONCURRENCY: Record<SupervisorMode, number> = {
+  race: 5,
+  standard: 3,
+  methodical: 1,
+  learning: 1,
+};
+
+interface PendingLlmTask {
+  action: Action;
+  event: { type: string; payload: Record<string, unknown>; id?: string };
+}
+
 interface SupervisorOpts {
   engagementId: string;
   playbook?: Playbook;
+  mode?: SupervisorMode;
   maxConcurrent?: number;
   onEvent?: (event: { type: string; payload: Record<string, unknown> }) => void;
   onActionStart?: (actionName: string) => void;
@@ -36,15 +54,27 @@ interface SupervisorOpts {
 
 export async function startSupervisor(opts: SupervisorOpts) {
   const playbook = opts.playbook ?? CTF_ACTIONS;
-  const maxConcurrent = opts.maxConcurrent ?? 3;
+  const mode: SupervisorMode = opts.mode ?? "standard";
+  const maxConcurrent = opts.maxConcurrent ?? MODE_CONCURRENCY[mode];
   const activeActions = new Map<string, AbortController>();
   const bus = new EventBus();
   let stallTimer: ReturnType<typeof setTimeout> | null = null;
   const STALL_TIMEOUT = 5 * 60 * 1000;
   const priorityOverrides = new Map<string, number>();
 
+  // Pending LLM task queue for methodical/learning modes
+  const pendingLlmTasks: PendingLlmTask[] = [];
+
+  // Track current phase for advancement logic
+  let currentPhase = "scoping";
+
   function getActionPriority(action: Action): number {
     return priorityOverrides.get(action.name) ?? 50;
+  }
+
+  /** Returns true if an action is prompt-only (LLM tier, no script). */
+  function isPromptOnly(action: Action): boolean {
+    return !action.run && !!action.prompt;
   }
 
   // WebSocket server for frontend event streaming
@@ -75,11 +105,13 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   const engagement = await getEngagement(opts.engagementId);
   if (!engagement) throw new Error(`Engagement ${opts.engagementId} not found`);
+  currentPhase = engagement.phase ?? "scoping";
 
   const targets = await listTargets(opts.engagementId);
   const primaryTarget = targets.find((t) => t.inScope)?.identifier ?? targets[0]?.identifier ?? "unknown";
 
   console.log(`[supervisor] starting for "${engagement.name}" (${opts.engagementId})`);
+  console.log(`[supervisor] mode: ${mode} (maxConcurrent: ${maxConcurrent})`);
   console.log(`[supervisor] target: ${primaryTarget}`);
   console.log(`[supervisor] playbook: ${playbook.name} (${playbook.actions.length} actions)`);
 
@@ -121,8 +153,8 @@ export async function startSupervisor(opts: SupervisorOpts) {
             name: engagement.name,
             type: engagement.type,
             target: primaryTarget,
-            phase: engagement.phase,
-            mode: "standard",
+            phase: currentPhase,
+            mode,
           },
           onReprioritize: (name, priority) => {
             priorityOverrides.set(name, priority);
@@ -142,8 +174,18 @@ export async function startSupervisor(opts: SupervisorOpts) {
           engagementId: opts.engagementId,
           type: "attempted",
           category: "agent",
-          summary: `Agent action "${action.name}" queued (prompt-based dispatch pending)`,
+          summary: `Agent action "${action.name}" dispatched (prompt-based)`,
         });
+
+        if (mode === "learning") {
+          // Send analysis to inbox and wait for human approval
+          await sendMessage({
+            engagementId: opts.engagementId,
+            direction: "outbound",
+            author: "supervisor",
+            body: `[learning] Action "${action.name}" wants to run:\n${action.prompt.slice(0, 500)}\n\nReply to approve or redirect.`,
+          });
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -159,6 +201,40 @@ export async function startSupervisor(opts: SupervisorOpts) {
       if (key) activeActions.delete(key);
       opts.onActionEnd?.(action.name);
       bus.emit("slot_free", {});
+    }
+  }
+
+  /** Try to advance the engagement phase based on event type. */
+  async function maybeAdvancePhase(event: { type: string; payload: Record<string, unknown> }) {
+    const eid = opts.engagementId;
+    try {
+      let targetPhase: string | null = null;
+
+      if (event.type === "PortDiscovered" && currentPhase === "recon") {
+        // Only advance if no recon actions are still running
+        const reconRunning = [...activeActions.keys()].some(
+          (k) => k.startsWith("port_scan") || k.startsWith("udp_scan"),
+        );
+        if (!reconRunning) targetPhase = "enum";
+      } else if (event.type === "FindingAdded" && (currentPhase === "recon" || currentPhase === "enum")) {
+        targetPhase = "exploit";
+      } else if (event.type === "ShellObtained" && currentPhase !== "postexploit" && currentPhase !== "report") {
+        targetPhase = "postexploit";
+      } else if (event.type === "FlagCaptured") {
+        // Advance to report only if this looks like the final flag
+        // (heuristic: root flag captured)
+        if (event.payload.type === "root") targetPhase = "report";
+      }
+
+      if (targetPhase && targetPhase !== currentPhase) {
+        const result = await advancePhase(eid, targetPhase as Parameters<typeof advancePhase>[1]);
+        currentPhase = targetPhase;
+        console.log(`[supervisor] phase advanced: ${currentPhase}${result.warning ? ` (${result.warning})` : ""}`);
+        ws.sendEvent({ type: "PhaseAdvanced", payload: { phase: currentPhase } });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[supervisor] phase advance failed: ${msg}`);
     }
   }
 
@@ -187,9 +263,38 @@ export async function startSupervisor(opts: SupervisorOpts) {
     }
 
     matched.sort((a, b) => getActionPriority(a) - getActionPriority(b));
+
     for (const action of matched) {
+      // In methodical/learning modes, prompt-only actions are queued
+      if ((mode === "methodical" || mode === "learning") && isPromptOnly(action)) {
+        pendingLlmTasks.push({ action, event });
+        console.log(`[supervisor] queued LLM task: ${action.name} (mode: ${mode}, pending: ${pendingLlmTasks.length})`);
+        continue;
+      }
       dispatchAction(action, event);
     }
+
+    // Phase advancement (async, fire-and-forget; errors are logged)
+    maybeAdvancePhase(event);
+  }
+
+  /**
+   * Release pending LLM tasks from the queue. In methodical mode the
+   * orchestrator calls this via CLI or HTTP to approve queued agent work.
+   * In learning mode, tasks are released after human inbox approval.
+   *
+   * @param count - Number of tasks to release. Default: all pending tasks.
+   * @returns The names of released actions.
+   */
+  function releasePending(count?: number): string[] {
+    const toRelease = count != null ? pendingLlmTasks.splice(0, count) : pendingLlmTasks.splice(0);
+    const released: string[] = [];
+    for (const task of toRelease) {
+      console.log(`[supervisor] releasing pending LLM task: ${task.action.name}`);
+      dispatchAction(task.action, task.event);
+      released.push(task.action.name);
+    }
+    return released;
   }
 
   // Connect to Postgres and LISTEN for events
@@ -240,6 +345,9 @@ export async function startSupervisor(opts: SupervisorOpts) {
   return {
     stop: shutdown,
     dispatch: evaluateAndDispatch,
+    releasePending,
+    get pendingCount() { return pendingLlmTasks.length; },
+    mode,
     ws,
   };
 }
@@ -247,11 +355,19 @@ export async function startSupervisor(opts: SupervisorOpts) {
 // CLI entry point
 const engagementId = process.argv[2];
 if (!engagementId) {
-  console.error("Usage: pk supervisor start <engagement-id>");
+  console.error("Usage: pk supervisor start <engagement-id> [--mode race|standard|methodical|learning]");
   process.exit(1);
 }
 
-startSupervisor({ engagementId }).catch((err) => {
+const modeArgIdx = process.argv.indexOf("--mode");
+const cliMode = modeArgIdx >= 0 ? (process.argv[modeArgIdx + 1] as SupervisorMode | undefined) : undefined;
+const validModes: SupervisorMode[] = ["race", "standard", "methodical", "learning"];
+if (cliMode && !validModes.includes(cliMode)) {
+  console.error(`Invalid mode "${cliMode}". Valid modes: ${validModes.join(", ")}`);
+  process.exit(1);
+}
+
+startSupervisor({ engagementId, mode: cliMode }).catch((err) => {
   console.error("[supervisor] fatal:", err);
   process.exit(1);
 });

@@ -632,11 +632,18 @@ program
   .command("supervisor")
   .description("Start the event-driven supervisor for an engagement")
   .option("--engagement <id>")
+  .option("--mode <mode>", "Execution mode: race, standard, methodical, or learning")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
+    const validModes = ["race", "standard", "methodical", "learning"];
+    if (o.mode && !validModes.includes(o.mode)) {
+      console.error(`Invalid mode "${o.mode}". Valid modes: ${validModes.join(", ")}`);
+      process.exit(1);
+    }
     const { startSupervisor } = await import("@promptkiddie/supervisor");
     await startSupervisor({
       engagementId: eid,
+      mode: o.mode,
       onEvent: (e) => console.log(`[event] ${e.type}: ${JSON.stringify(e.payload).slice(0, 100)}`),
       onActionStart: (name) => console.log(`[action] started: ${name}`),
       onActionEnd: (name) => console.log(`[action] finished: ${name}`),
