@@ -133,6 +133,64 @@ export function buildActionGraph(actions: Action[]): ActionGraph {
  * console.log(actionGraphToMermaid(graph));
  * ```
  */
+/** Result of simulating an event through the action graph. */
+export interface SimulationStep {
+  event: { type: string; payload: Record<string, unknown> };
+  triggered: string[];
+  timestamp: number;
+}
+
+/**
+ * Simulate a sequence of events through a set of actions. Returns which
+ * actions triggered on each event. Pure function; no side effects.
+ *
+ * Used by both the test suite and the frontend demo.
+ *
+ * @example
+ * ```ts
+ * const steps = simulateGraph(CTF_PLAYBOOK.actions, [
+ *   { type: "EngagementStarted", payload: {} },
+ *   { type: "PortDiscovered", payload: { port: 80, service: "http" } },
+ * ]);
+ * expect(steps[0].triggered).toContain("port_scan");
+ * expect(steps[1].triggered).toContain("web_recon");
+ * ```
+ */
+export function simulateGraph(
+  actions: Action[],
+  events: Array<{ type: string; payload: Record<string, unknown> }>,
+): SimulationStep[] {
+  const steps: SimulationStep[] = [];
+  let time = 0;
+
+  for (const event of events) {
+    const synthetic: EngagementEvent = {
+      id: `sim-${time}`,
+      type: event.type,
+      payload: event.payload,
+      source: "simulation",
+      engagementId: "simulation",
+      createdAt: new Date(),
+    };
+
+    const triggered: string[] = [];
+    for (const action of actions) {
+      try {
+        if (action.on(synthetic)) {
+          triggered.push(action.name);
+        }
+      } catch {
+        // trigger threw; skip
+      }
+    }
+
+    steps.push({ event, triggered, timestamp: time });
+    time++;
+  }
+
+  return steps;
+}
+
 export function actionGraphToMermaid(graph: ActionGraph): string {
   const lines = ["graph TD"];
 
