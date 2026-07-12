@@ -28,8 +28,6 @@ import {
   type PlaybookPhase,
   type PlaybookStep,
 } from "./schema.js";
-import { DEFAULT_PLAYBOOKS } from "./playbooks.js";
-import { BUILTIN_BLOCKS } from "./blocks.js";
 import {
   findAutoSkips,
   findReadyNodes,
@@ -882,37 +880,9 @@ export async function seedDefaultSettings() {
 
 // --- Playbooks ---------------------------------------------------------------
 
+/** @deprecated Old PlaybookStep/BlockDef system removed; seeding is now a no-op. */
 export async function seedPlaybooks() {
-  const db = getDb();
-  for (const [type, def] of Object.entries(DEFAULT_PLAYBOOKS)) {
-    const existing = await db.select().from(playbooks)
-      .where(and(eq(playbooks.engagementType, type as "ctf"), eq(playbooks.isDefault, true)));
-    if (existing.length === 0) {
-      await db.insert(playbooks).values({
-        name: def.name,
-        engagementType: type as "ctf",
-        description: def.description,
-        isDefault: true,
-        phases: def.phases,
-      });
-    }
-  }
-
-  // Seed built-in blocks
-  for (const block of BUILTIN_BLOCKS) {
-    const existing = await db.select().from(playbookBlocks)
-      .where(and(eq(playbookBlocks.name, block.name), eq(playbookBlocks.isBuiltin, true)));
-    if (existing.length === 0) {
-      await db.insert(playbookBlocks).values({
-        name: block.name,
-        description: block.description,
-        inputSchema: block.inputSchema,
-        outputSchema: block.outputSchema,
-        nodes: block.nodes,
-        isBuiltin: true,
-      });
-    }
-  }
+  // No-op: old PlaybookStep/BlockDef system replaced by Action SDK.
 }
 
 export async function getPlaybook(id: string) {
