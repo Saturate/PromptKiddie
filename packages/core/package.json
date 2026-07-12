@@ -10,7 +10,8 @@
     "./schema": "./dist/schema.js"
   },
   "scripts": {
-    "build": "tsc --build"
+    "build": "tsc --build",
+    "test": "vitest run"
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.10"
   }
 }
