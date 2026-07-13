@@ -1,102 +1,165 @@
-# Plan: Integration Tests
+# Plan: CLI Hardening (pk-rs best-of)
 
-Implements `docs/specs/integration-tests.md`. Two test suites: service entity DB tests and supervisor event cascade tests.
+Extract the best ideas from the pk-rs spec into the existing TypeScript CLI. No rewrite; targeted improvements.
+
+**Already exists (removed from scope):**
+- `pk engagement use <id>` - works via `.pk/state.json`
+- `pk search <term>` - greps `engagements/<slug>/`
+- `pk think` - writes to agent_log
 
 ## Dependency graph
 
 ```
-Task 1: Service entity DB tests (packages/core)
-    └── standalone, no deps
+Task 1: Config: /etc/pk/config.toml + PK_CONTAINER detection
+    │
+    ├── Task 2: Spawn: mount config, hide DATABASE_URL, add $TARGET_SUBNET
+    │
+    └── Task 3: Container mode guards (disable vpn/spawn, default actor=agent)
 
-Task 2: Supervisor cascade tests (packages/supervisor)
-    └── needs vitest config + test script in package.json
+Task 4: pk search --tool-log (search shell-logger outputs)
+    └── standalone
 
-Task 3: Phase advancement tests (packages/supervisor)
-    └── depends on Task 2 (same test infra)
+Task 5: TTY-aware output formatting
+    └── standalone
 ```
 
 ---
 
-## Task 1: Service entity DB tests
+## Task 1: Config resolution for container mode
 
-**Description:** Integration tests for service CRUD functions against the running postgres. Tests upsert, event emission, auto-behaviors (finding creation, artifact creation), dedup, and context builder integration.
+**Description:** Add `/etc/pk/config.toml` to the config resolution chain (highest priority file path, before env overrides). Add `PK_CONTAINER` detection to the config object so downstream code can check it.
 
 **Acceptance criteria:**
-- [ ] addService inserts a new service and emits VersionIdentified event
-- [ ] addService upserts (same key = update, not duplicate row)
-- [ ] addService does NOT emit VersionIdentified on re-submission of same data
-- [ ] updateService re-emits VersionIdentified when version changes
-- [ ] addServiceApp deduplicates by name+path
-- [ ] addServiceCred deduplicates by username+source and creates artifact
-- [ ] addServiceCve deduplicates by CVE id and auto-creates finding when status=confirmed
-- [ ] listServices filters by targetId
-- [ ] getService includes linked findings
-- [ ] listAllCreds aggregates creds across services
-- [ ] buildLlmContext includes services with apps, cred_count, cves
+- [ ] Config resolution order: defaults < `~/.pk/config.toml` < `.pk/config.toml` < `/etc/pk/config.toml` < env vars
+- [ ] `PkConfig` has a `container: boolean` field, true when `PK_CONTAINER=1`
+- [ ] When `container` is true and `/etc/pk/config.toml` has `database.url`, that value is used even if `DATABASE_URL` env is not set
 
 **Verification:**
-- [ ] `pnpm --filter @promptkiddie/core test` passes with new tests
-- [ ] Existing 210 tests still pass
+- [ ] `pnpm build` succeeds
+- [ ] `pk config` shows the merged config with `container: false` on the host
 
 **Dependencies:** None
 
 **Files likely touched:**
-- `packages/core/src/__tests__/service-entity.test.ts` (NEW)
-
-**Estimated scope:** M
-
----
-
-## Task 2: Supervisor event cascade tests
-
-**Description:** Test the supervisor's evaluateAndDispatch function by starting a supervisor against the test DB with a mock playbook, calling dispatch() with synthetic events, and verifying which actions fire via onActionStart/onActionEnd callbacks. Mock the exec layer (spawnAgentContainer) to avoid needing Docker.
-
-**Acceptance criteria:**
-- [ ] EngagementStarted triggers port_scan and udp_scan
-- [ ] PortDiscovered with service=http triggers web_recon, dir_brute, nuclei
-- [ ] VersionIdentified with product+version triggers cve_search
-- [ ] Prompt-only actions (no run function) go to inbox or spawn
-- [ ] Spawn retry cap: after 2 failures, action falls back to inbox
-
-**Verification:**
-- [ ] `pnpm --filter @promptkiddie/supervisor test` passes
-- [ ] Build succeeds
-
-**Dependencies:** None (parallel with Task 1)
-
-**Files likely touched:**
-- `packages/supervisor/src/__tests__/cascade.test.ts` (NEW)
-- `packages/supervisor/vitest.config.ts` (NEW)
-- `packages/supervisor/package.json` (add test script + vitest dep)
-
-**Estimated scope:** M
-
----
-
-## Task 3: Phase advancement tests
-
-**Description:** Test the supervisor's maybeAdvancePhase logic. Emit events in sequence through dispatch() and verify currentPhase advances correctly: PortDiscovered->enum, FindingAdded->exploit, ShellObtained->postexploit, FlagCaptured(root)->report.
-
-**Acceptance criteria:**
-- [ ] PortDiscovered (with no scans running) advances to enum
-- [ ] FindingAdded advances to exploit
-- [ ] ShellObtained advances to postexploit
-- [ ] FlagCaptured with type=root advances to report
-- [ ] Phase only advances forward, never backward
-
-**Verification:**
-- [ ] `pnpm --filter @promptkiddie/supervisor test` passes
-
-**Dependencies:** Task 2
-
-**Files likely touched:**
-- `packages/supervisor/src/__tests__/cascade.test.ts` (extend)
+- `packages/core/src/config.ts`
 
 **Estimated scope:** S
 
 ---
 
+## Task 2: Spawn improvements (config mount, hidden creds, $TARGET_SUBNET)
+
+**Description:** Update `pk spawn agent` to (a) generate and mount a `/etc/pk/config.toml` with the DB URL instead of passing `DATABASE_URL` as an env var, (b) set `PK_CONTAINER=1`, and (c) auto-detect `$TARGET_SUBNET` from the engagement scope field (CIDR regex) or accept a `--subnet` flag.
+
+**Acceptance criteria:**
+- [ ] Spawned containers get `-v <tmpfile>:/etc/pk/config.toml:ro` with the DB URL inside
+- [ ] `DATABASE_URL` is NOT set as an env var on spawned containers
+- [ ] `PK_CONTAINER=1` env var is set on spawned containers
+- [ ] `--subnet <cidr>` flag adds `TARGET_SUBNET=<cidr>` env var
+- [ ] When no `--subnet` flag, auto-detect CIDR from engagement scope field (regex: `/\d+\.\d+\.\d+\.\d+\/\d+/`)
+- [ ] Temp config file is cleaned up after container stops (or left in a known location)
+
+**Verification:**
+- [ ] `pnpm build` succeeds
+- [ ] `pk spawn agent --image pk-agent-recon` creates container without DATABASE_URL in env
+- [ ] `docker exec <container> env | grep DATABASE` returns nothing
+- [ ] `docker exec <container> pk engagement list` works (reads from /etc/pk/config.toml)
+
+**Dependencies:** Task 1
+
+**Files likely touched:**
+- `packages/cli/src/index.ts` (spawn command)
+
+**Estimated scope:** S
+
+---
+
+## Task 3: Container mode guards
+
+**Description:** When `PK_CONTAINER=1` is set, disable host-only commands (`vpn`, `spawn`) with a clear error message, and default the `--actor` flag to `"agent"` instead of `"orchestrator"` for activity logging.
+
+**Acceptance criteria:**
+- [ ] `pk vpn up` inside a container prints "VPN commands are not available inside agent containers" and exits 1
+- [ ] `pk spawn agent` inside a container prints "Spawn is not available inside agent containers" and exits 1
+- [ ] `pk activity log` defaults actor to `"agent"` when `PK_CONTAINER=1`
+- [ ] Host mode (no `PK_CONTAINER`) is unchanged
+
+**Verification:**
+- [ ] `pnpm build` succeeds
+- [ ] Manual: `PK_CONTAINER=1 pk vpn status` shows error
+- [ ] Manual: `pk vpn status` on host works normally
+
+**Dependencies:** Task 1
+
+**Files likely touched:**
+- `packages/cli/src/index.ts`
+
+**Estimated scope:** S
+
+---
+
+## Checkpoint: After Tasks 1-3
+- [ ] `pnpm build` succeeds
+- [ ] Existing tests pass
+- [ ] `pk spawn` creates containers with mounted config, no DATABASE_URL in env
+- [ ] Container mode guards work
+
+---
+
+## Task 4: pk search --tool-log
+
+**Description:** Extend `pk search` with a `--tool-log` flag that searches shell-logger output files at `$PK_LOG_DIR/outputs/` (default `/workspace/.tool-log/outputs/`) instead of the engagement directory. Also support `--cmd <tool>` to filter by tool name (matches output filenames like `nmap-2026-07-11T11-38-12.txt`). This is the primary use case inside containers where agents want to find data from earlier commands.
+
+**Acceptance criteria:**
+- [ ] `pk search <term> --tool-log` greps files in `$PK_LOG_DIR/outputs/` (or `/workspace/.tool-log/outputs/`)
+- [ ] `pk search <term> --tool-log --cmd nmap` only searches files matching `nmap-*`
+- [ ] Output shows filename and matching lines
+- [ ] Falls back to existing engagement-dir search when `--tool-log` is not set
+
+**Verification:**
+- [ ] `pnpm build` succeeds
+- [ ] Manual: create a test output file, verify `pk search` finds content in it
+
+**Dependencies:** None
+
+**Files likely touched:**
+- `packages/cli/src/index.ts` (search command)
+
+**Estimated scope:** S
+
+---
+
+## Task 5: TTY-aware output formatting
+
+**Description:** When stdout is a TTY (human at terminal), output key commands in human-readable format instead of raw JSON. When piped or redirected, keep JSON. Add `--format json|text` global flag to override. Start with `pk service list`, `pk finding list`, `pk target list`, and `pk engagement list` since those are the most commonly read by humans.
+
+**Acceptance criteria:**
+- [ ] `pk finding list` on a TTY shows a table (title, severity, status, one row per finding)
+- [ ] `pk finding list | cat` outputs JSON (pipe detection)
+- [ ] `pk finding list --format json` forces JSON even on TTY
+- [ ] `pk target list` on a TTY shows a table (kind, identifier, in-scope, notes)
+- [ ] `pk service list` on a TTY shows a table (port, product, version, apps count, creds count)
+- [ ] `pk engagement list` on a TTY shows a table (name, type, status, phase)
+- [ ] All other commands continue to output JSON (no regression)
+
+**Verification:**
+- [ ] `pnpm build` succeeds
+- [ ] Manual: `pk finding list` in terminal shows formatted table
+- [ ] Manual: `pk finding list | jq .` still works (JSON output when piped)
+
+**Dependencies:** None
+
+**Files likely touched:**
+- `packages/cli/src/index.ts` (out function, global option, 4 list commands)
+
+**Estimated scope:** M
+
+---
+
 ## Final checkpoint
 - [ ] `pnpm build` succeeds
-- [ ] `pnpm --filter @promptkiddie/core test` passes (all existing + new service tests)
-- [ ] `pnpm --filter @promptkiddie/supervisor test` passes (cascade + phase tests)
+- [ ] All tests pass
+- [ ] Spawned containers can't leak DB credentials via `env`
+- [ ] Host-only commands are blocked inside containers
+- [ ] `pk search --tool-log` works inside containers
+- [ ] Human-friendly output on TTY, JSON when piped
