@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@promptkiddie/core": "workspace:*",
@@ -20,6 +21,7 @@
     "@types/pg": "^8.11.11",
     "@types/ws": "^8.18.1",
     "tsx": "^4.22.4",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
   }
 }

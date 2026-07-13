@@ -389,6 +389,11 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   // Connect to Postgres and LISTEN for events
   const client = new Client({ connectionString: DATABASE_URL });
+  let closing = false;
+  client.on("error", (err) => {
+    if (closing) return;
+    console.error("[supervisor] pg client error:", err.message);
+  });
   await client.connect();
   await client.query("LISTEN pk_events");
   console.log("[supervisor] listening on pk_events");
@@ -406,7 +411,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
           const row = result.rows[0] as { type: string; payload: Record<string, unknown> };
           evaluateAndDispatch({ type: row.type, payload: row.payload, id: parsed.id });
         })
-        .catch((err) => console.error("[supervisor] event fetch error:", err));
+        .catch((err) => { if (!closing) console.error("[supervisor] event fetch error:", err); });
     } catch {
       // malformed notification
     }
@@ -418,22 +423,26 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   resetStallTimer();
 
-  // Handle shutdown
-  const shutdown = async () => {
-    console.log("\n[supervisor] shutting down...");
+  const cleanup = async () => {
+    closing = true;
     if (stallTimer) clearTimeout(stallTimer);
     for (const [, ac] of activeActions) ac.abort();
     await ws.close();
-    await client.end();
+    await client.end().catch(() => {});
+  };
+
+  const shutdown = async () => {
+    console.log("\n[supervisor] shutting down...");
+    await cleanup();
     process.exit(0);
   };
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  // Keep alive
   return {
     stop: shutdown,
+    cleanup,
     dispatch: evaluateAndDispatch,
     releasePending,
     get pendingCount() { return pendingLlmTasks.length; },
