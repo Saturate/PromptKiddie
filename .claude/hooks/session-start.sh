@@ -42,8 +42,8 @@ if command -v pnpm >/dev/null 2>&1; then
   pnpm --silent db:migrate 2>/dev/null \
     && echo "[promptkiddie] migrations applied" \
     || true
-  # Apply custom migrations (LISTEN/NOTIFY triggers etc.)
-  for f in db/migrations/0001_*.sql db/migrations/0002_*.sql; do
+  # Apply custom SQL migrations (LISTEN/NOTIFY triggers, column additions, etc.)
+  for f in db/migrations/0*.sql; do
     [ -f "$f" ] && docker exec -i promptkiddie-db psql -U "${POSTGRES_USER:-promptkiddie}" \
       -d "${POSTGRES_DB:-promptkiddie}" < "$f" 2>/dev/null || true
   done
@@ -57,6 +57,21 @@ if command -v docker >/dev/null 2>&1; then
       || true
   fi
 fi
+
+# Check for active engagements and remind about supervisor.
+if command -v pnpm >/dev/null 2>&1; then
+  ACTIVE=$(pnpm --silent pk engagement list 2>/dev/null \
+    | jq -r '.[] | select(.status == "active") | "\(.id) \(.name)"' 2>/dev/null | head -1)
+  if [ -n "$ACTIVE" ]; then
+    EID=$(echo "$ACTIVE" | cut -d' ' -f1)
+    ENAME=$(echo "$ACTIVE" | cut -d' ' -f2-)
+    echo "[promptkiddie] active engagement: $ENAME ($EID)"
+    echo "[promptkiddie] start supervisor with: pk supervisor $EID"
+  fi
+fi
+
+# Reset inline command counter from previous sessions.
+rm -f /tmp/.pk-inline-cmd-count
 
 echo "[promptkiddie] ready. See CLAUDE.md for orchestrator instructions."
 exit 0
