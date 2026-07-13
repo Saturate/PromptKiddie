@@ -34,10 +34,36 @@ const program = new Command();
 program
   .name("pk")
   .description("PromptKiddie engagement CLI: log and query the engagement database")
-  .version("0.1.0");
+  .version("0.1.0")
+  .option("--format <fmt>", "Output format: json | text (default: text for TTY, json for pipes)")
+  .enablePositionalOptions()
+  .passThroughOptions();
+
+function useText(): boolean {
+  const fmt = program.opts().format;
+  if (fmt === "json") return false;
+  if (fmt === "text") return true;
+  return process.stdout.isTTY === true;
+}
 
 const out = (v: unknown) => console.log(JSON.stringify(v, null, 2));
 const list = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
+
+function table(rows: Record<string, unknown>[], columns: { key: string; label: string; width?: number }[]) {
+  if (!useText() || rows.length === 0) { out(rows); return; }
+  const widths = columns.map((c) => {
+    const vals = rows.map((r) => String(r[c.key] ?? "").length);
+    return Math.max(c.label.length, ...vals, c.width ?? 0);
+  });
+  const header = columns.map((c, i) => c.label.padEnd(widths[i])).join("  ");
+  const sep = widths.map((w) => "-".repeat(w)).join("  ");
+  console.log(header);
+  console.log(sep);
+  for (const row of rows) {
+    const line = columns.map((c, i) => String(row[c.key] ?? "").padEnd(widths[i])).join("  ");
+    console.log(line);
+  }
+}
 
 // --- engagement ------------------------------------------------------------
 const engagement = program.command("engagement").description("Manage engagements");
@@ -70,7 +96,16 @@ engagement
 
 engagement
   .command("list")
-  .action(async () => out(await repo.listEngagements()));
+  .action(async () => {
+    const rows = await repo.listEngagements() as Array<Record<string, unknown>>;
+    table(rows, [
+      { key: "name", label: "NAME", width: 20 },
+      { key: "type", label: "TYPE", width: 10 },
+      { key: "status", label: "STATUS", width: 10 },
+      { key: "phase", label: "PHASE", width: 12 },
+      { key: "id", label: "ID" },
+    ]);
+  });
 
 engagement
   .command("use")
@@ -180,7 +215,16 @@ target
 target
   .command("list")
   .option("--engagement <id>")
-  .action(async (o) => out(await repo.listTargets(await resolveEngagementId(o.engagement))));
+  .action(async (o) => {
+    const rows = await repo.listTargets(await resolveEngagementId(o.engagement)) as Array<Record<string, unknown>>;
+    table(rows, [
+      { key: "kind", label: "KIND", width: 8 },
+      { key: "identifier", label: "IDENTIFIER", width: 20 },
+      { key: "inScope", label: "IN-SCOPE", width: 8 },
+      { key: "notes", label: "NOTES", width: 30 },
+      { key: "id", label: "ID" },
+    ]);
+  });
 
 target
   .command("update")
@@ -282,7 +326,16 @@ finding
 finding
   .command("list")
   .option("--engagement <id>")
-  .action(async (o) => out(await repo.listFindings(await resolveEngagementId(o.engagement))));
+  .action(async (o) => {
+    const rows = await repo.listFindings(await resolveEngagementId(o.engagement)) as Array<Record<string, unknown>>;
+    table(rows, [
+      { key: "title", label: "TITLE", width: 30 },
+      { key: "severity", label: "SEV", width: 8 },
+      { key: "status", label: "STATUS", width: 10 },
+      { key: "cvss", label: "CVSS", width: 5 },
+      { key: "id", label: "ID" },
+    ]);
+  });
 
 finding
   .command("update")
@@ -646,7 +699,23 @@ svc.command("list")
   .option("--engagement <id>")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
-    out(await repo.listServices(eid, o.target ? { targetId: o.target } : undefined));
+    const rows = await repo.listServices(eid, o.target ? { targetId: o.target } : undefined) as Array<Record<string, unknown>>;
+    const display = rows.map((r) => ({
+      ...r,
+      apps: Array.isArray(r.apps) ? r.apps.length : 0,
+      creds: Array.isArray(r.creds) ? r.creds.length : 0,
+      cves: Array.isArray(r.cves) ? r.cves.length : 0,
+    }));
+    table(display, [
+      { key: "port", label: "PORT", width: 6 },
+      { key: "product", label: "PRODUCT", width: 15 },
+      { key: "version", label: "VERSION", width: 10 },
+      { key: "name", label: "SVC", width: 6 },
+      { key: "apps", label: "APPS", width: 4 },
+      { key: "creds", label: "CREDS", width: 5 },
+      { key: "cves", label: "CVES", width: 4 },
+      { key: "id", label: "ID" },
+    ]);
   });
 
 svc.command("show")
