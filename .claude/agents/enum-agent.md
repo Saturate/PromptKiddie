@@ -26,6 +26,14 @@ Your job:
 Do not exploit — only identify and triage. Return a prioritized list of candidate findings
 (by likely impact / ease of validation) for the exploitation phase.
 
+## /etc/hosts management
+
+When adding hostnames to /etc/hosts, always check first:
+```bash
+pk exec -- sh -c 'grep -q "hostname.htb" /etc/hosts || echo "10.x.x.x hostname.htb" >> /etc/hosts'
+```
+Never append without checking. Multiple agents share the attackbox.
+
 ## Command discipline
 
 Every command that touches the target MUST use `pk exec -- <command>`. Raw bash, curl,

@@ -195,6 +195,39 @@ const snmpEnum: Action = {
   },
 };
 
+const nfsEnum: Action = {
+  name: "nfs_enum",
+  description: "NFS share enumeration and file listing",
+  on: (e) => e.type === "PortDiscovered" && (e.payload.port === 2049 || e.payload.service === "nfs"),
+  emits: ["FileDownloaded", "CredentialFound"],
+  async run(ctx) {
+    const showmount = await ctx.exec("nmap", ["--script", "nfs-showmount,nfs-ls", "-p", "111,2049", ctx.target]);
+    const shares: string[] = [];
+    for (const line of showmount.stdout.split("\n")) {
+      const m = line.match(/\|\s+(\/\S+)/);
+      if (m) shares.push(m[1]);
+    }
+    if (shares.length === 0) {
+      await ctx.discover("negative", "nfs", "No NFS shares found or showmount failed");
+      return;
+    }
+    for (const share of shares) {
+      await ctx.discover("positive", "nfs", `NFS share: ${share}`);
+      const mount = await ctx.exec("sh", ["-c",
+        `mkdir -p /mnt/nfs_enum && mount -t nfs -o nolock,vers=3 ${ctx.target}:${share} /mnt/nfs_enum 2>&1 && find /mnt/nfs_enum -type f -maxdepth 3 2>/dev/null && umount /mnt/nfs_enum`]);
+      if (mount.code === 0 && mount.stdout.trim()) {
+        const files = mount.stdout.trim().split("\n");
+        await ctx.discover("positive", "nfs", `${files.length} files in ${share}`, { files: files.slice(0, 20) });
+        for (const f of files) {
+          if (/\.(pdf|txt|conf|cfg|bak|sql|key|pem|ovpn)$/i.test(f)) {
+            await ctx.emit("FileDownloaded", { path: f, share, source: "nfs" });
+          }
+        }
+      }
+    }
+  },
+};
+
 const cveSearch: Action = {
   name: "cve_search",
   description: "Search for known CVEs matching discovered versions",
@@ -345,7 +378,7 @@ export const CTF_PLAYBOOK: Playbook = {
     // Recon
     portScan, udpScan, webRecon, sslHostnames, dirBrute, vhostBrute,
     // Enumeration
-    nucleiScan, smbEnum, ftpEnum, snmpEnum,
+    nucleiScan, smbEnum, ftpEnum, snmpEnum, nfsEnum,
     cveSearch, sourceCodeAnalysis, defaultCreds,
     webVulnTests, pathTraversalAction,
     // Exploitation

@@ -96,10 +96,12 @@ The supervisor advances phases automatically based on events:
 
 These are the orchestrator's job.
 
-**Agent budgets.** When spawning a sub-agent for an LLM task, set expectations: "Report
-back after completing the task or after 200 tool calls, whichever comes first. If stuck
-after 3 failed attempts at the same approach, report what you tried and ask for
-redirection."
+**Agent budgets.** Scale to engagement difficulty:
+- **Easy/CTF:** 80 tool calls. Try obvious paths first (flag files, sudo -l, SUID).
+- **Medium:** 150 tool calls.
+- **Hard/real engagement:** 200 tool calls.
+Always include: "If stuck after 3 failed attempts at the same approach, report what you
+tried and ask for redirection."
 
 **Delegation heuristic (enforced by hook).** After 10 inline target-facing commands
 (pk exec, pkx, docker exec, webshell curl), the PreToolUse hook warns. At 20, it blocks.
