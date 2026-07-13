@@ -74,4 +74,65 @@ printf '%s\n' "$INLINE_OUTPUT" | jq -cRs \
     output_summary: .
   }' >> "$JSONL"
 
+# --- Version extraction (auto-detect product+version from output) -----------
+# Runs in background so it doesn't block the caller.
+# Dedup: per-engagement seen-versions file prevents duplicate pk service add calls.
+
+_pk_extract_versions() {
+  local tmpout="$1"
+  local seen_file="${LOG_DIR}/.seen-versions"
+  touch "$seen_file"
+
+  # Only extract if pk and engagement context are available
+  if ! command -v pk >/dev/null 2>&1; then return; fi
+  local eid="${ENGAGEMENT_ID:-}"
+  local tid="${TARGET_ID:-}"
+  if [ -z "$eid" ] || [ -z "$tid" ]; then return; fi
+
+  local product version key
+
+  # Pattern 1: HTTP Server header  (Server: nginx/1.24.0)
+  grep -oP 'Server:\s*\K[A-Za-z][A-Za-z0-9_.-]*/[0-9]+\.[0-9.]+' "$tmpout" 2>/dev/null | while IFS='/' read -r product version; do
+    key="${tid}:${product,,}:${version}"
+    grep -qxF "$key" "$seen_file" && continue
+    echo "$key" >> "$seen_file"
+    pk service add --engagement "$eid" --target "$tid" --product "$product" --ver "$version" --name http --discovered-by shell-logger >/dev/null 2>&1
+  done
+
+  # Pattern 2: X-Powered-By header  (X-Powered-By: PHP/8.3.6)
+  grep -oP 'X-Powered-By:\s*\K[A-Za-z][A-Za-z0-9_.-]*/[0-9]+\.[0-9.]+' "$tmpout" 2>/dev/null | while IFS='/' read -r product version; do
+    key="${tid}:${product,,}:${version}"
+    grep -qxF "$key" "$seen_file" && continue
+    echo "$key" >> "$seen_file"
+    pk service add --engagement "$eid" --target "$tid" --product "$product" --ver "$version" --discovered-by shell-logger >/dev/null 2>&1
+  done
+
+  # Pattern 3: Nmap port lines  (22/tcp open ssh OpenSSH 9.6p1)
+  grep -oP '(\d+)/tcp\s+open\s+\S+\s+(\S+)\s+([\d]+\.[\d.]+\S*)' "$tmpout" 2>/dev/null | while read -r line; do
+    local nport nproduct nversion
+    nport=$(echo "$line" | grep -oP '^\d+')
+    nproduct=$(echo "$line" | sed -E 's|^[0-9]+/tcp\s+open\s+\S+\s+(\S+)\s+.*|\1|')
+    nversion=$(echo "$line" | grep -oP '[\d]+\.[\d.]+\S*')
+    key="${tid}:${nproduct,,}:${nversion}"
+    grep -qxF "$key" "$seen_file" && continue
+    echo "$key" >> "$seen_file"
+    pk service add --engagement "$eid" --target "$tid" --port "$nport" --product "$nproduct" --ver "$nversion" --name "$(echo "$line" | awk -F'open ' '{print $2}' | awk '{print $1}')" --discovered-by shell-logger >/dev/null 2>&1
+  done
+
+  # Pattern 4: Known products with versions
+  grep -oiP '(OpenSSH|Apache|nginx|Dovecot|MySQL|MariaDB|PostgreSQL|Redis|MongoDB|Postfix|vsftpd|ProFTPD|Samba|OpenSTAManager|OliveTin|Roundcube|WordPress|Drupal|Joomla|GitLab|Jenkins|Tomcat|Jetty|IIS)\s*[/: ]([\d]+\.[\d.]+[a-z0-9.]*)' "$tmpout" 2>/dev/null | while read -r match; do
+    product=$(echo "$match" | grep -oiP '^(OpenSSH|Apache|nginx|Dovecot|MySQL|MariaDB|PostgreSQL|Redis|MongoDB|Postfix|vsftpd|ProFTPD|Samba|OpenSTAManager|OliveTin|Roundcube|WordPress|Drupal|Joomla|GitLab|Jenkins|Tomcat|Jetty|IIS)')
+    version=$(echo "$match" | grep -oP '[\d]+\.[\d.]+[a-z0-9.]*$')
+    [ -z "$product" ] || [ -z "$version" ] && continue
+    key="${tid}:${product,,}:${version}"
+    grep -qxF "$key" "$seen_file" && continue
+    echo "$key" >> "$seen_file"
+    pk service add --engagement "$eid" --target "$tid" --product "$product" --ver "$version" --discovered-by shell-logger >/dev/null 2>&1
+  done
+}
+
+BGOUT="${TMPOUT}.bg"
+cp "$TMPOUT" "$BGOUT"
+( _pk_extract_versions "$BGOUT"; rm -f "$BGOUT" ) &
+
 exit "$EXIT"

@@ -23,6 +23,10 @@ import {
   playbookBlocks,
   playbooks,
   ports,
+  services,
+  type ServiceApp,
+  type ServiceCred,
+  type ServiceCve,
   settings,
   targets,
   type PlaybookPhase,
@@ -317,6 +321,290 @@ export async function updatePort(
   return row;
 }
 
+// --- Services (structured service entities) ---------------------------------
+
+export async function addService(input: {
+  engagementId: string;
+  targetId: string;
+  port?: number;
+  protocol?: string;
+  name?: string;
+  product?: string;
+  version?: string;
+  cpe?: string;
+  banner?: string;
+  os?: string;
+  tech?: string[];
+  notes?: string;
+  discoveredBy?: string;
+  meta?: Record<string, unknown>;
+}) {
+  const db = getDb();
+  const protocol = input.protocol ?? "tcp";
+
+  const [row] = await db
+    .insert(services)
+    .values({
+      engagementId: input.engagementId,
+      targetId: input.targetId,
+      port: input.port,
+      protocol,
+      name: input.name,
+      product: input.product,
+      version: input.version,
+      cpe: input.cpe,
+      banner: input.banner,
+      os: input.os,
+      tech: input.tech ?? [],
+      notes: input.notes,
+      discoveredBy: input.discoveredBy,
+      meta: input.meta,
+    })
+    .onConflictDoUpdate({
+      target: [services.engagementId, services.targetId, services.port, services.protocol, services.product],
+      set: {
+        ...(input.version != null ? { version: input.version } : {}),
+        ...(input.cpe != null ? { cpe: input.cpe } : {}),
+        ...(input.banner != null ? { banner: input.banner } : {}),
+        ...(input.os != null ? { os: input.os } : {}),
+        ...(input.name != null ? { name: input.name } : {}),
+        ...(input.tech?.length ? { tech: input.tech } : {}),
+        ...(input.notes != null ? { notes: input.notes } : {}),
+        ...(input.meta != null ? { meta: input.meta } : {}),
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  const isNewRow = row.createdAt.getTime() === row.updatedAt.getTime();
+  if (input.version && input.product && isNewRow) {
+    await emitEvent(input.engagementId, "VersionIdentified", {
+      product: input.product,
+      version: input.version,
+      port: input.port,
+      service: input.name,
+      serviceId: row.id,
+    }, "agent");
+
+    await addDiscovery({
+      engagementId: input.engagementId,
+      type: "positive",
+      category: "version",
+      summary: `${input.product} ${input.version}${input.port ? ` on port ${input.port}` : ""}`,
+    });
+  }
+
+  return row;
+}
+
+export async function updateService(
+  id: string,
+  input: {
+    version?: string;
+    name?: string;
+    product?: string;
+    cpe?: string;
+    banner?: string;
+    os?: string;
+    tech?: string[];
+    notes?: string;
+    meta?: Record<string, unknown>;
+  },
+) {
+  const db = getDb();
+
+  const existing = await db.select().from(services).where(eq(services.id, id)).limit(1);
+  if (!existing.length) throw new Error(`Service ${id} not found`);
+
+  const [row] = await db
+    .update(services)
+    .set({ ...input, updatedAt: new Date() })
+    .where(eq(services.id, id))
+    .returning();
+
+  const versionChanged = input.version && input.version !== existing[0].version;
+  const product = input.product ?? row.product;
+  if (versionChanged && product) {
+    await emitEvent(row.engagementId, "VersionIdentified", {
+      product,
+      version: input.version,
+      port: row.port,
+      service: row.name,
+      serviceId: row.id,
+    }, "agent");
+
+    await addDiscovery({
+      engagementId: row.engagementId,
+      type: "positive",
+      category: "version",
+      summary: `${product} ${input.version}${row.port ? ` on port ${row.port}` : ""}`,
+    });
+  }
+
+  return row;
+}
+
+export async function addServiceApp(serviceId: string, app: ServiceApp) {
+  const db = getDb();
+  const existing = await db.select({ apps: services.apps }).from(services).where(eq(services.id, serviceId));
+  if (!existing.length) throw new Error(`Service ${serviceId} not found`);
+  const currentApps = (existing[0].apps ?? []) as ServiceApp[];
+  if (currentApps.some((a) => a.name === app.name && a.path === app.path)) {
+    const [row] = await db.select().from(services).where(eq(services.id, serviceId));
+    return row;
+  }
+  const [row] = await db
+    .update(services)
+    .set({
+      apps: sql`coalesce(${services.apps}, '[]'::jsonb) || ${JSON.stringify([app])}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(services.id, serviceId))
+    .returning();
+
+  if (app.version && app.name) {
+    await emitEvent(row.engagementId, "VersionIdentified", {
+      product: app.name,
+      version: app.version,
+      port: row.port,
+      service: row.name,
+      serviceId: row.id,
+    }, "agent");
+
+    await addDiscovery({
+      engagementId: row.engagementId,
+      type: "positive",
+      category: "version",
+      summary: `${app.name} ${app.version}${app.path ? ` at ${app.path}` : ""}${row.port ? ` on port ${row.port}` : ""}`,
+    });
+  }
+
+  return row;
+}
+
+export async function addServiceCred(serviceId: string, cred: ServiceCred) {
+  const db = getDb();
+  const existing = await db.select({ creds: services.creds }).from(services).where(eq(services.id, serviceId));
+  if (!existing.length) throw new Error(`Service ${serviceId} not found`);
+  const currentCreds = (existing[0].creds ?? []) as ServiceCred[];
+  if (currentCreds.some((c) => c.username === cred.username && c.source === cred.source)) {
+    const [row] = await db.select().from(services).where(eq(services.id, serviceId));
+    return row;
+  }
+  const [row] = await db
+    .update(services)
+    .set({
+      creds: sql`coalesce(${services.creds}, '[]'::jsonb) || ${JSON.stringify([cred])}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(services.id, serviceId))
+    .returning();
+
+  await addArtifact({
+    engagementId: row.engagementId,
+    title: `${cred.username}${cred.password ? `:${cred.password}` : cred.hash ? ` (${cred.hashType ?? "hash"})` : ""}`,
+    type: "credential",
+    content: cred.password
+      ? `${cred.username}:${cred.password}`
+      : cred.hash
+        ? `${cred.username}:${cred.hash}`
+        : cred.username,
+    meta: { serviceId: row.id, source: cred.source, verified: cred.verified },
+  });
+
+  return row;
+}
+
+export async function addServiceCve(serviceId: string, cve: ServiceCve) {
+  const db = getDb();
+  const existing = await db.select({ cves: services.cves }).from(services).where(eq(services.id, serviceId));
+  if (!existing.length) throw new Error(`Service ${serviceId} not found`);
+  const currentCves = (existing[0].cves ?? []) as ServiceCve[];
+  if (currentCves.some((c) => c.id === cve.id)) {
+    const [row] = await db.select().from(services).where(eq(services.id, serviceId));
+    return row;
+  }
+  const [row] = await db
+    .update(services)
+    .set({
+      cves: sql`coalesce(${services.cves}, '[]'::jsonb) || ${JSON.stringify([cve])}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(services.id, serviceId))
+    .returning();
+
+  if (cve.status === "confirmed") {
+    const validSeverities = ["critical", "high", "medium", "low", "info"] as const;
+    type Severity = typeof validSeverities[number];
+    const sev: Severity = validSeverities.includes(cve.severity as Severity)
+      ? cve.severity as Severity
+      : "info";
+
+    await addFinding({
+      engagementId: row.engagementId,
+      targetId: row.targetId,
+      serviceId: row.id,
+      title: `${cve.id}${row.product ? ` in ${row.product}` : ""}${row.version ? ` ${row.version}` : ""}`,
+      severity: sev,
+      cvss: cve.cvss,
+      cve: [cve.id],
+      status: "confirmed",
+      description: cve.notes,
+    });
+  }
+
+  return row;
+}
+
+export async function listServices(
+  engagementId: string,
+  opts?: { targetId?: string },
+) {
+  const db = getDb();
+  const conditions = [eq(services.engagementId, engagementId)];
+  if (opts?.targetId) conditions.push(eq(services.targetId, opts.targetId));
+  return db
+    .select()
+    .from(services)
+    .where(and(...conditions))
+    .orderBy(services.port);
+}
+
+export async function getService(id: string) {
+  const db = getDb();
+  const [svc] = await db.select().from(services).where(eq(services.id, id));
+  if (!svc) return null;
+  const linkedFindings = await db
+    .select()
+    .from(findings)
+    .where(eq(findings.serviceId, id));
+  return { ...svc, findings: linkedFindings };
+}
+
+export async function listAllCreds(engagementId: string) {
+  const db = getDb();
+  const rows = await db
+    .select({
+      serviceId: services.id,
+      port: services.port,
+      product: services.product,
+      version: services.version,
+      creds: services.creds,
+    })
+    .from(services)
+    .where(eq(services.engagementId, engagementId));
+
+  return rows.flatMap((r) =>
+    (r.creds ?? []).map((c: ServiceCred) => ({
+      serviceId: r.serviceId,
+      port: r.port,
+      product: r.product,
+      version: r.version,
+      ...c,
+    })),
+  );
+}
+
 // --- Objectives (CTF tasks / flags) ----------------------------------------
 
 export async function addObjective(input: {
@@ -371,6 +659,7 @@ export async function addFinding(input: {
   attackTechniques?: string[];
   cve?: string[];
   targetId?: string;
+  serviceId?: string;
   description?: string;
   exploitScenario?: string;
   preconditions?: string[];
@@ -397,6 +686,7 @@ export async function addFinding(input: {
       attackTechniques: input.attackTechniques,
       cve: input.cve,
       targetId: input.targetId,
+      serviceId: input.serviceId,
       description: input.description,
       exploitScenario: input.exploitScenario,
       preconditions: input.preconditions,

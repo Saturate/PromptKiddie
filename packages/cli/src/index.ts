@@ -208,7 +208,7 @@ port
   .option("--protocol <proto>", "tcp | udp", "tcp")
   .option("--state <state>", "open | closed | filtered", "open")
   .option("--service <name>", "service name, e.g. http, ssh")
-  .option("--version <version>", "version string")
+  .option("--ver <version>", "version string")
   .option("--banner <text>", "raw banner")
   .option("--notes <text>")
   .action(async (o) => {
@@ -219,7 +219,7 @@ port
         protocol: o.protocol,
         state: o.state,
         service: o.service,
-        version: o.version,
+        version: o.ver,
         banner: o.banner,
         notes: o.notes,
       }),
@@ -538,71 +538,152 @@ act.command("list")
   .option("--engagement <id>")
   .action(async (o) => out(await repo.listActivity(await resolveEngagementId(o.engagement))));
 
-// --- version (emit + CVE search in one call) ---------------------------------
+// --- service ---------------------------------------------------------------
+const svc = program.command("service").description("Manage discovered services on targets");
+
+svc.command("add")
+  .requiredOption("--target <id>", "Target UUID")
+  .option("--port <port>", "Port number", parseInt)
+  .option("--protocol <proto>", "Protocol (tcp/udp)", "tcp")
+  .option("--name <name>", "Service name (http, ssh, imap)")
+  .option("--product <product>", "Product name (nginx, OpenSSH)")
+  .option("--ver <version>", "Version string")
+  .option("--cpe <cpe>", "CPE string")
+  .option("--banner <banner>", "Raw banner text")
+  .option("--os <os>", "OS hint")
+  .option("--tech <csv>", "Comma-separated tech stack (php,mysql)")
+  .option("--notes <notes>", "Free text notes")
+  .option("--discovered-by <who>", "Action or agent that found it")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    const row = await repo.addService({
+      engagementId: eid,
+      targetId: o.target,
+      port: o.port,
+      protocol: o.protocol,
+      name: o.name,
+      product: o.product,
+      version: o.ver,
+      cpe: o.cpe,
+      banner: o.banner,
+      os: o.os,
+      tech: list(o.tech) ?? [],
+      notes: o.notes,
+      discoveredBy: o.discoveredBy,
+    });
+    out(row);
+  });
+
+svc.command("update")
+  .argument("<id>", "Service UUID")
+  .option("--ver <version>", "Version string")
+  .option("--name <name>", "Service name")
+  .option("--product <product>", "Product name")
+  .option("--cpe <cpe>", "CPE string")
+  .option("--banner <banner>", "Raw banner")
+  .option("--os <os>", "OS hint")
+  .option("--tech <csv>", "Comma-separated tech stack")
+  .option("--notes <notes>", "Free text notes")
+  .action(async (id, o) => {
+    const input: Record<string, unknown> = {};
+    if (o.ver !== undefined) input.version = o.ver;
+    if (o.name !== undefined) input.name = o.name;
+    if (o.product !== undefined) input.product = o.product;
+    if (o.cpe !== undefined) input.cpe = o.cpe;
+    if (o.banner !== undefined) input.banner = o.banner;
+    if (o.os !== undefined) input.os = o.os;
+    if (o.tech !== undefined) input.tech = list(o.tech);
+    if (o.notes !== undefined) input.notes = o.notes;
+    out(await repo.updateService(id, input));
+  });
+
+svc.command("app")
+  .argument("<id>", "Service UUID")
+  .requiredOption("--name <name>", "Application name (Roundcube, OpenSTAManager)")
+  .option("--ver <version>", "Application version")
+  .option("--path <path>", "URL path (e.g. /roundcube)")
+  .option("--tech <csv>", "Comma-separated tech stack")
+  .action(async (id, o) => {
+    out(await repo.addServiceApp(id, {
+      name: o.name, version: o.ver, path: o.path, tech: list(o.tech),
+    }));
+  });
+
+svc.command("cred")
+  .argument("<id>", "Service UUID")
+  .requiredOption("--user <username>", "Username")
+  .option("--pass <password>", "Password")
+  .option("--hash <hash>", "Password hash")
+  .option("--hash-type <type>", "Hash type (bcrypt, ntlm, sha1)")
+  .requiredOption("--source <source>", "Where this credential came from")
+  .option("--verified", "Mark as verified", false)
+  .action(async (id, o) => {
+    out(await repo.addServiceCred(id, {
+      username: o.user, password: o.pass, hash: o.hash,
+      hashType: o.hashType, source: o.source, verified: o.verified,
+    }));
+  });
+
+svc.command("cve")
+  .argument("<id>", "Service UUID")
+  .requiredOption("--cve <id>", "CVE identifier (CVE-2025-69212)")
+  .option("--cvss <score>", "CVSS score", parseFloat)
+  .option("--severity <sev>", "Severity (critical/high/medium/low/info)")
+  .option("--status <status>", "suspected|confirmed|not_vulnerable", "suspected")
+  .option("--poc-url <url>", "PoC URL")
+  .option("--notes <notes>", "Notes")
+  .action(async (id, o) => {
+    out(await repo.addServiceCve(id, {
+      id: o.cve, cvss: o.cvss, severity: o.severity,
+      status: o.status, pocUrl: o.pocUrl, notes: o.notes,
+    }));
+  });
+
+svc.command("list")
+  .option("--target <id>", "Filter by target UUID")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.listServices(eid, o.target ? { targetId: o.target } : undefined));
+  });
+
+svc.command("show")
+  .argument("<id>", "Service UUID")
+  .action(async (id) => out(await repo.getService(id)));
+
+svc.command("creds")
+  .description("Dump all credentials across all services")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.listAllCreds(eid));
+  });
+
+// --- version (deprecated alias for pk service add) ---------------------------
 program
   .command("version")
-  .description("Log a discovered version, emit VersionIdentified event, and search for CVEs")
-  .requiredOption("--product <name>", "Product/service name, e.g. OpenSTAManager, nginx, OliveTin")
-  .requiredOption("--version <version>", "Version string, e.g. 2.9.8, 1.24.0")
+  .description("[Deprecated] Use 'pk service add' instead. Logs a discovered version.")
+  .requiredOption("--product <name>", "Product/service name")
+  .requiredOption("--ver <version>", "Version string")
   .option("--port <port>", "Port where the service was found", parseInt)
   .option("--service <service>", "Service name (http, ssh, etc.)")
   .option("--engagement <id>")
   .action(async (o) => {
+    console.error("[version] Deprecated: use 'pk service add --product X --ver Y' instead.");
     const eid = await resolveEngagementId(o.engagement);
-
-    // 1. Emit VersionIdentified event (triggers supervisor cve_search if running)
-    const event = await repo.emitEvent(eid, "VersionIdentified", {
-      product: o.product,
-      version: o.version,
-      port: o.port,
-      service: o.service,
-    }, "agent");
-    console.error(`[version] Emitted VersionIdentified: ${o.product} ${o.version}`);
-
-    // 2. Log as discovery
-    await repo.addDiscovery({
+    const targets = await repo.listTargets(eid) as Array<{ id: string; inScope: boolean }>;
+    const target = targets.find((t) => t.inScope) ?? targets[0];
+    if (!target) return program.error("No targets found for engagement");
+    const row = await repo.addService({
       engagementId: eid,
-      type: "positive",
-      category: "version",
-      summary: `${o.product} ${o.version}${o.port ? ` on port ${o.port}` : ""}`,
-      sourceEventId: (event as { id: string }).id,
+      targetId: target.id,
+      port: o.port,
+      name: o.service,
+      product: o.product,
+      version: o.ver,
     });
-
-    // 3. Search local exploit index
-    const { searchKnowledge } = await import("@promptkiddie/core");
-    const kbHits = await searchKnowledge(`${o.product} ${o.version}`, { limit: 3, mode: "hybrid" });
-    if (kbHits.length > 0) {
-      console.error(`[version] Knowledge base hits:`);
-      for (const h of kbHits) {
-        console.error(`  ${h.source}${h.path ? ` / ${h.path}` : ""} (${h.matchType}, score: ${h.score.toFixed(3)})`);
-        console.error(`  ${h.content.slice(0, 150)}...`);
-      }
-    }
-
-    // 4. Run searchsploit (if attackbox is available)
-    try {
-      const container = config.attackbox.container;
-      const { execFileSync: efs } = await import("node:child_process");
-      const sploit = efs("docker", ["exec", "-e", "PK_EXEC=1", container, "searchsploit", o.product, o.version],
-        { timeout: 15000, maxBuffer: 1024 * 1024 }).toString();
-      if (sploit.trim() && !sploit.includes("No results")) {
-        console.error(`[version] searchsploit hits:`);
-        console.error(sploit.trim().split("\n").slice(0, 8).join("\n"));
-        await repo.addDiscovery({
-          engagementId: eid,
-          type: "positive",
-          category: "cve",
-          summary: `searchsploit hits for ${o.product} ${o.version}`,
-          detail: { raw: sploit.slice(0, 2000) },
-        });
-      } else {
-        console.error(`[version] searchsploit: no results for ${o.product} ${o.version}`);
-      }
-    } catch {
-      console.error(`[version] searchsploit unavailable (attackbox not running?)`);
-    }
-
-    out({ product: o.product, version: o.version, kbHits: kbHits.length });
+    out(row);
   });
 
 // --- event -------------------------------------------------------------------

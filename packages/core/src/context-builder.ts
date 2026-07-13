@@ -1,18 +1,31 @@
 import {
   listTargets,
   listPorts,
+  listServices,
   listDiscoveries,
   getExecDedup,
   listFindings,
   listArtifacts,
   listEvidence,
 } from "./repo.js";
+import type { ServiceApp, ServiceCve } from "./schema.js";
+
+export interface LlmContextService {
+  id: string;
+  port: number | null;
+  name: string | null;
+  product: string | null;
+  version: string | null;
+  apps: Array<{ name: string; version?: string; path?: string }>;
+  cred_count: number;
+  cves: Array<{ id: string; status: string }>;
+}
 
 export interface LlmContext {
   target: string;
   ports: Array<{ port: number; service: string | null; version: string | null; banner: string | null }>;
   hostnames: string[];
-  versions: Array<{ product: string; version: string | null; cve_hits: number }>;
+  services: LlmContextService[];
   downloaded_files: Array<{ path: string; type: string | null }>;
   discoveries: Array<{ type: string; category: string; summary: string }>;
   already_ran: Array<{ cmd: string; exit: number; result: string | null }>;
@@ -38,7 +51,8 @@ export async function buildLlmContext(engagementId: string): Promise<LlmContext>
     banner: port.banner,
   }));
 
-  const [discs, execRows, fds, arts, evs] = await Promise.all([
+  const [svcs, discs, execRows, fds, arts, evs] = await Promise.all([
+    listServices(engagementId),
     listDiscoveries(engagementId),
     getExecDedup(engagementId),
     listFindings(engagementId),
@@ -46,17 +60,29 @@ export async function buildLlmContext(engagementId: string): Promise<LlmContext>
     listEvidence(engagementId),
   ]);
 
+  const servicesList: LlmContextService[] = svcs.map((s) => {
+    const apps = s.apps ?? [];
+    const creds = s.creds ?? [];
+    const cves = s.cves ?? [];
+    return {
+      id: s.id,
+      port: s.port,
+      name: s.name,
+      product: s.product,
+      version: s.version,
+      apps: apps.map((a: ServiceApp) => ({
+        name: a.name, version: a.version, path: a.path,
+      })),
+      cred_count: creds.length,
+      cves: cves.map((c: ServiceCve) => ({
+        id: c.id, status: c.status,
+      })),
+    };
+  });
+
   const hostnames = discs
     .filter((d) => d.category === "hostname" && d.type === "positive")
     .map((d) => d.summary);
-
-  const versions = discs
-    .filter((d) => d.category === "version" && d.type === "positive")
-    .map((d) => ({
-      product: d.summary,
-      version: (d.detail as Record<string, unknown> | null)?.version as string | null ?? null,
-      cve_hits: (d.detail as Record<string, unknown> | null)?.cve_hits as number ?? 0,
-    }));
 
   const downloaded_files = evs
     .filter((e) => e.type === "file" && e.path)
@@ -107,7 +133,7 @@ export async function buildLlmContext(engagementId: string): Promise<LlmContext>
     target: targetStr,
     ports: allPorts,
     hostnames,
-    versions,
+    services: servicesList,
     downloaded_files,
     discoveries: discoveryList,
     already_ran,

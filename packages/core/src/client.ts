@@ -3,6 +3,7 @@
  * either directly (local DB) or via the HTTP API server.
  */
 import { loadConfig } from "./config.js";
+import type { ServiceApp, ServiceCred, ServiceCve } from "./schema.js";
 
 export interface Repo {
   createEngagement(input: { name: string; type: string; scope?: string; group?: string; sourceUrl?: string; brief?: string }): Promise<unknown>;
@@ -25,6 +26,15 @@ export interface Repo {
   addPort(input: { targetId: string; port: number; protocol?: string; state?: string; service?: string; version?: string; banner?: string; notes?: string }): Promise<unknown>;
   listPorts(targetId: string): Promise<unknown[]>;
   updatePort(id: string, input: Record<string, unknown>): Promise<unknown>;
+
+  addService(input: Record<string, unknown>): Promise<unknown>;
+  updateService(id: string, input: Record<string, unknown>): Promise<unknown>;
+  addServiceApp(serviceId: string, app: ServiceApp): Promise<unknown>;
+  addServiceCred(serviceId: string, cred: ServiceCred): Promise<unknown>;
+  addServiceCve(serviceId: string, cve: ServiceCve): Promise<unknown>;
+  listServices(engagementId: string, opts?: { targetId?: string }): Promise<unknown[]>;
+  getService(id: string): Promise<unknown>;
+  listAllCreds(engagementId: string): Promise<unknown[]>;
 
   addFinding(input: Record<string, unknown>): Promise<unknown>;
   listFindings(engagementId: string): Promise<unknown[]>;
@@ -93,6 +103,14 @@ function createLocalRepo(): Repo {
     addPort: async (i) => (await r).addPort(i as Parameters<Awaited<typeof r>["addPort"]>[0]),
     listPorts: async (tid) => (await r).listPorts(tid),
     updatePort: async (id, i) => (await r).updatePort(id, i as Parameters<Awaited<typeof r>["updatePort"]>[1]),
+    addService: async (i) => (await r).addService(i as Parameters<Awaited<typeof r>["addService"]>[0]),
+    updateService: async (id, i) => (await r).updateService(id, i as Parameters<Awaited<typeof r>["updateService"]>[1]),
+    addServiceApp: async (id, app) => (await r).addServiceApp(id, app),
+    addServiceCred: async (id, cred) => (await r).addServiceCred(id, cred),
+    addServiceCve: async (id, cve) => (await r).addServiceCve(id, cve),
+    listServices: async (eid, opts) => (await r).listServices(eid, opts),
+    getService: async (id) => (await r).getService(id),
+    listAllCreds: async (eid) => (await r).listAllCreds(eid),
     addFinding: async (i) => (await r).addFinding(i as Parameters<Awaited<typeof r>["addFinding"]>[0]),
     listFindings: async (eid) => (await r).listFindings(eid),
     updateFinding: async (id, i) => (await r).updateFinding(id, i as Parameters<Awaited<typeof r>["updateFinding"]>[1]),
@@ -180,6 +198,14 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     addPort: (i) => post(`/targets/${i.targetId}/ports`, i),
     listPorts: (tid) => get<unknown[]>(`/targets/${tid}/ports`),
     updatePort: (id, i) => patch(`/ports/${id}`, i),
+    addService: (i) => post(`/engagements/${(i as Record<string, string>).engagementId}/services`, i),
+    updateService: (id, i) => patch(`/services/${id}`, i),
+    addServiceApp: (id, app) => post(`/services/${id}/apps`, app),
+    addServiceCred: (id, cred) => post(`/services/${id}/creds`, cred),
+    addServiceCve: (id, cve) => post(`/services/${id}/cves`, cve),
+    listServices: (eid, opts) => get<unknown[]>(`/engagements/${eid}/services${opts?.targetId ? `?targetId=${opts.targetId}` : ""}`),
+    getService: (id) => get(`/services/${id}`),
+    listAllCreds: (eid) => get<unknown[]>(`/engagements/${eid}/creds`),
     addFinding: (i) => post(`/engagements/${(i as Record<string, string>).engagementId}/findings`, i),
     listFindings: (eid) => get<unknown[]>(`/engagements/${eid}/findings`),
     updateFinding: (id, i) => patch(`/findings/${id}`, i),

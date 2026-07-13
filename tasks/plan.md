@@ -1,123 +1,201 @@
-# Reactive Playbooks: Foundation Tables + Context Builder
+# Plan: Service Entity + Shell Logger Version Parsing
 
-Implements roadmap items 3, 5, and 6 from `docs/specs/reactive-playbooks.md`.
-Items 1-2 (exploit cards, chunking fix) are already shipped.
+Implements `docs/specs/service-entity.md` and `docs/specs/shell-logger-parsing.md`.
 
-## Task 1: Events table + NOTIFY trigger
+## Dependency graph
 
-**Status**: done
-**Depends on**: none
-**Files**: `packages/core/src/schema.ts`, SQL migration
+```
+Task 1: Schema (services table + findings.serviceId)
+    │
+    ├── Task 2: Repo functions (CRUD + auto-behaviors)
+    │       │
+    │       ├── Task 3: CLI commands (pk service add/update/list/show/cred/cve/app)
+    │       │
+    │       ├── Task 4: MCP tools (add_service, update_service, etc.)
+    │       │
+    │       └── Task 5: Context builder (include services in LLM context)
+    │
+    └── Task 6: Shell logger version parsing (regex + pk service add calls)
+```
 
-Add the `events` table to the Drizzle schema and apply the migration. Add the
-Postgres NOTIFY trigger so the future supervisor can LISTEN for new events.
+---
 
-**Acceptance criteria**:
-- `events` table exists with columns: id (uuid), engagement_id (fk), type (text),
-  payload (jsonb), source (text), created_at (timestamptz)
-- Indexes on engagement_id and type
-- Postgres trigger fires `pg_notify('pk_events', ...)` on INSERT
-- `pnpm build` passes
+## Task 1: Schema and migration
 
-## Task 2: Discoveries table
+**Description:** Add the `services` table to the Drizzle schema with all fields from the spec. Add a `serviceId` FK column to the `findings` table. Generate and apply the migration.
 
-**Status**: done
-**Depends on**: Task 1
-**Files**: `packages/core/src/schema.ts`, SQL migration
+**Acceptance criteria:**
+- [ ] `services` table exists with columns: id, engagementId, targetId, portId, port, protocol, name, product, version, cpe, banner, os, tech (jsonb), apps (jsonb), creds (jsonb), cves (jsonb), notes, meta (jsonb), discoveredBy, createdAt, updatedAt
+- [ ] `findings.serviceId` FK column exists (nullable, references services.id, onDelete set null)
+- [ ] Unique index on (engagementId, targetId, port, protocol, product) for upsert
+- [ ] Migration applies cleanly against the running postgres
 
-Add the `discoveries` table.
+**Verification:**
+- [ ] `pnpm build` succeeds in packages/core
+- [ ] `npx drizzle-kit push` or migration applies without error
+- [ ] `SELECT * FROM services LIMIT 0` succeeds in postgres
 
-**Acceptance criteria**:
-- `discoveries` table with: id (uuid), engagement_id (fk), type (text: positive/negative/attempted),
-  category (text), summary (text), detail (jsonb), source_event_id (fk to events),
-  parent_id (self-ref, nullable), superseded_by (self-ref, nullable), created_at
-- Indexes on engagement_id and (engagement_id, category)
-- `pnpm build` passes
+**Dependencies:** None
 
-## Task 3: Event + discovery repo functions
+**Files likely touched:**
+- `packages/core/src/schema.ts`
+- `db/migrations/` (generated)
 
-**Status**: done
-**Depends on**: Task 2
-**Files**: `packages/core/src/repo.ts`
+**Estimated scope:** S
 
-Add CRUD functions for events and discoveries: `emitEvent`, `addDiscovery`,
-`listEvents`, `listDiscoveries`, `getDiscoverySummary`.
+---
 
-**Acceptance criteria**:
-- `emitEvent(engagementId, type, payload, source)` inserts and returns the event
-- `addDiscovery(engagementId, type, category, summary, detail?, sourceEventId?, parentId?)` inserts
-- `listEvents(engagementId, opts?)` returns events, optionally filtered by type
-- `listDiscoveries(engagementId, opts?)` returns discoveries, optionally filtered by
-  category and/or type (positive/negative/attempted)
-- `getDiscoverySummary(engagementId)` returns the structured JSON payload from the spec
-  (ports, hostnames, versions, discoveries, etc.) suitable for LLM context injection
-- `pnpm build` passes
+## Task 2: Repo functions
 
-## Task 4: CLI commands for events + discoveries
+**Description:** Add service CRUD functions to repo.ts. `addService` upserts by (engagementId, targetId, port, protocol, product) and auto-emits VersionIdentified event + discovery when version is present. `updateService` re-emits on version change. `addServiceCve` auto-creates a finding when status is "confirmed". `addServiceCred` also creates an artifact. Add the Repo interface entries in client.ts.
 
-**Status**: done
-**Depends on**: Task 3
-**Files**: `packages/cli/src/index.ts` (or relevant command file)
+**Acceptance criteria:**
+- [ ] `addService(input)` upserts and emits VersionIdentified + adds discovery when version present
+- [ ] `updateService(id, input)` updates fields, re-emits VersionIdentified if version changed
+- [ ] `addServiceApp(serviceId, app)` appends to apps jsonb array
+- [ ] `addServiceCred(serviceId, cred)` appends to creds array, creates artifact with type "credential"
+- [ ] `addServiceCve(serviceId, cve)` appends to cves array, auto-creates finding when status=confirmed
+- [ ] `listServices(engagementId, opts?)` lists with optional targetId filter
+- [ ] `getService(id)` returns full service with linked findings
+- [ ] `listAllCreds(engagementId)` returns credentials across all services
+- [ ] All functions exported from `packages/core/src/index.ts`
+- [ ] Repo interface in `client.ts` updated with new methods
+- [ ] createLocalRepo in `client.ts` wired up
 
-Wire up CLI commands so agents and the orchestrator can emit events and discoveries.
+**Verification:**
+- [ ] `pnpm build` succeeds in packages/core
+- [ ] Existing tests still pass: `pnpm test` in packages/core
 
-**Acceptance criteria**:
-- `pk event emit --type PortDiscovered --payload '{"port":80,"service":"http"}'`
-- `pk event list`
-- `pk discovery add --type positive --category port --summary "port 80: nginx 1.28.0"`
-- `pk discovery list`
-- `pk context` outputs the LLM context payload JSON (calls `getDiscoverySummary`)
-- All commands read the active engagement from env/config
+**Dependencies:** Task 1
 
-## Task 5: Execution log dedup index
+**Files likely touched:**
+- `packages/core/src/repo.ts`
+- `packages/core/src/client.ts`
+- `packages/core/src/index.ts`
 
-**Status**: done
-**Depends on**: none (parallel with Tasks 1-4)
-**Files**: `packages/core/src/schema.ts`, `packages/core/src/repo.ts`
+**Estimated scope:** M
 
-Add an `exec_dedup` table that indexes commands by normalized form + exit code.
-The existing `pk exec` logging writes to `activityLog`; this adds a queryable
-dedup layer.
+---
 
-**Acceptance criteria**:
-- `exec_dedup` table: id, engagement_id, command_normalized (text), target (text),
-  exit_code (int), count (int), first_at (timestamptz), last_at (timestamptz),
-  outcome_summary (text, nullable)
-- `recordExecOutcome(engagementId, command, target, exitCode, outcomeSummary?)` upserts
-  (increments count if same command+target+exitCode exists)
-- `getExecDedup(engagementId)` returns all entries for building `already_ran` and
-  `failed_attempts` arrays
-- `isExecBlocked(engagementId, command, target)` returns true if same command failed
-  2+ times (hard guard)
-- `pnpm build` passes
+## Task 3: CLI commands
 
-## Task 6: LLM context payload builder
+**Description:** Add `pk service` command group with subcommands matching the spec. Make `pk version` an alias that calls `addService` internally. Subcommands: add, update, app, cred, cve, list, show, creds.
 
-**Status**: done
-**Depends on**: Task 3, Task 5
-**Files**: `packages/core/src/context-builder.ts` (new)
+**Acceptance criteria:**
+- [ ] `pk service add --target <id> --port 80 --name http --product nginx --version 1.24.0` creates service
+- [ ] `pk service update <id> --version 2.9.9 --tech php,mysql` updates service
+- [ ] `pk service app <id> --name Roundcube --version 1.6.16 --path /roundcube --tech php` adds app
+- [ ] `pk service cred <id> --user admin --pass secret --source "config"` adds credential
+- [ ] `pk service cve <id> --cve CVE-2025-69212 --cvss 9.8 --status confirmed` adds CVE
+- [ ] `pk service list` and `pk service list --target <id>` work
+- [ ] `pk service show <id>` shows full detail
+- [ ] `pk service creds` shows all creds across services
+- [ ] `pk version --product X --version Y` still works (calls addService, prints deprecation notice)
 
-Build the structured JSON payload that every LLM invocation receives. Queries
-discoveries, exec dedup, findings, and artifacts into the format from spec S4.
+**Verification:**
+- [ ] `pnpm build` succeeds in packages/cli
+- [ ] Manual: `pk service add` against test engagement creates row in DB
+- [ ] Manual: `pk version` still works with deprecation notice
 
-**Acceptance criteria**:
-- `buildLlmContext(engagementId)` returns the JSON object matching the spec:
-  target, ports, hostnames, versions, downloaded_files, discoveries,
-  already_ran, failed_attempts, findings, artifacts
-- Token estimate included in output (`estimated_tokens` field)
-- Exported from `packages/core/src/index.ts`
-- `pnpm build` passes
+**Dependencies:** Task 2
 
-## Task 7: MCP tool for context payload
+**Files likely touched:**
+- `packages/cli/src/index.ts`
 
-**Status**: done
-**Depends on**: Task 6
-**Files**: MCP server tool definition
+**Estimated scope:** M
 
-Expose `get_context` as an MCP tool so agents can call it to get their structured
-context payload.
+---
 
-**Acceptance criteria**:
-- `get_context` MCP tool returns the LLM context JSON for the active engagement
-- Existing `search_knowledge` MCP tool still works
-- `pnpm build` passes
+## Task 4: MCP tools
+
+**Description:** Add service MCP tools to the MCP server. Update `log_version` to call `addService` internally for backward compatibility.
+
+**Acceptance criteria:**
+- [ ] `add_service` tool creates a service (mirrors pk service add)
+- [ ] `update_service` tool updates a service
+- [ ] `add_service_app` tool adds sub-application
+- [ ] `add_service_cred` tool adds credential
+- [ ] `add_service_cve` tool adds CVE
+- [ ] `list_services` tool lists services for engagement, optional targetId filter
+- [ ] `get_service` tool returns full service detail
+- [ ] `list_all_creds` tool returns credential dump
+- [ ] `log_version` now calls addService internally (backward compat, same response shape)
+
+**Verification:**
+- [ ] `pnpm build` succeeds in packages/mcp-server
+- [ ] MCP server starts without error
+
+**Dependencies:** Task 2
+
+**Files likely touched:**
+- `packages/mcp-server/src/index.ts`
+
+**Estimated scope:** M
+
+---
+
+## Checkpoint: After Tasks 1-4
+- [ ] `pnpm build` succeeds across all packages
+- [ ] `pnpm test` passes in packages/core
+- [ ] `pk service add` works end-to-end (creates service, emits event, logs discovery)
+- [ ] `pk service cve <id> --status confirmed` auto-creates a finding
+- [ ] `pk version` still works as an alias
+
+---
+
+## Task 5: Context builder
+
+**Description:** Replace the discovery-based version list in the LLM context with structured service data. Add a `services` field to the LlmContext interface showing port, product, version, apps, credential count, and CVE status per service.
+
+**Acceptance criteria:**
+- [ ] `LlmContext` interface has a `services` field
+- [ ] `buildLlmContext` queries services table and populates the field
+- [ ] Each service entry includes: port, name, product, version, apps (name+version), cred_count, cves (id+status)
+- [ ] Old `versions` field removed (was derived from discoveries; services replaces it)
+
+**Verification:**
+- [ ] `pnpm build` succeeds
+- [ ] `pk context` output includes services section
+
+**Dependencies:** Task 2
+
+**Files likely touched:**
+- `packages/core/src/context-builder.ts`
+
+**Estimated scope:** S
+
+---
+
+## Task 6: Shell logger version parsing
+
+**Description:** Add a post-logging regex pass to shell-logger.sh that extracts product/version pairs from command output and calls `pk service add` for each new match. Uses a per-engagement seen-versions file for dedup. Calls are backgrounded to avoid slowing command execution.
+
+**Acceptance criteria:**
+- [ ] Parses `Server: nginx/1.24.0` style headers
+- [ ] Parses `X-Powered-By: PHP/8.3.6` headers
+- [ ] Parses nmap port lines: `22/tcp open ssh OpenSSH 9.6p1`
+- [ ] Parses known product names with versions (OpenSSH, Apache, nginx, Dovecot, MySQL, etc.)
+- [ ] Deduplicates: same product+version pair only triggers `pk service add` once per engagement
+- [ ] `pk service add` calls are backgrounded (don't block command execution)
+- [ ] Non-matching output is ignored (no false positives on arbitrary text)
+
+**Verification:**
+- [ ] Feed sample nmap output through the logger; verify services created in DB
+- [ ] Feed sample HTTP headers through the logger; verify services created
+- [ ] Run same output twice; verify no duplicate `pk service add` calls
+
+**Dependencies:** Task 3 (needs `pk service add` CLI command)
+
+**Files likely touched:**
+- `packages/scripts/shell-logger.sh`
+
+**Estimated scope:** S
+
+---
+
+## Final checkpoint
+- [ ] All packages build: `pnpm build`
+- [ ] All tests pass: `pnpm test`
+- [ ] End-to-end: nmap output through shell-logger creates services, triggers VersionIdentified events, supervisor runs cve_search
+- [ ] `pk context` shows structured services instead of ad-hoc version discoveries
+- [ ] `log_version` MCP tool still works (backward compat)

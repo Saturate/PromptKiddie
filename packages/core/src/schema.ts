@@ -295,6 +295,70 @@ export const ports = pgTable(
   ],
 );
 
+// --- Service types (jsonb sub-objects) ----------------------------------------
+
+export interface ServiceApp {
+  name: string;
+  version?: string;
+  path?: string;
+  tech?: string[];
+}
+
+export interface ServiceCred {
+  username: string;
+  password?: string;
+  hash?: string;
+  hashType?: string;
+  source: string;
+  verified: boolean;
+}
+
+export interface ServiceCve {
+  id: string;
+  cvss?: number;
+  severity?: string;
+  status: "suspected" | "confirmed" | "not_vulnerable";
+  pocUrl?: string;
+  notes?: string;
+}
+
+/** Running application on a port (e.g. nginx 1.24.0 serving OpenSTAManager 2.9.8). */
+export const services = pgTable(
+  "services",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    engagementId: uuid("engagement_id")
+      .notNull()
+      .references(() => engagements.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references(() => targets.id, { onDelete: "cascade" }),
+    portId: uuid("port_id").references(() => ports.id),
+    port: integer("port"),
+    protocol: text("protocol").default("tcp"),
+    name: text("name"),
+    product: text("product"),
+    version: text("version"),
+    cpe: text("cpe"),
+    banner: text("banner"),
+    os: text("os"),
+    tech: jsonb("tech").$type<string[]>().default([]),
+    apps: jsonb("apps").$type<ServiceApp[]>().default([]),
+    creds: jsonb("creds").$type<ServiceCred[]>().default([]),
+    cves: jsonb("cves").$type<ServiceCve[]>().default([]),
+    notes: text("notes"),
+    meta: jsonb("meta").$type<Record<string, unknown>>(),
+    discoveredBy: text("discovered_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("services_engagement_idx").on(t.engagementId),
+    index("services_target_idx").on(t.targetId),
+    uniqueIndex("services_upsert_idx").on(t.engagementId, t.targetId, t.port, t.protocol, t.product),
+  ],
+);
+
 export const findingVerdict = pgEnum("finding_verdict", [
   "true_positive",
   "false_positive",
@@ -313,6 +377,9 @@ export const findings = pgTable(
       onDelete: "set null",
     }),
     portId: uuid("port_id").references(() => ports.id, {
+      onDelete: "set null",
+    }),
+    serviceId: uuid("service_id").references(() => services.id, {
       onDelete: "set null",
     }),
     title: text("title").notNull(),

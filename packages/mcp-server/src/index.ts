@@ -461,38 +461,144 @@ server.tool(
   },
 );
 
-// --- Version identification --------------------------------------------------
+// --- Services ----------------------------------------------------------------
+
+server.tool(
+  "add_service",
+  "Register a discovered service (product + version on a port). Auto-emits VersionIdentified event and logs a discovery. Call this EVERY TIME you identify a service with a version number.",
+  {
+    engagementId: z.string().uuid(),
+    targetId: z.string().uuid(),
+    port: z.number().optional(),
+    protocol: z.string().optional().default("tcp"),
+    name: z.string().optional().describe("Service name: http, ssh, imap, smb"),
+    product: z.string().optional().describe("Product: nginx, OpenSSH, Dovecot"),
+    version: z.string().optional().describe("Version: 1.24.0, 9.6p1"),
+    cpe: z.string().optional(),
+    banner: z.string().optional(),
+    os: z.string().optional(),
+    tech: z.array(z.string()).optional().describe("Tech stack: php, python, java"),
+    notes: z.string().optional(),
+    discoveredBy: z.string().optional(),
+  },
+  async (input) => json(await repo.addService(input)),
+);
+
+server.tool(
+  "update_service",
+  "Update a service's version, tech, notes, or other fields. Re-emits VersionIdentified if version changes.",
+  {
+    id: z.string().uuid(),
+    version: z.string().optional(),
+    name: z.string().optional(),
+    product: z.string().optional(),
+    cpe: z.string().optional(),
+    banner: z.string().optional(),
+    os: z.string().optional(),
+    tech: z.array(z.string()).optional(),
+    notes: z.string().optional(),
+  },
+  async ({ id, ...input }) => json(await repo.updateService(id, input)),
+);
+
+server.tool(
+  "add_service_app",
+  "Add a sub-application to a service (e.g. Roundcube on an http service). Auto-emits VersionIdentified if the app has a version.",
+  {
+    serviceId: z.string().uuid(),
+    name: z.string().describe("Application name: OpenSTAManager, Roundcube, OliveTin"),
+    version: z.string().optional(),
+    path: z.string().optional().describe("URL path: /roundcube, /openstamanager"),
+    tech: z.array(z.string()).optional(),
+  },
+  async ({ serviceId, ...app }) => json(await repo.addServiceApp(serviceId, app)),
+);
+
+server.tool(
+  "add_service_cred",
+  "Attach a credential to a service. Also creates an artifact for the engagement.",
+  {
+    serviceId: z.string().uuid(),
+    username: z.string(),
+    password: z.string().optional(),
+    hash: z.string().optional(),
+    hashType: z.string().optional().describe("bcrypt, ntlm, sha1"),
+    source: z.string().describe("Where this came from: config.inc.php, NFS PDF, cracked"),
+    verified: z.boolean().optional().default(false),
+  },
+  async ({ serviceId, ...cred }) => json(await repo.addServiceCred(serviceId, cred)),
+);
+
+server.tool(
+  "add_service_cve",
+  "Link a CVE to a service. If status is 'confirmed', auto-creates a finding.",
+  {
+    serviceId: z.string().uuid(),
+    id: z.string().describe("CVE identifier: CVE-2025-69212"),
+    cvss: z.number().optional(),
+    severity: z.string().optional(),
+    status: z.enum(["suspected", "confirmed", "not_vulnerable"]).default("suspected"),
+    pocUrl: z.string().optional(),
+    notes: z.string().optional(),
+  },
+  async ({ serviceId, ...cve }) => json(await repo.addServiceCve(serviceId, cve)),
+);
+
+server.tool(
+  "list_services",
+  "List services for an engagement, optionally filtered by target",
+  {
+    engagementId: z.string().uuid(),
+    targetId: z.string().uuid().optional(),
+  },
+  async ({ engagementId, targetId }) =>
+    json(await repo.listServices(engagementId, targetId ? { targetId } : undefined)),
+);
+
+server.tool(
+  "get_service",
+  "Get full service detail including linked findings",
+  { id: z.string().uuid() },
+  async ({ id }) => json(await repo.getService(id)),
+);
+
+server.tool(
+  "list_all_creds",
+  "Dump all credentials across all services for an engagement",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => json(await repo.listAllCreds(engagementId)),
+);
+
+// --- Version identification (backward compat alias) --------------------------
 
 server.tool(
   "log_version",
-  "Log a discovered product version. Emits a VersionIdentified event (triggers automatic CVE search in the supervisor), logs a discovery, and searches the local exploit index. Call this EVERY TIME you identify a service with a version number.",
+  "[Deprecated: use add_service] Log a discovered product version. Calls add_service internally.",
   {
     engagementId: z.string().uuid(),
     product: z.string().describe("Product name, e.g. OpenSTAManager, nginx, OliveTin"),
     version: z.string().describe("Version string, e.g. 2.9.8, 1.24.0"),
     port: z.number().optional().describe("Port where the service was found"),
     service: z.string().optional().describe("Service name (http, ssh, etc.)"),
+    targetId: z.string().uuid().optional().describe("Target UUID (auto-resolved if omitted)"),
   },
-  async ({ engagementId, product, version, port, service }) => {
-    const event = await repo.emitEvent(engagementId, "VersionIdentified", {
-      product, version, port, service,
-    }, "agent");
-
-    await repo.addDiscovery({
-      engagementId,
-      type: "positive",
-      category: "version",
-      summary: `${product} ${version}${port ? ` on port ${port}` : ""}`,
-      sourceEventId: (event as { id: string }).id,
+  async ({ engagementId, product, version, port, service, targetId }) => {
+    let tid = targetId;
+    if (!tid) {
+      const targets = await repo.listTargets(engagementId) as Array<{ id: string; inScope: boolean }>;
+      const target = targets.find((t) => t.inScope) ?? targets[0];
+      if (!target) return { content: [{ type: "text" as const, text: "No targets found for engagement" }], isError: true };
+      tid = target.id;
+    }
+    const row = await repo.addService({
+      engagementId, targetId: tid, port, name: service, product, version,
     });
 
     const { searchKnowledge } = await import("@promptkiddie/core");
     const hits = await searchKnowledge(`${product} ${version}`, { limit: 3, mode: "hybrid" });
 
     return json({
-      product,
-      version,
-      eventEmitted: true,
+      ...(row as Record<string, unknown>),
       knowledgeBaseHits: hits.map((h) => ({
         source: h.source,
         path: h.path,
