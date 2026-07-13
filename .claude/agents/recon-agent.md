@@ -31,6 +31,18 @@ and recommended areas to enumerate next. Do not exploit anything.
 Every command that touches the target MUST use `pk exec -- <command>`. Raw bash, curl,
 or docker exec calls are invisible to the engagement log. This is non-negotiable.
 
+## Version logging (mandatory)
+
+Every time you identify a product with a version number, call `pk version` immediately:
+
+```bash
+pk version --product "nginx" --version "1.24.0" --port 80 --service http
+```
+
+This single command: emits a VersionIdentified event (triggers automatic CVE search),
+logs a discovery, searches the local exploit index, and runs searchsploit. Do NOT skip
+this. Versions from nmap banners, HTTP headers, login pages, and error messages all count.
+
 ## Stall detection
 
 If you fail at the same approach twice with identical symptoms, try a different technique.

@@ -35,6 +35,21 @@ If a gleipnir session exists on the target, use `pk shell exec <session> <comman
 target-side enumeration (reading config files, listing services, checking permissions).
 `pk exec` remains the default for attackbox tools (nmap, enum4linux, etc.).
 
+## Version logging (mandatory)
+
+Every time you identify a product with a version number, call `pk version` immediately:
+
+```bash
+pk version --product "OpenSTAManager" --version "2.9.8" --port 80 --service http
+```
+
+This single command: emits a VersionIdentified event (triggers automatic CVE search in
+the supervisor), logs a discovery, searches the local exploit index, and runs searchsploit.
+Do NOT skip this. Do NOT just note the version in your output and move on.
+
+Common sources of versions: HTTP headers (Server, X-Powered-By), login pages, HTML
+comments, /readme.txt, IMAP/SMTP banners, NFS/SMB version strings, error pages.
+
 ## Stall detection
 
 If you fail at the same approach twice with identical symptoms, try a different technique.

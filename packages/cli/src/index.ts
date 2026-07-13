@@ -538,6 +538,73 @@ act.command("list")
   .option("--engagement <id>")
   .action(async (o) => out(await repo.listActivity(await resolveEngagementId(o.engagement))));
 
+// --- version (emit + CVE search in one call) ---------------------------------
+program
+  .command("version")
+  .description("Log a discovered version, emit VersionIdentified event, and search for CVEs")
+  .requiredOption("--product <name>", "Product/service name, e.g. OpenSTAManager, nginx, OliveTin")
+  .requiredOption("--version <version>", "Version string, e.g. 2.9.8, 1.24.0")
+  .option("--port <port>", "Port where the service was found", parseInt)
+  .option("--service <service>", "Service name (http, ssh, etc.)")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+
+    // 1. Emit VersionIdentified event (triggers supervisor cve_search if running)
+    const event = await repo.emitEvent(eid, "VersionIdentified", {
+      product: o.product,
+      version: o.version,
+      port: o.port,
+      service: o.service,
+    }, "agent");
+    console.error(`[version] Emitted VersionIdentified: ${o.product} ${o.version}`);
+
+    // 2. Log as discovery
+    await repo.addDiscovery({
+      engagementId: eid,
+      type: "positive",
+      category: "version",
+      summary: `${o.product} ${o.version}${o.port ? ` on port ${o.port}` : ""}`,
+      sourceEventId: (event as { id: string }).id,
+    });
+
+    // 3. Search local exploit index
+    const { searchKnowledge } = await import("@promptkiddie/core");
+    const kbHits = await searchKnowledge(`${o.product} ${o.version}`, { limit: 3, mode: "hybrid" });
+    if (kbHits.length > 0) {
+      console.error(`[version] Knowledge base hits:`);
+      for (const h of kbHits) {
+        console.error(`  ${h.source}${h.path ? ` / ${h.path}` : ""} (${h.matchType}, score: ${h.score.toFixed(3)})`);
+        console.error(`  ${h.content.slice(0, 150)}...`);
+      }
+    }
+
+    // 4. Run searchsploit (if attackbox is available)
+    try {
+      const container = config.attackbox.container;
+      const { execFileSync: efs } = await import("node:child_process");
+      const sploit = efs("docker", ["exec", "-e", "PK_EXEC=1", container, "searchsploit", o.product, o.version],
+        { timeout: 15000, maxBuffer: 1024 * 1024 }).toString();
+      if (sploit.trim() && !sploit.includes("No results")) {
+        console.error(`[version] searchsploit hits:`);
+        console.error(sploit.trim().split("\n").slice(0, 8).join("\n"));
+        await repo.addDiscovery({
+          engagementId: eid,
+          type: "positive",
+          category: "cve",
+          summary: `searchsploit hits for ${o.product} ${o.version}`,
+          detail: { raw: sploit.slice(0, 2000) },
+        });
+      } else {
+        console.error(`[version] searchsploit: no results for ${o.product} ${o.version}`);
+      }
+    } catch {
+      console.error(`[version] searchsploit unavailable (attackbox not running?)`);
+    }
+
+    out({ product: o.product, version: o.version, kbHits: kbHits.length });
+  });
+
 // --- event -------------------------------------------------------------------
 const event = program.command("event").description("Domain events for reactive playbooks");
 
