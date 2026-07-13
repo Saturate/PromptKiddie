@@ -69,7 +69,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
               phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
               action: `[${actorLabel}] ${tool} (${durationMs}ms, exit ${code})`,
               command: cmdStr,
-              actor: actorLabel,
+              actor: "agent" as const,
             }).catch(() => {});
 
             resolve({ stdout: stdout ?? "", stderr: stderr ?? "", code, durationMs });
