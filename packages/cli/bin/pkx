@@ -1,0 +1,5 @@
+#!/bin/bash
+# pkx: shortcut for pk exec. Auto-routes through the engagement log.
+# Usage: pkx nmap -sV target    (equivalent to: pk exec -- nmap -sV target)
+#        pkx --reason "scan" nmap -sV target
+exec pk exec -- "$@"
