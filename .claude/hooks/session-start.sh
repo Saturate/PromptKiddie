@@ -44,17 +44,18 @@ if command -v pnpm >/dev/null 2>&1; then
     || true
   # Apply custom SQL migrations (LISTEN/NOTIFY triggers, column additions, etc.)
   for f in db/migrations/0*.sql; do
-    [ -f "$f" ] && docker exec -i promptkiddie-db psql -U "${POSTGRES_USER:-promptkiddie}" \
+    # Try both v2 (pk-db) and v1 (promptkiddie-db) container names
+    DB_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^(pk-db|promptkiddie-db)$' | head -1)
+    [ -n "$DB_CONTAINER" ] && [ -f "$f" ] && docker exec -i "$DB_CONTAINER" psql -U "${POSTGRES_USER:-promptkiddie}" \
       -d "${POSTGRES_DB:-promptkiddie}" < "$f" 2>/dev/null || true
   done
 fi
 
-# Start the tooling container if not running.
+# v2 doesn't need a separate tooling container (tools are in agent containers).
+# Start infrastructure services if not running.
 if command -v docker >/dev/null 2>&1; then
-  if ! docker ps --format '{{.Names}}' | grep -q promptkiddie-tooling; then
-    docker compose up -d tooling >/dev/null 2>&1 \
-      && echo "[promptkiddie] tooling container is up" \
-      || true
+  if ! docker ps --format '{{.Names}}' | grep -qE '^(pk-db|promptkiddie-db)$'; then
+    docker compose up -d postgres >/dev/null 2>&1 || true
   fi
 fi
 

@@ -1,7 +1,10 @@
+# PromptKiddie v2: infrastructure services only.
+# Agent and orchestrator containers are spawned dynamically via `pk spawn`.
+
 services:
   postgres:
     image: pgvector/pgvector:pg17
-    container_name: promptkiddie-db
+    container_name: pk-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-promptkiddie}
@@ -11,43 +14,41 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - pk-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-promptkiddie}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  # --- Phase-specific attackboxes -------------------------------------------
-  # Default: full image (Kali-based, everything). Override with PK_IMAGE=recon etc.
-
-  attackbox:
-    image: ghcr.io/saturate/promptkiddie-attackbox:latest
+  # VPN sidecar (Linux only; on macOS/Colima, VPN runs in the VM via pk vpn up)
+  vpn:
     build:
-      context: packages/tooling/images
-      dockerfile: Dockerfile.full
-    container_name: promptkiddie-attackbox
+      context: .
+      dockerfile: packages/containers/vpn/Dockerfile
+    container_name: pk-vpn
+    profiles: ["linux-vpn"]
     restart: unless-stopped
-    ports:
-      - "${PK_BROWSER_PORT:-9222}:9222"
-      - "${PK_SOCKS_PORT:-1080}:1080"
+    environment:
+      VPN_PROFILE: ${VPN_PROFILE:-}
     volumes:
-      - ./engagements:/workspace/engagements
       - ${PK_VPN_CONFIG:-./vpn}:/vpn:ro
     cap_add:
-      - NET_RAW
       - NET_ADMIN
+      - NET_RAW
     devices:
       - /dev/net/tun:/dev/net/tun
     sysctls:
-      - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv4.ip_forward=1
+    networks:
+      - pk-network
 
-  # Headless Chrome sharing the attackbox network (routes through VPN)
+  # Headless Chrome for browser automation
   browser:
     image: zenika/alpine-chrome:latest
-    container_name: promptkiddie-browser
+    container_name: pk-browser
     restart: unless-stopped
-    network_mode: "service:attackbox"
     command: >
       --no-sandbox
       --disable-gpu
@@ -55,79 +56,45 @@ services:
       --remote-debugging-address=0.0.0.0
       --remote-debugging-port=9222
       --headless
+    ports:
+      - "${PK_BROWSER_PORT:-9222}:9222"
     shm_size: "512m"
+    networks:
+      - pk-network
 
-  attackbox-recon:
-    build:
-      context: packages/tooling/images
-      dockerfile: Dockerfile.recon
-      args:
-        BASE_IMAGE: pk-base
-    container_name: promptkiddie-recon
-    profiles: ["phase-containers"]
-    restart: unless-stopped
-    volumes:
-      - ./engagements:/workspace/engagements
-      - ${PK_VPN_CONFIG:-./vpn}:/vpn:ro
-    cap_add:
-      - NET_RAW
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    sysctls:
-      - net.ipv6.conf.all.disable_ipv6=0
-
-  attackbox-attack:
-    build:
-      context: packages/tooling/images
-      dockerfile: Dockerfile.attack
-      args:
-        BASE_IMAGE: pk-base
-    container_name: promptkiddie-attack
-    profiles: ["phase-containers"]
-    restart: unless-stopped
-    volumes:
-      - ./engagements:/workspace/engagements
-      - ${PK_VPN_CONFIG:-./vpn}:/vpn:ro
-    cap_add:
-      - NET_RAW
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    sysctls:
-      - net.ipv6.conf.all.disable_ipv6=0
-
-  # --- Gleipnir relay (reverse shell handler) --------------------------------
+  # Gleipnir reverse shell relay
   gleipnir:
     build:
       context: packages/gleipnir
-    container_name: promptkiddie-gleipnir
+    container_name: pk-gleipnir
     restart: unless-stopped
-    network_mode: "service:attackbox"
     volumes:
       - gleipnir-sock:/tmp
       - ./engagements:/workspace/engagements
+    ports:
+      - "4444:4444"
+    networks:
+      - pk-network
 
-  # --- x86_64 build sidecar (for ARM64 hosts) ------------------------------
-  # Only starts when explicitly invoked: docker compose --profile build up -d builder-x86
+  # x86_64 build sidecar (for ARM64 hosts, cross-compiling)
   builder-x86:
     platform: linux/amd64
     build:
       context: packages/tooling/images
       dockerfile: Dockerfile.builder-x86
-    container_name: promptkiddie-builder-x86
+    container_name: pk-builder-x86
     profiles: ["build"]
     volumes:
       - ./.build:/build
     command: tail -f /dev/null
 
-  # --- App services (optional, for hosted deployment) ----------------------
+  # --- App services (optional, for hosted/frontend use) ---
   web:
     build:
       context: .
       dockerfile: Dockerfile
       target: web
-    container_name: promptkiddie-web
+    container_name: pk-web
     restart: unless-stopped
     profiles: ["hosted"]
     depends_on:
@@ -136,7 +103,7 @@ services:
     ports:
       - "3100:3100"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@postgres:5432/${POSTGRES_DB:-promptkiddie}
+      DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@pk-db:5432/${POSTGRES_DB:-promptkiddie}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
@@ -144,13 +111,15 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-}
       PORT: "3100"
+    networks:
+      - pk-network
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
       target: api
-    container_name: promptkiddie-api
+    container_name: pk-api
     restart: unless-stopped
     profiles: ["hosted"]
     depends_on:
@@ -159,33 +128,46 @@ services:
     ports:
       - "3200:3200"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@postgres:5432/${POSTGRES_DB:-promptkiddie}
+      DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@pk-db:5432/${POSTGRES_DB:-promptkiddie}
       PK_API_SECRET: ${PK_API_SECRET:-}
       PK_API_PORT: "3200"
+    networks:
+      - pk-network
 
-  # --- Test targets (optional, for local testing) --------------------------
+  # --- Test targets (optional) ---
   dvwa:
     image: vulnerables/web-dvwa
-    container_name: promptkiddie-dvwa
+    container_name: pk-dvwa
     profiles: ["targets"]
     ports:
       - "4280:80"
+    networks:
+      - pk-network
 
   juice-shop:
     image: bkimminich/juice-shop
-    container_name: promptkiddie-juice
+    container_name: pk-juice
     profiles: ["targets"]
     ports:
       - "4300:3000"
+    networks:
+      - pk-network
 
   adminer:
     image: adminer:latest
-    container_name: promptkiddie-adminer
+    container_name: pk-adminer
     restart: unless-stopped
     depends_on:
       - postgres
     ports:
       - "8080:8080"
+    networks:
+      - pk-network
+
+networks:
+  pk-network:
+    name: pk-network
+    driver: bridge
 
 volumes:
   pgdata:

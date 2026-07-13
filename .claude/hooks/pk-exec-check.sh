@@ -9,7 +9,7 @@ CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 if [ "$TOOL" != "Bash" ]; then exit 0; fi
 
 COUNTER_FILE="/tmp/.pk-inline-cmd-count"
-PK_CONTAINERS="promptkiddie-attackbox|promptkiddie-tooling|promptkiddie-attack|promptkiddie-recon|attackbox"
+PK_CONTAINERS="promptkiddie-attackbox|promptkiddie-tooling|promptkiddie-attack|promptkiddie-recon|attackbox|pk-agent-|pk-orchestrator-"
 
 # --- Block raw docker exec against PK containers ---
 if echo "$CMD" | grep -qE "docker exec.*(${PK_CONTAINERS})" && ! echo "$CMD" | grep -q "pk exec"; then
