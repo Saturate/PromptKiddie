@@ -142,7 +142,9 @@ export function loadConfig(): PkConfig {
   let merged = structuredClone(DEFAULTS) as unknown as Record<string, unknown>;
   merged = deepMerge(merged, loadToml(globalPath));
   merged = deepMerge(merged, loadToml(workspacePath));
-  merged = deepMerge(merged, loadToml(containerPath));
+  if (process.env.PK_CONTAINER === "1") {
+    merged = deepMerge(merged, loadToml(containerPath));
+  }
 
   _config = applyEnvOverrides(merged as unknown as PkConfig);
   _config.container = process.env.PK_CONTAINER === "1";

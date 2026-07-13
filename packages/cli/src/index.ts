@@ -700,6 +700,7 @@ svc.command("list")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
     const rows = await repo.listServices(eid, o.target ? { targetId: o.target } : undefined) as Array<Record<string, unknown>>;
+    if (!useText()) { out(rows); return; }
     const display = rows.map((r) => ({
       ...r,
       apps: Array.isArray(r.apps) ? r.apps.length : 0,
@@ -2248,7 +2249,7 @@ program
     let dir: string;
     let grepArgs: string[];
 
-    if (o.toolLog) {
+    if (o.toolLog || o.cmd) {
       dir = process.env.PK_LOG_DIR
         ? `${process.env.PK_LOG_DIR}/outputs`
         : "/workspace/.tool-log/outputs";
@@ -2326,7 +2327,7 @@ spawn
   .option("--engagement <id>")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
-    const eng = await repo.getEngagement(eid) as { slug: string; name: string } | null;
+    const eng = await repo.getEngagement(eid) as { slug: string; name: string; scope?: string; phase?: string } | null;
     if (!eng) throw new Error(`No engagement with id ${eid}`);
 
     const targets = await repo.listTargets(eid) as Array<{ identifier: string; inScope: boolean; notes?: string; kind: string }>;
@@ -2383,7 +2384,7 @@ spawn
     // Auto-detect TARGET_SUBNET from engagement scope or --subnet flag
     let subnet = o.subnet ?? "";
     if (!subnet) {
-      const scope = (eng as { scope?: string }).scope ?? "";
+      const scope = eng.scope ?? "";
       const cidrMatch = scope.match(/(\d+\.\d+\.\d+\.\d+\/\d+)/);
       if (cidrMatch) subnet = cidrMatch[1];
     }
@@ -2395,7 +2396,8 @@ spawn
     const pkConfigDir = join(cwd, ".pk", "containers");
     mkdirSync(pkConfigDir, { recursive: true });
     const containerConfigPath = join(pkConfigDir, `${containerName}.toml`);
-    wfs(containerConfigPath, `[database]\nurl = "${config.database.url}"\n`);
+    const escapedUrl = config.database.url.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    wfs(containerConfigPath, `[database]\nurl = "${escapedUrl}"\n`, { mode: 0o600 });
     dockerArgs.push("-v", `${containerConfigPath}:/etc/pk/config.toml:ro`);
 
     // Volumes
@@ -2424,7 +2426,7 @@ spawn
       const containerId = efs("docker", dockerArgs, { timeout: 60000 }).toString().trim();
       console.error(`[spawn] Container started: ${containerId.slice(0, 12)}`);
 
-      await repo.startAgentRun({ engagementId: eid, agent: containerName, phase: (eng as { phase?: string }).phase ?? "recon" });
+      await repo.startAgentRun({ engagementId: eid, agent: containerName, phase: eng.phase ?? "recon" });
 
       out({ container: containerName, id: containerId.slice(0, 12), target: primaryTarget, lhost, image: o.image });
     } catch (err) {
@@ -2459,6 +2461,8 @@ spawn
     try {
       efs("docker", ["stop", name], { timeout: 30000 });
       efs("docker", ["rm", name], { timeout: 10000 });
+      const { unlinkSync } = await import("node:fs");
+      try { unlinkSync(join(process.cwd(), ".pk", "containers", `${name}.toml`)); } catch {}
       console.error(`[spawn] Stopped and removed: ${name}`);
     } catch (err) {
       console.error(`[spawn] Failed: ${err instanceof Error ? err.message : err}`);
