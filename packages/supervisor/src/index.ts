@@ -422,22 +422,25 @@ export async function startSupervisor(opts: SupervisorOpts) {
   };
 }
 
-// CLI entry point
-const engagementId = process.argv[2];
-if (!engagementId) {
-  console.error("Usage: pk supervisor start <engagement-id> [--mode race|standard|methodical|learning]");
-  process.exit(1);
-}
+// CLI entry point (only when run directly, not when imported by pk CLI)
+const isDirectRun = process.argv[1]?.includes("supervisor");
+if (isDirectRun) {
+  const engagementId = process.argv[2];
+  if (!engagementId) {
+    console.error("Usage: pk supervisor start <engagement-id> [--mode race|standard|methodical|learning]");
+    process.exit(1);
+  }
 
-const modeArgIdx = process.argv.indexOf("--mode");
-const cliMode = modeArgIdx >= 0 ? (process.argv[modeArgIdx + 1] as SupervisorMode | undefined) : undefined;
-const validModes: SupervisorMode[] = ["race", "standard", "methodical", "learning"];
-if (cliMode && !validModes.includes(cliMode)) {
-  console.error(`Invalid mode "${cliMode}". Valid modes: ${validModes.join(", ")}`);
-  process.exit(1);
-}
+  const modeArgIdx = process.argv.indexOf("--mode");
+  const cliMode = modeArgIdx >= 0 ? (process.argv[modeArgIdx + 1] as SupervisorMode | undefined) : undefined;
+  const validModes: SupervisorMode[] = ["race", "standard", "methodical", "learning"];
+  if (cliMode && !validModes.includes(cliMode)) {
+    console.error(`Invalid mode "${cliMode}". Valid modes: ${validModes.join(", ")}`);
+    process.exit(1);
+  }
 
-startSupervisor({ engagementId, mode: cliMode }).catch((err) => {
-  console.error("[supervisor] fatal:", err);
-  process.exit(1);
-});
+  startSupervisor({ engagementId, mode: cliMode }).catch((err) => {
+    console.error("[supervisor] fatal:", err);
+    process.exit(1);
+  });
+}
