@@ -135,7 +135,7 @@ is the cost of the inotify context issue + exploring dead-end vectors.
 
 - [x] Document inotify/incron context sensitivity in exploitation skill
 - [x] Add "try from different process context" to privesc troubleshooting checklist
-- [ ] Add SSH key plant helper to pk tooling
+- [x] Add SSH key plant helper to pk tooling
 - [x] Add FreePBX-specific privesc techniques to knowledge base (incron hooks, writable
       module dirs, sysadmin spool files)
 - [x] Enforce orchestrator delegation heuristic: max 5 inline pk exec before spawning agent
