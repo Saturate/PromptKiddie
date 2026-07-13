@@ -57,7 +57,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
           ["exec", "-e", "PK_EXEC=1", process.env.PK_ATTACKBOX ?? "promptkiddie-attackbox", tool, ...args],
           { maxBuffer: 10 * 1024 * 1024, timeout: execOpts?.timeout ?? 300000, signal },
           (err, stdout, stderr) => {
-            const code = err && "code" in err ? (err.code as number) : err ? 1 : 0;
+            const code = err && "code" in err && typeof err.code === "number" ? err.code : err ? 1 : 0;
             const durationMs = Date.now() - start;
 
             recordExecOutcome(engagementId, cmdStr, target, code).catch(() => {});

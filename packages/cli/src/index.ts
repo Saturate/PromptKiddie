@@ -919,7 +919,8 @@ vpn
     const configPath = `/vpn/${name}.ovpn`;
     console.error(`[vpn] Connecting profile "${name}"...`);
     await run(["openvpn", "--config", configPath, "--daemon", "--log", "/var/log/openvpn.log"]);
-    await run(["sh", "-c", `echo "${name}" > /tmp/.pk-vpn-profile`]);
+    const safeName = name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    await run(["sh", "-c", `printf '%s' "${safeName}" > /tmp/.pk-vpn-profile`]);
 
     for (let i = 0; i < 30; i++) {
       try {

@@ -16,7 +16,6 @@ import {
   listTargets,
   getEngagement,
   advancePhase,
-  buildLlmContext,
   sendMessage,
   type Action,
   type Playbook,
@@ -150,9 +149,11 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   function resetStallTimer() {
     if (stallTimer) clearTimeout(stallTimer);
-    stallTimer = setTimeout(async () => {
+    stallTimer = setTimeout(() => {
       console.log("[supervisor] stall detected, emitting StallDetected");
-      await emitEvent(opts.engagementId, "StallDetected", { minutes: 5 }, "supervisor");
+      emitEvent(opts.engagementId, "StallDetected", { minutes: 5 }, "supervisor").catch(
+        (err) => console.error("[supervisor] stall event emit failed:", err),
+      );
     }, STALL_TIMEOUT);
   }
 
