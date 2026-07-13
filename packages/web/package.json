@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "next dev --port 3100",
     "build": "next build",
-    "start": "next start --port 3100"
+    "start": "next start --port 3100",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4",
@@ -49,6 +50,7 @@
     "@types/node": "^22.10.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
   }
 }
