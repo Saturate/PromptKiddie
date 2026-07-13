@@ -8,6 +8,7 @@
  */
 import "dotenv/config";
 import { Client } from "pg";
+import { execFile } from "node:child_process";
 import {
   CTF_ACTIONS,
   emitEvent,
@@ -50,6 +51,38 @@ interface SupervisorOpts {
   onActionStart?: (actionName: string) => void;
   onActionEnd?: (actionName: string) => void;
   onOutput?: (actionName: string, line: string) => void;
+}
+
+const PHASE_IMAGES: Record<string, string> = {
+  recon: "pk-agent-recon",
+  enum: "pk-agent-recon",
+  exploit: "pk-agent-attack",
+  postexploit: "pk-agent-full",
+  report: "pk-agent-recon",
+};
+
+function resolveAgentImage(action: Action, phase: string): string {
+  if (action.llm?.agent === "exploit-agent") return "pk-agent-full";
+  if (action.llm?.agent === "recon-agent") return "pk-agent-recon";
+  return PHASE_IMAGES[phase] ?? "pk-agent-attack";
+}
+
+function spawnAgentContainer(engagementId: string, image: string, target: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = ["--silent", "pk", "spawn", "agent", "--image", image, "--target", target, "--engagement", engagementId];
+    execFile("pnpm", args, { timeout: 60000 }, (err, stdout, stderr) => {
+      if (err) {
+        reject(new Error(stderr || err.message));
+        return;
+      }
+      try {
+        const result = JSON.parse(stdout) as { container: string };
+        resolve(result.container);
+      } catch {
+        resolve(stdout.trim());
+      }
+    });
+  });
 }
 
 export async function startSupervisor(opts: SupervisorOpts) {
@@ -168,22 +201,58 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
 
       if (action.prompt && !action.run) {
-        console.log(`[supervisor] agent action "${action.name}" - prompt: ${action.prompt.slice(0, 100)}...`);
-        console.log(`[supervisor] (agent dispatch not yet implemented, logging prompt)`);
-        await addDiscovery({
-          engagementId: opts.engagementId,
-          type: "attempted",
-          category: "agent",
-          summary: `Agent action "${action.name}" dispatched (prompt-based)`,
-        });
+        const agentImage = resolveAgentImage(action, currentPhase);
+        console.log(`[supervisor] agent action "${action.name}" -> spawning ${agentImage}`);
 
         if (mode === "learning") {
-          // Send analysis to inbox and wait for human approval
           await sendMessage({
             engagementId: opts.engagementId,
             direction: "outbound",
             author: "supervisor",
-            body: `[learning] Action "${action.name}" wants to run:\n${action.prompt.slice(0, 500)}\n\nReply to approve or redirect.`,
+            body: `[learning] Action "${action.name}" wants to spawn ${agentImage}:\n${action.prompt.slice(0, 500)}\n\nReply to approve or redirect.`,
+          });
+        }
+
+        // Interpolate template variables in the prompt
+        const interpolated = action.prompt.replace(/\{(\w+)\}/g, (_: string, key: string) => {
+          return String(event.payload[key] ?? `{${key}}`);
+        });
+
+        try {
+          const containerName = await spawnAgentContainer(opts.engagementId, agentImage, primaryTarget);
+          console.log(`[supervisor] spawned: ${containerName}`);
+
+          // Send the prompt to the inbox so the agent picks it up
+          await sendMessage({
+            engagementId: opts.engagementId,
+            direction: "inbound",
+            author: "supervisor",
+            body: `[agent-task:${action.name}]\n\n${interpolated}`,
+          });
+
+          await addDiscovery({
+            engagementId: opts.engagementId,
+            type: "attempted",
+            category: "agent",
+            summary: `Agent "${action.name}" spawned as ${containerName} (${agentImage})`,
+          });
+
+          ws.sendEvent({ type: "AgentSpawned", payload: { action: action.name, container: containerName, image: agentImage } });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[supervisor] spawn failed for "${action.name}": ${msg}`);
+          // Fall back to inbox-only dispatch (orchestrator picks it up manually)
+          await sendMessage({
+            engagementId: opts.engagementId,
+            direction: "inbound",
+            author: "supervisor",
+            body: `[agent-task:${action.name}] (spawn failed: ${msg})\n\n${interpolated}`,
+          });
+          await addDiscovery({
+            engagementId: opts.engagementId,
+            type: "negative",
+            category: "agent",
+            summary: `Agent spawn failed for "${action.name}": ${msg}. Task sent to inbox.`,
           });
         }
       }
