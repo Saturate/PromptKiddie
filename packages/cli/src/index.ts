@@ -2003,6 +2003,139 @@ report
     console.log(result.pdfPath);
   });
 
+// --- spawn (dynamic container provisioning) ----------------------------------
+const spawn = program.command("spawn").description("Spawn agent/orchestrator containers for v2 architecture");
+
+spawn
+  .command("agent")
+  .description("Spawn an agent container for an engagement")
+  .requiredOption("--image <image>", "Container image: pk-agent-recon, pk-agent-attack, pk-agent-full")
+  .option("--target <ip>", "Override primary target IP (default: first in-scope target from DB)")
+  .option("--target-hostname <host>", "Add /etc/hosts entry: host -> target IP (repeatable)", (v: string, prev: string[]) => [...prev, v], [] as string[])
+  .option("--lhost <ip>", "Override LHOST (default: auto-detect from VPN tun0)")
+  .option("--lport <port>", "Override LPORT", "9090")
+  .option("--harness <name>", "Harness to start: claude, pi, opencode")
+  .option("--model <model>", "Model for the harness")
+  .option("--name <name>", "Container name override")
+  .option("--engagement <id>")
+  .action(async (o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    const eng = await repo.getEngagement(eid) as { slug: string; name: string } | null;
+    if (!eng) throw new Error(`No engagement with id ${eid}`);
+
+    const targets = await repo.listTargets(eid) as Array<{ identifier: string; inScope: boolean; notes?: string; kind: string }>;
+    const inScope = targets.filter((t) => t.inScope);
+    if (inScope.length === 0 && !o.target) throw new Error("No in-scope targets. Add one with: pk target add --kind host --id <ip> --in-scope");
+
+    const primaryTarget = o.target ?? inScope[0].identifier;
+    const allTargets = o.target ? [o.target] : inScope.map((t) => t.identifier);
+    const containerName = o.name ?? `pk-agent-${eng.slug}-${Math.random().toString(36).slice(2, 8)}`;
+
+    // Auto-detect LHOST from VPN tun0
+    let lhost = o.lhost ?? "";
+    if (!lhost) {
+      const colima = detectColima();
+      if (colima.isColima) {
+        try {
+          const tunOut = colimaExec("ip -4 addr show tun0 2>/dev/null || true");
+          const m = tunOut.match(/inet ([\d.]+)/);
+          if (m) lhost = m[1];
+        } catch {}
+      }
+      if (!lhost) {
+        try {
+          const { execFileSync: efs } = await import("node:child_process");
+          const tunOut = efs("docker", ["exec", config.attackbox.container, "ip", "-4", "addr", "show", "tun0"],
+            { timeout: 5000 }).toString();
+          const m = tunOut.match(/inet ([\d.]+)/);
+          if (m) lhost = m[1];
+        } catch {}
+      }
+    }
+
+    // Build docker run args
+    const dockerArgs = [
+      "run", "-d",
+      "--name", containerName,
+      "--network", "pk-network",
+      "-e", `TARGET=${primaryTarget}`,
+      "-e", `TARGETS=${allTargets.join(",")}`,
+      "-e", `LHOST=${lhost}`,
+      "-e", `LPORT=${o.lport}`,
+      "-e", `ENGAGEMENT_ID=${eid}`,
+      "-e", `ENGAGEMENT_SLUG=${eng.slug}`,
+    ];
+
+    if (o.harness) dockerArgs.push("-e", `PK_HARNESS=${o.harness}`);
+    if (o.model) dockerArgs.push("-e", `PK_MODEL=${o.model}`);
+
+    // Volumes
+    const cwd = process.cwd();
+    dockerArgs.push("-v", `${cwd}/engagements/${eng.slug}:/workspace/engagements/${eng.slug}`);
+    dockerArgs.push("-v", `${cwd}/.env:/opt/pk/.env:ro`);
+
+    // /etc/hosts entries for target hostnames
+    for (const hostname of o.targetHostname) {
+      dockerArgs.push("--add-host", `${hostname}:${primaryTarget}`);
+    }
+    for (const t of inScope) {
+      if (t.notes && /^[a-zA-Z0-9.-]+$/.test(t.notes)) {
+        dockerArgs.push("--add-host", `${t.notes}:${t.identifier}`);
+      }
+    }
+
+    dockerArgs.push(o.image);
+
+    console.error(`[spawn] Creating container: ${containerName}`);
+    console.error(`[spawn] Image: ${o.image}`);
+    console.error(`[spawn] TARGET=${primaryTarget} LHOST=${lhost || "(none)"}`);
+
+    const { execFileSync: efs } = await import("node:child_process");
+    try {
+      const containerId = efs("docker", dockerArgs, { timeout: 60000 }).toString().trim();
+      console.error(`[spawn] Container started: ${containerId.slice(0, 12)}`);
+
+      await repo.startAgentRun({ engagementId: eid, agent: containerName, phase: (eng as { phase?: string }).phase ?? "recon" });
+
+      out({ container: containerName, id: containerId.slice(0, 12), target: primaryTarget, lhost, image: o.image });
+    } catch (err) {
+      console.error(`[spawn] Failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+  });
+
+spawn
+  .command("list")
+  .description("List running PK agent containers")
+  .action(async () => {
+    const { execFileSync: efs } = await import("node:child_process");
+    try {
+      const out = efs("docker", ["ps", "--filter", "name=pk-agent-", "--filter", "name=pk-orchestrator-",
+        "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.ID}}"], { timeout: 10000 }).toString();
+      if (!out.trim()) { console.log("No running PK containers"); return; }
+      console.log("NAME\tIMAGE\tSTATUS\tID");
+      console.log(out.trim());
+    } catch {
+      console.log("No running PK containers");
+    }
+  });
+
+spawn
+  .command("stop")
+  .description("Stop and remove a PK agent container")
+  .argument("<name>", "Container name")
+  .action(async (name: string) => {
+    const { execFileSync: efs } = await import("node:child_process");
+    try {
+      efs("docker", ["stop", name], { timeout: 30000 });
+      efs("docker", ["rm", name], { timeout: 10000 });
+      console.error(`[spawn] Stopped and removed: ${name}`);
+    } catch (err) {
+      console.error(`[spawn] Failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+  });
+
 async function main() {
   try {
     await program.parseAsync(process.argv);
