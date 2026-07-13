@@ -34,6 +34,7 @@ case "$CMD" in
 esac
 
 TMPOUT=$(mktemp "${LOG_DIR}/.out.XXXXXX")
+trap 'rm -f "$TMPOUT"' EXIT
 TS_START=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
 START_NS=$(date +%s%N 2>/dev/null || echo 0)
 
@@ -73,5 +74,4 @@ printf '%s\n' "$INLINE_OUTPUT" | jq -Rs \
     output_summary: .
   }' >> "$JSONL"
 
-rm -f "$TMPOUT"
 exit "$EXIT"

@@ -5,6 +5,7 @@ VPN_DIR="/vpn"
 PROFILE="${VPN_PROFILE:-}"
 
 # Auto-select if only one profile exists
+shopt -s nullglob
 if [ -z "$PROFILE" ]; then
   PROFILES=("$VPN_DIR"/*.ovpn)
   if [ ${#PROFILES[@]} -eq 0 ]; then

@@ -1960,9 +1960,9 @@ program
     const eng = await getEngagement(eid);
     const slug = eng?.slug ?? eid;
     const dir = `engagements/${slug}`;
-    const { execSync } = await import("node:child_process");
+    const { execFileSync } = await import("node:child_process");
     try {
-      const result = execSync(`grep -rn "${term.replace(/"/g, '\\"')}" "${dir}"`, {
+      const result = execFileSync("grep", ["-rn", term, dir], {
         encoding: "utf-8",
         maxBuffer: 1024 * 1024,
         timeout: 30000,
@@ -2075,7 +2075,7 @@ spawn
     // Volumes
     const cwd = process.cwd();
     dockerArgs.push("-v", `${cwd}/engagements/${slug}:/workspace/engagements/${slug}`);
-    dockerArgs.push("-v", `${cwd}/.env:/opt/pk/.env:ro`);
+    dockerArgs.push("-e", `DATABASE_URL=${process.env.DATABASE_URL ?? ""}`);
 
     // /etc/hosts entries for target hostnames (validated)
     const SAFE_HOST = /^[a-zA-Z0-9.-]+$/;
@@ -2130,6 +2130,7 @@ spawn
   .description("Stop and remove a PK agent container")
   .argument("<name>", "Container name")
   .action(async (name: string) => {
+    if (!/^[a-zA-Z0-9._:-]+$/.test(name)) throw new Error(`Invalid container name: ${name}`);
     const { execFileSync: efs } = await import("node:child_process");
     try {
       efs("docker", ["stop", name], { timeout: 30000 });

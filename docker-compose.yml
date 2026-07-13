@@ -170,6 +170,7 @@ services:
   adminer:
     image: adminer:latest
     container_name: pk-adminer
+    profiles: ["dev"]
     restart: unless-stopped
     depends_on:
       - postgres

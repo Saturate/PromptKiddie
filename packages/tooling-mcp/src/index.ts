@@ -235,7 +235,10 @@ server.tool(
     flags: z.string().optional().describe("Extra httpx flags, e.g. '-tech-detect -status-code -title'"),
   },
   async ({ targets, flags }: { targets: string; flags?: string }) => {
-    const args = ["sh", "-c", `echo '${targets.replace(/,/g, "\n")}' | httpx-toolkit -json ${flags ?? ""}`];
+    const targetList = targets.split(",").map((t) => t.trim()).filter(Boolean);
+    const printfArgs = targetList.map((t) => `printf '%s\\n' '${t.replace(/'/g, "'\\''")}'`).join("; ");
+    const flagsArr = flags ? ` ${flags.replace(/[;|&$`]/g, "")}` : "";
+    const args = ["sh", "-c", `(${printfArgs}) | httpx-toolkit -json${flagsArr}`];
     return result(await dockerExec(args, "httpx"));
   },
 );
