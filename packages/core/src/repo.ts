@@ -186,7 +186,11 @@ export async function registerWebshell(engagementId: string, entry: { name: stri
   const eng = await getEngagement(engagementId);
   if (!eng) throw new Error(`No engagement with id ${engagementId}`);
   const current = (eng.webshells ?? []) as import("./schema.js").WebshellEntry[];
-  const name = entry.name || new URL(entry.url).pathname.split("/").pop() || "shell";
+  let name = entry.name;
+  if (!name) {
+    try { name = new URL(entry.url).pathname.split("/").pop() || "shell"; }
+    catch { name = entry.url.split("/").pop()?.split("?")[0] || "shell"; }
+  }
   if (current.some((w) => w.name === name)) throw new Error(`Webshell "${name}" already registered`);
   const updated = [...current, { name, url: entry.url, param: entry.param ?? "cmd" }];
   const [row] = await db.update(engagements).set({ webshells: updated }).where(eq(engagements.id, engagementId)).returning();

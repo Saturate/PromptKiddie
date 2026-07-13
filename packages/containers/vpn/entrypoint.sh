@@ -27,11 +27,22 @@ fi
 
 echo "[vpn] Connecting profile: $PROFILE"
 
-# Enable forwarding + NAT
+# Enable forwarding (iptables rules set by --up script after tun0 is created)
 echo 1 > /proc/sys/net/ipv4/ip_forward
-iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || true
-iptables -A FORWARD -i eth0 -o tun0 -j ACCEPT 2>/dev/null || true
-iptables -A FORWARD -i tun0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
 
-# Start OpenVPN in foreground (container lifecycle tied to VPN)
-exec openvpn --config "$CONFIG" --verb 3
+# Write an --up script that configures NAT after tun0 is live
+cat > /tmp/vpn-up.sh << 'UPSCRIPT'
+#!/bin/sh
+# Detect the default interface dynamically
+DEFAULT_IF=$(ip route | awk '/default/{print $5; exit}')
+iptables -t nat -A POSTROUTING -o "$dev" -j MASQUERADE 2>/dev/null || true
+if [ -n "$DEFAULT_IF" ]; then
+  iptables -A FORWARD -i "$DEFAULT_IF" -o "$dev" -j ACCEPT 2>/dev/null || true
+  iptables -A FORWARD -i "$dev" -o "$DEFAULT_IF" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+fi
+UPSCRIPT
+chmod +x /tmp/vpn-up.sh
+
+# Start OpenVPN in foreground with the --up script
+exec openvpn --config "$CONFIG" --verb 3 \
+  --script-security 2 --up /tmp/vpn-up.sh

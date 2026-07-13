@@ -37,8 +37,8 @@ TMPOUT=$(mktemp "${LOG_DIR}/.out.XXXXXX")
 TS_START=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
 START_NS=$(date +%s%N 2>/dev/null || echo 0)
 
-# Run command, tee output to both terminal and temp file
-/bin/bash -c "$CMD" 2>&1 | tee "$TMPOUT"
+# Run command: capture combined output for logging, preserve stderr on terminal
+/bin/bash -c "$CMD" > >(tee -a "$TMPOUT") 2> >(tee -a "$TMPOUT" >&2)
 EXIT=${PIPESTATUS[0]}
 
 END_NS=$(date +%s%N 2>/dev/null || echo 0)
@@ -56,7 +56,7 @@ fi
 
 # Build JSONL entry with proper escaping via jq
 INLINE_OUTPUT=$(head -c "$MAX_INLINE" "$TMPOUT")
-echo "$INLINE_OUTPUT" | jq -Rs \
+printf '%s\n' "$INLINE_OUTPUT" | jq -Rs \
   --arg cmd "$CMD" \
   --argjson exit "$EXIT" \
   --argjson dur "$DURATION_MS" \

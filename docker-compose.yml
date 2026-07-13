@@ -63,6 +63,8 @@ services:
       - pk-network
 
   # Gleipnir reverse shell relay
+  # On macOS/Colima: pk-network routes through VM (VPN works via host routes)
+  # On Linux with VPN sidecar: use profile linux-vpn-gleipnir to share VPN network
   gleipnir:
     build:
       context: packages/gleipnir
@@ -75,6 +77,18 @@ services:
       - "4444:4444"
     networks:
       - pk-network
+
+  # Gleipnir variant that shares VPN sidecar network (Linux only)
+  gleipnir-vpn:
+    build:
+      context: packages/gleipnir
+    container_name: pk-gleipnir
+    profiles: ["linux-vpn"]
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    volumes:
+      - gleipnir-sock:/tmp
+      - ./engagements:/workspace/engagements
 
   # x86_64 build sidecar (for ARM64 hosts, cross-compiling)
   builder-x86:

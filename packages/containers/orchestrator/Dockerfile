@@ -37,9 +37,9 @@ RUN printf '#!/bin/sh\nnode /opt/pk/packages/cli/dist/index.js "$@"\n' > /usr/lo
 COPY packages/cli/bin/pkx /usr/local/bin/pkx
 RUN chmod +x /usr/local/bin/pkx
 
-# Basic utilities only (no attack tools)
+# Basic utilities + docker CLI (for pk spawn). No attack tools.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl wget jq openssh-client \
+    git curl wget jq openssh-client docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # pk config directory (mounted at runtime)

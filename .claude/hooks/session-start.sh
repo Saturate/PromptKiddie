@@ -43,9 +43,8 @@ if command -v pnpm >/dev/null 2>&1; then
     && echo "[promptkiddie] migrations applied" \
     || true
   # Apply custom SQL migrations (LISTEN/NOTIFY triggers, column additions, etc.)
+  DB_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^(pk-db|promptkiddie-db)$' | head -1)
   for f in db/migrations/0*.sql; do
-    # Try both v2 (pk-db) and v1 (promptkiddie-db) container names
-    DB_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^(pk-db|promptkiddie-db)$' | head -1)
     [ -n "$DB_CONTAINER" ] && [ -f "$f" ] && docker exec -i "$DB_CONTAINER" psql -U "${POSTGRES_USER:-promptkiddie}" \
       -d "${POSTGRES_DB:-promptkiddie}" < "$f" 2>/dev/null || true
   done

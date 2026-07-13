@@ -2027,9 +2027,12 @@ spawn
     const inScope = targets.filter((t) => t.inScope);
     if (inScope.length === 0 && !o.target) throw new Error("No in-scope targets. Add one with: pk target add --kind host --id <ip> --in-scope");
 
+    const SAFE_NAME = /^[a-zA-Z0-9._:-]+$/;
     const primaryTarget = o.target ?? inScope[0].identifier;
     const allTargets = o.target ? [o.target] : inScope.map((t) => t.identifier);
-    const containerName = o.name ?? `pk-agent-${eng.slug}-${Math.random().toString(36).slice(2, 8)}`;
+    const slug = eng.slug.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const containerName = o.name ?? `pk-agent-${slug}-${Math.random().toString(36).slice(2, 8)}`;
+    if (!SAFE_NAME.test(containerName)) throw new Error(`Unsafe container name: ${containerName}`);
 
     // Auto-detect LHOST from VPN tun0
     let lhost = o.lhost ?? "";
@@ -2071,11 +2074,13 @@ spawn
 
     // Volumes
     const cwd = process.cwd();
-    dockerArgs.push("-v", `${cwd}/engagements/${eng.slug}:/workspace/engagements/${eng.slug}`);
+    dockerArgs.push("-v", `${cwd}/engagements/${slug}:/workspace/engagements/${slug}`);
     dockerArgs.push("-v", `${cwd}/.env:/opt/pk/.env:ro`);
 
-    // /etc/hosts entries for target hostnames
+    // /etc/hosts entries for target hostnames (validated)
+    const SAFE_HOST = /^[a-zA-Z0-9.-]+$/;
     for (const hostname of o.targetHostname) {
+      if (!SAFE_HOST.test(hostname)) { console.error(`[spawn] Skipping unsafe hostname: ${hostname}`); continue; }
       dockerArgs.push("--add-host", `${hostname}:${primaryTarget}`);
     }
     for (const t of inScope) {
