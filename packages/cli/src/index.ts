@@ -28,6 +28,7 @@ import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
 const config = loadConfig();
 const repo = getRepo();
+const isContainer = config.container;
 
 const program = new Command();
 program
@@ -517,7 +518,7 @@ act.command("log")
   .requiredOption("--phase <phase>", "scoping | recon | enum | exploit | postexploit | report")
   .requiredOption("--action <action>")
   .option("--command <command>")
-  .option("--actor <actor>", "orchestrator | agent | human", "orchestrator")
+  .option("--actor <actor>", "orchestrator | agent | human", isContainer ? "agent" : "orchestrator")
   .option("--result <evidenceId>")
   .option("--engagement <id>")
   .action(async (o) => {
@@ -904,7 +905,10 @@ function checkDualVPN() {
   } catch {}
 }
 
-const vpn = program.command("vpn").description("Manage VPN connections");
+const vpn = program.command("vpn").description("Manage VPN connections")
+  .hook("preAction", () => {
+    if (isContainer) { console.error("VPN commands are not available inside agent containers."); process.exit(1); }
+  });
 
 function dockerExec(container: string) {
   return async (args: string[], timeout = 30000) => {
@@ -2216,7 +2220,10 @@ report
   });
 
 // --- spawn (dynamic container provisioning) ----------------------------------
-const spawn = program.command("spawn").description("Spawn agent/orchestrator containers for v2 architecture");
+const spawn = program.command("spawn").description("Spawn agent/orchestrator containers for v2 architecture")
+  .hook("preAction", () => {
+    if (isContainer) { console.error("Spawn is not available inside agent containers."); process.exit(1); }
+  });
 
 spawn
   .command("agent")
