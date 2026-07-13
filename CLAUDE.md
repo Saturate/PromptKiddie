@@ -62,13 +62,15 @@ stalls (5 min timeout triggers a freestyle LLM task).
 0. **Pre-flight:** Verify infra is running before doing anything else. The session-start
    hook handles this automatically, but if you're resuming mid-session or the hook failed,
    check manually:
-   - `docker ps --format '{{.Names}}' | grep promptkiddie` — postgres, tooling, and
-     attackbox containers must be up. If not: `docker compose up -d`.
+   - `docker ps --format '{{.Names}}' | grep pk-` — postgres (pk-db), gleipnir, and
+     browser containers must be up. If not: `docker compose up -d`.
    - `pk engagement list` — confirms DB connectivity. If it errors, check `.env` and
      postgres.
    - `pk vpn status` — if the engagement targets are behind a VPN (HTB/THM), verify
      the tunnel is up before scanning.
 1. **Set up:** Create engagement, add targets, start supervisor.
+   Then spawn an agent container: `pk spawn agent --image pk-agent-recon --target <ip>`.
+   The agent container has attack tools installed; the orchestrator does not.
 2. **Monitor:** Watch the action graph at `/playbook?engagement=<id>` or poll the inbox.
 3. **Handle LLM tasks:** The supervisor sends judgment tasks to the inbox (exploit,
    source code analysis, web vuln testing). Poll with `pk msg poll`, spawn agents for
@@ -203,6 +205,12 @@ pk search "flag"                   # grep stored exec outputs
 pk webshell register <url> [--name <name>] [--param cmd]
 pk webshell exec <name-or-url> <command>
 pk webshell list
+
+# Container provisioning (v2)
+pk spawn agent --image pk-agent-recon --target 10.0.0.1    # spawn agent container
+pk spawn agent --image pk-agent-full --target 10.0.0.1 --target-hostname box.htb
+pk spawn list                        # list running PK containers
+pk spawn stop <name>                 # stop and remove a container
 
 # Inbox
 pk msg send --body "<reply>"
