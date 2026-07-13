@@ -20,7 +20,12 @@ const portScan: Action = {
       const portMatch = line.match(/(\d+)\/tcp\s+open\s+(\S+)\s*(.*)/);
       if (portMatch) {
         const [, port, service, version] = portMatch;
-        await ctx.emit("PortDiscovered", { port: parseInt(port, 10), proto: "tcp", service, version: version.trim() || null });
+        const ver = version.trim() || null;
+        await ctx.emit("PortDiscovered", { port: parseInt(port, 10), proto: "tcp", service, version: ver });
+        if (ver) {
+          const product = service === "http" ? ver.split("/")[0] : service;
+          await ctx.emit("VersionIdentified", { port: parseInt(port, 10), service, product, version: ver });
+        }
       }
     }
   },
