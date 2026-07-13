@@ -14,6 +14,10 @@ export interface Repo {
   advancePhase(id: string, targetPhase: string): Promise<unknown>;
   getPhase(id: string): Promise<unknown>;
 
+  registerWebshell(engagementId: string, entry: { name: string; url: string; param?: string }): Promise<unknown>;
+  listWebshells(engagementId: string): Promise<unknown[]>;
+  getWebshell(engagementId: string, nameOrUrl: string): Promise<unknown>;
+
   addTarget(input: { engagementId: string; kind: string; identifier: string; inScope?: boolean; notes?: string }): Promise<unknown>;
   listTargets(engagementId: string): Promise<unknown[]>;
   updateTarget(id: string, input: Record<string, unknown>): Promise<unknown>;
@@ -80,6 +84,9 @@ function createLocalRepo(): Repo {
     deleteEngagement: async (id) => (await r).deleteEngagement(id),
     advancePhase: async (id, p) => (await r).advancePhase(id, p as Parameters<Awaited<typeof r>["advancePhase"]>[1]),
     getPhase: async (id) => (await r).getPhase(id),
+    registerWebshell: async (eid, entry) => (await r).registerWebshell(eid, entry),
+    listWebshells: async (eid) => (await r).listWebshells(eid),
+    getWebshell: async (eid, nameOrUrl) => (await r).getWebshell(eid, nameOrUrl),
     addTarget: async (i) => (await r).addTarget(i as Parameters<Awaited<typeof r>["addTarget"]>[0]),
     listTargets: async (eid) => (await r).listTargets(eid),
     updateTarget: async (id, i) => (await r).updateTarget(id, i),
@@ -164,6 +171,9 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     deleteEngagement: (id) => del(`/engagements/${id}`),
     advancePhase: (id, phase) => put(`/engagements/${id}/phase`, { phase }),
     getPhase: (id) => get(`/engagements/${id}/phase`),
+    registerWebshell: (eid, entry) => post(`/engagements/${eid}/webshells`, entry),
+    listWebshells: (eid) => get<unknown[]>(`/engagements/${eid}/webshells`),
+    getWebshell: (eid, nameOrUrl) => get(`/engagements/${eid}/webshells/${encodeURIComponent(nameOrUrl)}`),
     addTarget: (i) => post(`/engagements/${i.engagementId}/targets`, i),
     listTargets: (eid) => get<unknown[]>(`/engagements/${eid}/targets`),
     updateTarget: (id, i) => patch(`/targets/${id}`, i),

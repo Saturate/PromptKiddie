@@ -96,6 +96,12 @@ export const messageDirection = pgEnum("message_direction", [
 
 export const messageStatus = pgEnum("message_status", ["new", "read", "done"]);
 
+export interface WebshellEntry {
+  name: string;
+  url: string;
+  param: string;
+}
+
 // --- Tables ----------------------------------------------------------------
 
 /** One per CTF / assessment / bug-bounty program. Holds type, status, scope, RoE. */
@@ -117,6 +123,8 @@ export const engagements = pgTable("engagements", {
   scope: text("scope"),
   /** Rules of Engagement: authorization, allowed/disallowed actions, windows. */
   roe: jsonb("roe").$type<Record<string, unknown>>(),
+  /** Registered webshell sessions: [{name, url, param}]. */
+  webshells: jsonb("webshells").$type<WebshellEntry[]>().default([]),
   playbookId: uuid("playbook_id"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   endedAt: timestamp("ended_at", { withTimezone: true }),

@@ -179,6 +179,33 @@ export async function getPhase(id: string): Promise<{ phase: Phase; index: numbe
   return { phase: p, index: PHASE_ORDER.indexOf(p), total: PHASE_ORDER.length };
 }
 
+// --- Webshells ---------------------------------------------------------------
+
+export async function registerWebshell(engagementId: string, entry: { name: string; url: string; param?: string }) {
+  const db = getDb();
+  const eng = await getEngagement(engagementId);
+  if (!eng) throw new Error(`No engagement with id ${engagementId}`);
+  const current = (eng.webshells ?? []) as import("./schema.js").WebshellEntry[];
+  const name = entry.name || new URL(entry.url).pathname.split("/").pop() || "shell";
+  if (current.some((w) => w.name === name)) throw new Error(`Webshell "${name}" already registered`);
+  const updated = [...current, { name, url: entry.url, param: entry.param ?? "cmd" }];
+  const [row] = await db.update(engagements).set({ webshells: updated }).where(eq(engagements.id, engagementId)).returning();
+  return { name, url: entry.url, param: entry.param ?? "cmd", engagement: row };
+}
+
+export async function listWebshells(engagementId: string) {
+  const eng = await getEngagement(engagementId);
+  if (!eng) throw new Error(`No engagement with id ${engagementId}`);
+  return (eng.webshells ?? []) as import("./schema.js").WebshellEntry[];
+}
+
+export async function getWebshell(engagementId: string, nameOrUrl: string) {
+  const shells = await listWebshells(engagementId);
+  return shells.find((w) => w.name === nameOrUrl || w.url === nameOrUrl) ?? null;
+}
+
+// --- Targets ----------------------------------------------------------------
+
 export async function addTarget(input: {
   engagementId: string;
   kind: "host" | "domain" | "url" | "app" | "repo";

