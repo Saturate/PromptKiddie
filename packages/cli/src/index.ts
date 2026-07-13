@@ -2228,6 +2228,7 @@ spawn
   .option("--lport <port>", "Override LPORT", "9090")
   .option("--harness <name>", "Harness to start: claude, pi, opencode")
   .option("--model <model>", "Model for the harness")
+  .option("--subnet <cidr>", "Set TARGET_SUBNET for network engagements (auto-detected from scope)")
   .option("--name <name>", "Container name override")
   .option("--engagement <id>")
   .action(async (o) => {
@@ -2284,10 +2285,28 @@ spawn
     if (o.harness) dockerArgs.push("-e", `PK_HARNESS=${o.harness}`);
     if (o.model) dockerArgs.push("-e", `PK_MODEL=${o.model}`);
 
-    // Volumes
+    dockerArgs.push("-e", "PK_CONTAINER=1");
+
+    // Auto-detect TARGET_SUBNET from engagement scope or --subnet flag
+    let subnet = o.subnet ?? "";
+    if (!subnet) {
+      const scope = (eng as { scope?: string }).scope ?? "";
+      const cidrMatch = scope.match(/(\d+\.\d+\.\d+\.\d+\/\d+)/);
+      if (cidrMatch) subnet = cidrMatch[1];
+    }
+    if (subnet) dockerArgs.push("-e", `TARGET_SUBNET=${subnet}`);
+
+    // Mount config with DB credentials instead of passing DATABASE_URL as env var
     const cwd = process.cwd();
+    const { writeFileSync: wfs, mkdirSync } = await import("node:fs");
+    const pkConfigDir = join(cwd, ".pk", "containers");
+    mkdirSync(pkConfigDir, { recursive: true });
+    const containerConfigPath = join(pkConfigDir, `${containerName}.toml`);
+    wfs(containerConfigPath, `[database]\nurl = "${config.database.url}"\n`);
+    dockerArgs.push("-v", `${containerConfigPath}:/etc/pk/config.toml:ro`);
+
+    // Volumes
     dockerArgs.push("-v", `${cwd}/engagements/${slug}:/workspace/engagements/${slug}`);
-    dockerArgs.push("-e", `DATABASE_URL=${process.env.DATABASE_URL ?? ""}`);
 
     // /etc/hosts entries for target hostnames (validated)
     const SAFE_HOST = /^[a-zA-Z0-9.-]+$/;
