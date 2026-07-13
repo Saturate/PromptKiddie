@@ -1,47 +1,39 @@
 # pk-agent: Cartridge + pk + attack tools. Models run commands directly.
 # Multi-stage: recon, attack, full. Build with --target <stage>.
+# Build context must be the repo root. Run `pnpm build` before building.
 #
-#   docker build --target recon -t pk-agent-recon .
-#   docker build --target attack -t pk-agent-attack .
-#   docker build --target full -t pk-agent-full .
+#   pnpm build && docker build --target recon -t pk-agent-recon -f packages/containers/agent/Dockerfile .
 
 # ── Stage 0: pk bundle (shared across all variants) ─────────────────
 FROM cartridge:latest AS base
 
-# Shell logger (installed now, activated as SHELL after all build RUNs)
+# Shell logger (activated as SHELL via ENV after build)
 COPY packages/scripts/shell-logger.sh /usr/local/bin/pk-shell-logger
 RUN chmod +x /usr/local/bin/pk-shell-logger
 
-# Node.js for TypeScript pk
-RUN if ! command -v node >/dev/null 2>&1; then \
-      curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-      apt-get install -y --no-install-recommends nodejs && \
-      rm -rf /var/lib/apt/lists/*; \
-    fi
-
-# Bundle pk CLI
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /opt/pk/
-COPY packages/core /opt/pk/packages/core
-COPY packages/cli /opt/pk/packages/cli
-COPY packages/supervisor /opt/pk/packages/supervisor
-COPY packages/mcp-server /opt/pk/packages/mcp-server
+# Bundle pre-built pk CLI (host must run pnpm build first)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json /opt/pk/
+COPY packages/core/package.json packages/core/tsconfig.json /opt/pk/packages/core/
+COPY packages/core/dist /opt/pk/packages/core/dist
+COPY packages/core/src/knowledge /opt/pk/packages/core/src/knowledge
+COPY packages/cli/package.json packages/cli/tsconfig.json /opt/pk/packages/cli/
+COPY packages/cli/dist /opt/pk/packages/cli/dist
+COPY packages/cli/bin /opt/pk/packages/cli/bin
+COPY packages/supervisor/package.json packages/supervisor/tsconfig.json /opt/pk/packages/supervisor/
+COPY packages/supervisor/src /opt/pk/packages/supervisor/src
+COPY packages/mcp-server/package.json packages/mcp-server/tsconfig.json /opt/pk/packages/mcp-server/
+COPY packages/mcp-server/dist /opt/pk/packages/mcp-server/dist
 
 WORKDIR /opt/pk
-RUN corepack enable && corepack prepare pnpm@latest --activate && \
-    pnpm install --frozen-lockfile --prod && \
-    pnpm --filter @promptkiddie/core build && \
-    pnpm --filter @promptkiddie/cli build && \
-    pnpm --filter @promptkiddie/supervisor build && \
-    pnpm --filter @promptkiddie/mcp-server build
+RUN pnpm install --frozen-lockfile
 
 RUN printf '#!/bin/sh\nnode /opt/pk/packages/cli/dist/index.js "$@"\n' > /usr/local/bin/pk && \
     chmod +x /usr/local/bin/pk
-COPY packages/cli/bin/pkx /usr/local/bin/pkx
-RUN chmod +x /usr/local/bin/pkx
+RUN cp /opt/pk/packages/cli/bin/pkx /usr/local/bin/pkx && chmod +x /usr/local/bin/pkx
 
 RUN mkdir -p /etc/pk /workspace/.tool-log
 
-# Activate shell logger as SHELL for runtime (after all build RUNs)
+# Activate shell logger as SHELL for runtime
 ENV SHELL=/usr/local/bin/pk-shell-logger
 
 # Agent instructions
@@ -52,7 +44,7 @@ FROM base AS recon
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap ncat netcat-traditional \
-    ffuf gobuster nikto whatweb wafw00f \
+    ffuf gobuster whatweb wafw00f \
     dnsutils whois curl wget \
     openvpn iproute2 iputils-ping iptables \
     openssh-client sshpass \
@@ -81,15 +73,15 @@ WORKDIR /workspace
 FROM recon AS attack
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    enum4linux smbclient ldap-utils \
+    smbclient ldap-utils \
     john hashcat \
-    responder proxychains4 \
+    proxychains4 \
     sqlmap \
     tcpdump tshark \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install --break-system-packages --no-cache-dir \
-    impacket certipy-ad bloodyAD pysocks 2>/dev/null || true
+    impacket certipy-ad bloodyAD pysocks enum4linux-ng responder 2>/dev/null || true
 
 RUN gem install evil-winrm 2>/dev/null || true
 
@@ -105,7 +97,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Gleipnir agent binaries (optional, only if built)
-# Use a builder stage to avoid COPY failure when binaries don't exist
 ARG GLEIPNIR_AGENTS=/opt/gleipnir/agents
 RUN mkdir -p ${GLEIPNIR_AGENTS}
 
