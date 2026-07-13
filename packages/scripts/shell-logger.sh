@@ -57,7 +57,7 @@ fi
 
 # Build JSONL entry with proper escaping via jq
 INLINE_OUTPUT=$(head -c "$MAX_INLINE" "$TMPOUT")
-printf '%s\n' "$INLINE_OUTPUT" | jq -Rs \
+printf '%s\n' "$INLINE_OUTPUT" | jq -cRs \
   --arg cmd "$CMD" \
   --argjson exit "$EXIT" \
   --argjson dur "$DURATION_MS" \
