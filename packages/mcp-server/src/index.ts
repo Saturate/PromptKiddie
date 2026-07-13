@@ -461,6 +461,48 @@ server.tool(
   },
 );
 
+// --- Version identification --------------------------------------------------
+
+server.tool(
+  "log_version",
+  "Log a discovered product version. Emits a VersionIdentified event (triggers automatic CVE search in the supervisor), logs a discovery, and searches the local exploit index. Call this EVERY TIME you identify a service with a version number.",
+  {
+    engagementId: z.string().uuid(),
+    product: z.string().describe("Product name, e.g. OpenSTAManager, nginx, OliveTin"),
+    version: z.string().describe("Version string, e.g. 2.9.8, 1.24.0"),
+    port: z.number().optional().describe("Port where the service was found"),
+    service: z.string().optional().describe("Service name (http, ssh, etc.)"),
+  },
+  async ({ engagementId, product, version, port, service }) => {
+    const event = await repo.emitEvent(engagementId, "VersionIdentified", {
+      product, version, port, service,
+    }, "agent");
+
+    await repo.addDiscovery({
+      engagementId,
+      type: "positive",
+      category: "version",
+      summary: `${product} ${version}${port ? ` on port ${port}` : ""}`,
+      sourceEventId: (event as { id: string }).id,
+    });
+
+    const { searchKnowledge } = await import("@promptkiddie/core");
+    const hits = await searchKnowledge(`${product} ${version}`, { limit: 3, mode: "hybrid" });
+
+    return json({
+      product,
+      version,
+      eventEmitted: true,
+      knowledgeBaseHits: hits.map((h) => ({
+        source: h.source,
+        path: h.path,
+        score: h.score,
+        excerpt: h.content.slice(0, 200),
+      })),
+    });
+  },
+);
+
 // ---------------------------------------------------------------------------
 
 async function main() {

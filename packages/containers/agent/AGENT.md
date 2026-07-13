@@ -19,6 +19,20 @@ You are running inside a PK agent container with attack tools installed.
 | `$LPORT` | Default listener port |
 | `$ENGAGEMENT_ID` | Engagement UUID (pk CLI uses this) |
 
+## Version logging (mandatory)
+
+Every time you identify a product with a version number, log it immediately:
+
+```bash
+pk version --product "nginx" --version "1.24.0" --port 80 --service http
+```
+
+Or via MCP: call the `log_version` tool with the same parameters.
+
+This emits a VersionIdentified event (triggers automatic CVE search), logs a discovery,
+and searches the exploit index. One call does everything. Do NOT skip this. Do NOT just
+note the version and move on.
+
 ## Logging
 
 Log findings, evidence, and activity to the engagement database:
