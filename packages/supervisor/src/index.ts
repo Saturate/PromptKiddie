@@ -96,6 +96,8 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   // Pending LLM task queue for methodical/learning modes
   const pendingLlmTasks: PendingLlmTask[] = [];
+  const spawnFailures = new Map<string, number>();
+  const MAX_SPAWN_RETRIES = 2;
 
   // Track current phase for advancement logic
   let currentPhase = "scoping";
@@ -203,6 +205,22 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
       if (action.prompt && !action.run) {
         const agentImage = resolveAgentImage(action, currentPhase);
+        const failKey = `${action.name}:${agentImage}`;
+        const priorFails = spawnFailures.get(failKey) ?? 0;
+
+        if (priorFails >= MAX_SPAWN_RETRIES) {
+          console.log(`[supervisor] skipping "${action.name}" (spawn failed ${priorFails}x for ${agentImage}, sending to inbox only)`);
+          const interpolated = action.prompt.replace(/\{(\w+)\}/g, (_: string, key: string) =>
+            String(event.payload[key] ?? `{${key}}`));
+          await sendMessage({
+            engagementId: opts.engagementId,
+            direction: "inbound",
+            author: "supervisor",
+            body: `[agent-task:${action.name}] (image ${agentImage} unavailable)\n\n${interpolated}`,
+          });
+          return;
+        }
+
         console.log(`[supervisor] agent action "${action.name}" -> spawning ${agentImage}`);
 
         if (mode === "learning") {
@@ -241,7 +259,8 @@ export async function startSupervisor(opts: SupervisorOpts) {
           ws.sendEvent({ type: "AgentSpawned", payload: { action: action.name, container: containerName, image: agentImage } });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[supervisor] spawn failed for "${action.name}": ${msg}`);
+          spawnFailures.set(failKey, priorFails + 1);
+          console.error(`[supervisor] spawn failed for "${action.name}" (${priorFails + 1}/${MAX_SPAWN_RETRIES}): ${msg}`);
           // Fall back to inbox-only dispatch (orchestrator picks it up manually)
           await sendMessage({
             engagementId: opts.engagementId,
