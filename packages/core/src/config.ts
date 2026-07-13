@@ -5,7 +5,8 @@
  *   1. Defaults
  *   2. Global:    ~/.pk/config.toml
  *   3. Workspace: .pk/config.toml  (in project root)
- *   4. Environment variables (PK_*, DATABASE_URL)
+ *   4. Container: /etc/pk/config.toml  (mounted read-only by pk spawn)
+ *   5. Environment variables (PK_*, DATABASE_URL)
  */
 import { parse } from "smol-toml";
 import { readFileSync, existsSync } from "node:fs";
@@ -13,6 +14,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 export interface PkConfig {
+  container: boolean;
   database: {
     url: string;
   };
@@ -47,6 +49,7 @@ export interface PkConfig {
 }
 
 const DEFAULTS: PkConfig = {
+  container: false,
   database: {
     url: "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie",
   },
@@ -134,12 +137,15 @@ export function loadConfig(): PkConfig {
 
   const globalPath = join(homedir(), ".pk", "config.toml");
   const workspacePath = join(process.cwd(), ".pk", "config.toml");
+  const containerPath = "/etc/pk/config.toml";
 
   let merged = structuredClone(DEFAULTS) as unknown as Record<string, unknown>;
   merged = deepMerge(merged, loadToml(globalPath));
   merged = deepMerge(merged, loadToml(workspacePath));
+  merged = deepMerge(merged, loadToml(containerPath));
 
   _config = applyEnvOverrides(merged as unknown as PkConfig);
+  _config.container = process.env.PK_CONTAINER === "1";
   return _config;
 }
 
