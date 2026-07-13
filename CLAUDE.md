@@ -59,6 +59,15 @@ stalls (5 min timeout triggers a freestyle LLM task).
 
 ### The orchestrator's workflow
 
+0. **Pre-flight:** Verify infra is running before doing anything else. The session-start
+   hook handles this automatically, but if you're resuming mid-session or the hook failed,
+   check manually:
+   - `docker ps --format '{{.Names}}' | grep promptkiddie` — postgres, tooling, and
+     attackbox containers must be up. If not: `docker compose up -d`.
+   - `pk engagement list` — confirms DB connectivity. If it errors, check `.env` and
+     postgres.
+   - `pk vpn status` — if the engagement targets are behind a VPN (HTB/THM), verify
+     the tunnel is up before scanning.
 1. **Set up:** Create engagement, add targets, start supervisor.
 2. **Monitor:** Watch the action graph at `/playbook?engagement=<id>` or poll the inbox.
 3. **Handle LLM tasks:** The supervisor sends judgment tasks to the inbox (exploit,
