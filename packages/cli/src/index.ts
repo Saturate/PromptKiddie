@@ -2168,17 +2168,34 @@ program
 // --- search (grep stored exec outputs) -------------------------------------
 program
   .command("search")
-  .description("Search stored exec outputs for a term")
+  .description("Search stored exec outputs or shell-logger tool-log for a term")
   .argument("<term>", "search term")
+  .option("--tool-log", "Search shell-logger output files instead of engagement dir")
+  .option("--cmd <tool>", "Filter by tool name (e.g. nmap, ffuf) when using --tool-log")
   .option("--engagement <id>")
   .action(async (term: string, o) => {
-    const eid = await resolveEngagementId(o.engagement);
-    const eng = await getEngagement(eid);
-    const slug = eng?.slug ?? eid;
-    const dir = `engagements/${slug}`;
     const { execFileSync } = await import("node:child_process");
+
+    let dir: string;
+    let grepArgs: string[];
+
+    if (o.toolLog) {
+      dir = process.env.PK_LOG_DIR
+        ? `${process.env.PK_LOG_DIR}/outputs`
+        : "/workspace/.tool-log/outputs";
+      grepArgs = ["-rn", term];
+      if (o.cmd) grepArgs.push("--include", `${o.cmd}-*`);
+      grepArgs.push(dir);
+    } else {
+      const eid = await resolveEngagementId(o.engagement);
+      const eng = await getEngagement(eid);
+      const slug = eng?.slug ?? eid;
+      dir = `engagements/${slug}`;
+      grepArgs = ["-rn", term, dir];
+    }
+
     try {
-      const result = execFileSync("grep", ["-rn", term, dir], {
+      const result = execFileSync("grep", grepArgs, {
         encoding: "utf-8",
         maxBuffer: 1024 * 1024,
         timeout: 30000,
