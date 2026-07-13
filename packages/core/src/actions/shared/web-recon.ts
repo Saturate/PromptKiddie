@@ -4,6 +4,8 @@ export async function webFingerprint(ctx: RunContext, port: number) {
   const result = await ctx.exec("whatweb", [`http://${ctx.target}:${port}`, "--log-json=-"], { stream: true });
   if (result.code !== 0) {
     await ctx.discover("negative", "web", `whatweb failed on port ${port}: exit ${result.code}`);
+    // Fallback: extract versions from HTTP headers directly
+    await headerVersions(ctx, port);
     return;
   }
   try {
@@ -20,6 +22,28 @@ export async function webFingerprint(ctx: RunContext, port: number) {
     }
   } catch {
     await ctx.discover("positive", "web", `whatweb raw output on port ${port}`, { raw: result.stdout.slice(0, 2000) });
+    await headerVersions(ctx, port);
+  }
+}
+
+async function headerVersions(ctx: RunContext, port: number) {
+  const result = await ctx.exec("curl", ["-sI", `http://${ctx.target}:${port}`]);
+  const headers = result.stdout;
+
+  const server = headers.match(/^Server:\s*(.+)$/mi);
+  if (server) {
+    const m = server[1].trim().match(/^(\S+)\/([\d.]+)/);
+    if (m) {
+      await ctx.emit("VersionIdentified", { product: m[1], version: m[2], source: "http_header", port });
+    }
+  }
+
+  const powered = headers.match(/^X-Powered-By:\s*(.+)$/mi);
+  if (powered) {
+    const m = powered[1].trim().match(/^(\S+)\/([\d.]+)/);
+    if (m) {
+      await ctx.emit("VersionIdentified", { product: m[1], version: m[2], source: "http_header", port });
+    }
   }
 }
 

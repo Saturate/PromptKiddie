@@ -28,13 +28,15 @@ interface RunContextOpts {
   target: string;
   event: EngagementEvent;
   engagement: EngagementState;
+  actionName?: string;
   onReprioritize?: (actionName: string, priority: number) => void;
   onOutput?: (line: string) => void;
   signal?: AbortSignal;
 }
 
 export function createRunContext(opts: RunContextOpts): RunContext {
-  const { engagementId, target, event, engagement, onReprioritize, onOutput, signal } = opts;
+  const { engagementId, target, event, engagement, actionName, onReprioritize, onOutput, signal } = opts;
+  const actorLabel = actionName ?? "supervisor";
 
   return {
     target,
@@ -65,9 +67,9 @@ export function createRunContext(opts: RunContextOpts): RunContext {
             logActivity({
               engagementId,
               phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
-              action: `[supervisor] ${tool} (${durationMs}ms, exit ${code})`,
+              action: `[${actorLabel}] ${tool} (${durationMs}ms, exit ${code})`,
               command: cmdStr,
-              actor: "agent",
+              actor: actorLabel,
             }).catch(() => {});
 
             resolve({ stdout: stdout ?? "", stderr: stderr ?? "", code, durationMs });

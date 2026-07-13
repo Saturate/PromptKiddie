@@ -176,6 +176,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         const ctx = createRunContext({
           engagementId: opts.engagementId,
           target: primaryTarget,
+          actionName: action.name,
           event: {
             id: event.id ?? `evt-${Date.now()}`,
             type: event.type,

@@ -195,6 +195,26 @@ const snmpEnum: Action = {
   },
 };
 
+const imapEnum: Action = {
+  name: "imap_enum",
+  description: "IMAP/POP3 banner grab and capability enumeration",
+  on: (e) => e.type === "PortDiscovered" && ["imap", "pop3", "imaps", "pop3s", "ssl/imap", "ssl/pop3"].includes(e.payload.service as string),
+  emits: ["VersionIdentified"],
+  async run(ctx) {
+    const port = ctx.event.payload.port as number;
+    const result = await ctx.exec("nmap", ["-sV", "--script", "imap-capabilities,pop3-capabilities,banner", "-p", String(port), ctx.target]);
+    const verMatch = result.stdout.match(/Dovecot\s+(\S+)|Cyrus\s+(\S+)|Courier\s+(\S+)|hMailServer\s+(\S+)/i);
+    if (verMatch) {
+      const product = result.stdout.match(/(Dovecot|Cyrus|Courier|hMailServer)/i)?.[1] ?? "imap";
+      const version = verMatch.slice(1).find(Boolean) ?? "";
+      if (version) {
+        await ctx.emit("VersionIdentified", { product, version, source: "imap_banner", port });
+      }
+    }
+    await ctx.discover("positive", "mail", `Mail service enumerated on port ${port}`, { raw: result.stdout.slice(0, 1000) });
+  },
+};
+
 const nfsEnum: Action = {
   name: "nfs_enum",
   description: "NFS share enumeration and file listing",
@@ -378,7 +398,7 @@ export const CTF_PLAYBOOK: Playbook = {
     // Recon
     portScan, udpScan, webRecon, sslHostnames, dirBrute, vhostBrute,
     // Enumeration
-    nucleiScan, smbEnum, ftpEnum, snmpEnum, nfsEnum,
+    nucleiScan, smbEnum, ftpEnum, snmpEnum, nfsEnum, imapEnum,
     cveSearch, sourceCodeAnalysis, defaultCreds,
     webVulnTests, pathTraversalAction,
     // Exploitation
