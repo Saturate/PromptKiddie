@@ -15,6 +15,7 @@ import {
   addDiscovery,
   listTargets,
   getEngagement,
+  listEngagements,
   advancePhase,
   sendMessage,
   type Action,
@@ -46,6 +47,8 @@ interface SupervisorOpts {
   playbook?: Playbook;
   mode?: SupervisorMode;
   maxConcurrent?: number;
+  /** External WS broadcaster (e.g. from the API process). If omitted, creates a standalone WS server. */
+  ws?: WsBroadcaster;
   onEvent?: (event: { type: string; payload: Record<string, unknown> }) => void;
   onActionStart?: (actionName: string) => void;
   onActionEnd?: (actionName: string) => void;
@@ -66,20 +69,44 @@ function resolveAgentImage(action: Action, phase: string): string {
   return PHASE_IMAGES[phase] ?? "pk-agent-attack";
 }
 
-function spawnAgentContainer(engagementId: string, image: string, target: string): Promise<string> {
+async function spawnAgentContainer(engagementId: string, image: string, target: string): Promise<string> {
+  const eng = await getEngagement(engagementId) as { slug: string; name: string; scope?: string; phase?: string } | null;
+  if (!eng) throw new Error(`Engagement ${engagementId} not found`);
+
+  const targets = await listTargets(engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
+  const slug = eng.slug.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const containerName = `pk-agent-${slug}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const dockerArgs = [
+    "run", "-d",
+    "--name", containerName,
+    "--network", "pk-network",
+    "-e", `TARGET=${target}`,
+    "-e", `TARGETS=${targets.filter(t => t.inScope).map(t => t.identifier).join(",")}`,
+    "-e", `ENGAGEMENT_ID=${engagementId}`,
+    "-e", `ENGAGEMENT_SLUG=${eng.slug}`,
+    "-e", `DATABASE_URL=${DATABASE_URL}`,
+    "-e", "PK_CONTAINER=1",
+  ];
+
+  // /etc/hosts entries for target hostnames
+  const SAFE_HOST = /^[a-zA-Z0-9.-]+$/;
+  for (const t of targets.filter(t => t.inScope)) {
+    if (t.notes && SAFE_HOST.test(t.notes)) {
+      dockerArgs.push("--add-host", `${t.notes}:${t.identifier}`);
+    }
+  }
+
+  dockerArgs.push(image);
+
   return new Promise((resolve, reject) => {
-    const args = ["--silent", "pk", "spawn", "agent", "--image", image, "--target", target, "--engagement", engagementId];
-    execFile("pnpm", args, { timeout: 60000 }, (err, stdout, stderr) => {
+    execFile("docker", dockerArgs, { timeout: 60000 }, (err, stdout, stderr) => {
       if (err) {
         reject(new Error(stderr || err.message));
         return;
       }
-      try {
-        const result = JSON.parse(stdout) as { container: string };
-        resolve(result.container);
-      } catch {
-        resolve(stdout.trim());
-      }
+      console.log(`[spawn] container started: ${containerName} (${stdout.trim().slice(0, 12)})`);
+      resolve(containerName);
     });
   });
 }
@@ -111,9 +138,9 @@ export async function startSupervisor(opts: SupervisorOpts) {
     return !action.run && !!action.prompt;
   }
 
-  // WebSocket server for frontend event streaming
-  const wsPort = parseInt(process.env.PK_WS_PORT ?? "3200", 10);
-  const ws: WsBroadcaster = createWsServer(wsPort);
+  // WebSocket: use external broadcaster if provided, otherwise create standalone
+  const ownsWs = !opts.ws;
+  const ws: WsBroadcaster = opts.ws ?? createWsServer(parseInt(process.env.PK_WS_PORT ?? "3201", 10));
 
   // Wrap caller-provided callbacks so they also broadcast over WebSocket
   const origOnEvent = opts.onEvent;
@@ -417,9 +444,15 @@ export async function startSupervisor(opts: SupervisorOpts) {
     }
   });
 
-  // Fire EngagementStarted to kick things off
-  console.log("[supervisor] emitting EngagementStarted");
-  await emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
+  // Fire EngagementStarted only on first run (skip if engagement already has events)
+  const { listEvents } = await import("@promptkiddie/core");
+  const priorEvents = await listEvents(opts.engagementId, { type: "EngagementStarted" });
+  if (priorEvents.length === 0) {
+    console.log("[supervisor] emitting EngagementStarted");
+    await emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
+  } else {
+    console.log("[supervisor] resuming (EngagementStarted already emitted, skipping)");
+  }
 
   resetStallTimer();
 
@@ -427,7 +460,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     closing = true;
     if (stallTimer) clearTimeout(stallTimer);
     for (const [, ac] of activeActions) ac.abort();
-    await ws.close();
+    if (ownsWs) await ws.close();
     await client.end().catch(() => {});
   };
 
@@ -451,7 +484,78 @@ export async function startSupervisor(opts: SupervisorOpts) {
   };
 }
 
-// CLI entry point (only when run directly, not when imported by pk CLI)
+/** Standby mode: one supervisor per active engagement, auto-start/stop on status changes. */
+export interface StandbyOpts {
+  mode?: SupervisorMode;
+  /** External WS broadcaster shared across all supervisor instances. */
+  ws?: WsBroadcaster;
+}
+
+export async function startStandby(opts: StandbyOpts = {}) {
+  const activeSupervisors = new Map<string, { stop: () => Promise<void> }>();
+
+  async function ensureSupervisor(engId: string) {
+    if (activeSupervisors.has(engId)) return;
+    console.log(`[supervisor] starting for engagement ${engId}`);
+    const sup = await startSupervisor({ engagementId: engId, mode: opts.mode, ws: opts.ws });
+    activeSupervisors.set(engId, sup);
+  }
+
+  async function stopSupervisorFor(engId: string) {
+    const sup = activeSupervisors.get(engId);
+    if (!sup) return;
+    console.log(`[supervisor] stopping for engagement ${engId}`);
+    await sup.stop();
+    activeSupervisors.delete(engId);
+  }
+
+  const listener = new Client({ connectionString: DATABASE_URL });
+  await listener.connect();
+  await listener.query("LISTEN pk_events");
+
+  const existing = await listEngagements();
+  const active = existing.filter((e: { status: string }) => e.status === "active");
+  console.log(`[supervisor] standby mode - ${active.length} active engagement(s), listening for new ones...`);
+  for (const eng of active) {
+    await ensureSupervisor(eng.id).catch((err) =>
+      console.error(`[supervisor] failed to resume ${eng.id}:`, err.message));
+  }
+
+  listener.on("notification", async (msg) => {
+    if (msg.channel !== "pk_events" || !msg.payload) return;
+    try {
+      const parsed = JSON.parse(msg.payload) as { id?: string; engagement_id?: string; type?: string };
+      const engId = parsed.engagement_id;
+      if (!engId) return;
+
+      if (parsed.type === "EngagementStarted") {
+        await ensureSupervisor(engId);
+      } else if (parsed.type === "StatusChanged") {
+        const result = await listener.query("SELECT payload FROM events WHERE id = $1", [parsed.id]);
+        const payload = result.rows[0]?.payload as { status?: string } | undefined;
+        if (payload?.status === "active") {
+          await ensureSupervisor(engId);
+        } else if (payload?.status === "paused" || payload?.status === "done") {
+          await stopSupervisorFor(engId);
+        }
+      }
+    } catch {}
+  });
+
+  const shutdown = async () => {
+    console.log("[supervisor] shutting down all instances...");
+    for (const [, sup] of activeSupervisors) await sup.stop();
+    await listener.end().catch(() => {});
+  };
+
+  return {
+    shutdown,
+    get activeCount() { return activeSupervisors.size; },
+    get activeEngagements() { return [...activeSupervisors.keys()]; },
+  };
+}
+
+// CLI entry point (only when run directly, not when imported)
 const isDirectRun = process.argv[1]?.includes("supervisor");
 if (isDirectRun) {
   const standby = process.argv.includes("--standby");
@@ -464,43 +568,13 @@ if (isDirectRun) {
   }
 
   if (standby) {
-    // Standby mode: listen for any engagement, start supervisor instances on demand
-    const activeSupervisors = new Map<string, { stop: () => void }>();
-
-    const listener = new Client({ connectionString: DATABASE_URL });
-    listener.connect().then(async () => {
-      await listener.query("LISTEN pk_events");
-      console.log("[supervisor] standby mode - waiting for engagements...");
-
-      listener.on("notification", async (msg) => {
-        if (msg.channel !== "pk_events" || !msg.payload) return;
-        try {
-          const parsed = JSON.parse(msg.payload) as { id?: string; engagement_id?: string; type?: string };
-          const engId = parsed.engagement_id;
-          if (!engId || activeSupervisors.has(engId)) return;
-
-          // Check if this is an EngagementStarted event
-          if (parsed.type === "EngagementStarted") {
-            console.log(`[supervisor] starting for engagement ${engId}`);
-            const sup = await startSupervisor({ engagementId: engId, mode: cliMode });
-            activeSupervisors.set(engId, sup);
-          }
-        } catch {}
-      });
+    const sharedWs = createWsServer(parseInt(process.env.PK_WS_PORT ?? "3201", 10));
+    startStandby({ mode: cliMode, ws: sharedWs }).then((s) => {
+      process.on("SIGINT", async () => { await s.shutdown(); process.exit(0); });
+      process.on("SIGTERM", async () => { await s.shutdown(); process.exit(0); });
     }).catch((err) => {
-      console.error("[supervisor] standby connect failed:", err);
+      console.error("[supervisor] standby failed:", err);
       process.exit(1);
-    });
-
-    process.on("SIGINT", () => {
-      for (const [, sup] of activeSupervisors) sup.stop();
-      listener.end();
-      process.exit(0);
-    });
-    process.on("SIGTERM", () => {
-      for (const [, sup] of activeSupervisors) sup.stop();
-      listener.end();
-      process.exit(0);
     });
   } else {
     const engagementId = process.argv[2];

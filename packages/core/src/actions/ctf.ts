@@ -78,6 +78,29 @@ const sslHostnames: Action = {
   },
 };
 
+const resolveHostname: Action = {
+  name: "resolve_hostname",
+  description: "Inject discovered hostname into attackbox /etc/hosts so subsequent actions can reach vhosts",
+  on: (e) => e.type === "HostnameFound" && !!e.payload.hostname,
+  async run(ctx) {
+    const hostname = ctx.event.payload.hostname as string;
+    const target = ctx.target;
+    // Validate hostname before injecting
+    if (!/^[a-zA-Z0-9.-]+$/.test(hostname)) {
+      ctx.log(`[resolve_hostname] skipping unsafe hostname: ${hostname}`);
+      return;
+    }
+    // Check if already resolved (idempotent)
+    const check = await ctx.exec("sh", ["-c", `grep -qF '${hostname}' /etc/hosts && echo exists || echo missing`]);
+    if (check.stdout.trim() === "exists") {
+      ctx.log(`[resolve_hostname] ${hostname} already in /etc/hosts`);
+      return;
+    }
+    await ctx.exec("sh", ["-c", `echo '${target} ${hostname}' >> /etc/hosts`]);
+    ctx.log(`[resolve_hostname] added ${hostname} -> ${target}`);
+  },
+};
+
 const dirBrute: Action = {
   name: "dir_brute",
   description: "Directory and file discovery on web services",
@@ -478,7 +501,7 @@ export const CTF_PLAYBOOK: Playbook = {
   description: "Reactive CTF playbook: scan, enumerate per service, exploit, escalate, capture flags.",
   actions: [
     // Recon
-    portScan, udpScan, webRecon, sslHostnames, dirBrute, dirBruteVhost, vhostBrute,
+    portScan, udpScan, webRecon, sslHostnames, resolveHostname, dirBrute, dirBruteVhost, vhostBrute,
     // Enumeration
     nucleiScan, smbEnum, ftpEnum, snmpEnum, nfsEnum, imapEnum,
     cveSearch, sourceCodeAnalysis, defaultCreds,

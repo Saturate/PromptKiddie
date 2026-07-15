@@ -6,6 +6,7 @@
     { "path": "./packages/mcp-server" },
     { "path": "./packages/tooling-mcp" },
     { "path": "./packages/api" },
+    { "path": "./packages/supervisor" },
     { "path": "./packages/init" }
   ]
 }
