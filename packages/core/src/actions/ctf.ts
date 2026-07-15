@@ -1,5 +1,5 @@
 import type { Action, Playbook } from "../sdk.js";
-import { webFingerprint, headerInspect } from "./shared/web-recon.js";
+import { webFingerprint, headerInspect, schemeForPort } from "./shared/web-recon.js";
 import { linuxPrivesc, windowsPrivesc } from "./shared/privesc.js";
 import { crackHashes } from "./shared/cred-cracking.js";
 import { sysinfo, localCreds, internalNet } from "./shared/post-exploit.js";
@@ -56,7 +56,8 @@ const webRecon: Action = {
   emits: ["VersionIdentified", "HostnameFound"],
   async run(ctx) {
     const port = ctx.event.payload.port as number;
-    await Promise.all([webFingerprint(ctx, port), headerInspect(ctx, port)]);
+    const service = ctx.event.payload.service as string | undefined;
+    await Promise.all([webFingerprint(ctx, port, service), headerInspect(ctx, port, service)]);
   },
 };
 
@@ -80,13 +81,15 @@ const sslHostnames: Action = {
 const dirBrute: Action = {
   name: "dir_brute",
   description: "Directory and file discovery on web services",
-  on: (e) => e.type === "PortDiscovered" && ["http", "http-proxy"].includes(e.payload.service as string),
+  on: (e) => e.type === "PortDiscovered" && ["http", "http-proxy", "https", "ssl/http"].includes(e.payload.service as string),
   emits: ["FileDownloaded", "PathDiscovered"],
   async run(ctx) {
     const port = ctx.event.payload.port as number;
+    const service = ctx.event.payload.service as string | undefined;
+    const scheme = schemeForPort(port, service);
     const outFile = `/tmp/ffuf-dirs-${port}-${Date.now()}.json`;
     const result = await ctx.exec("ffuf", [
-      "-u", `http://${ctx.target}:${port}/FUZZ`,
+      "-u", `${scheme}://${ctx.target}:${port}/FUZZ`,
       "-w", "/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt",
       "-mc", "all", "-fc", "404", "-t", "50", "-timeout", "10",
       "-o", outFile, "-of", "json",
@@ -101,6 +104,37 @@ const dirBrute: Action = {
         if (!data.results?.length) await ctx.discover("negative", "web", `ffuf: 0 directories on port ${port}`);
       } catch {
         await ctx.discover("negative", "web", `ffuf output parse failed on port ${port}`);
+      }
+    }
+  },
+};
+
+const dirBruteVhost: Action = {
+  name: "dir_brute_vhost",
+  description: "Re-run directory brute-force using a discovered hostname (vhost content often differs)",
+  on: (e) => e.type === "HostnameFound" && e.payload.port != null,
+  emits: ["PathDiscovered"],
+  async run(ctx) {
+    const hostname = ctx.event.payload.hostname as string;
+    const port = ctx.event.payload.port as number;
+    const scheme = schemeForPort(port);
+    const outFile = `/tmp/ffuf-vhost-${hostname}-${port}-${Date.now()}.json`;
+    const result = await ctx.exec("ffuf", [
+      "-u", `${scheme}://${hostname}:${port}/FUZZ`,
+      "-w", "/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt",
+      "-mc", "all", "-fc", "404", "-t", "50", "-timeout", "10",
+      "-o", outFile, "-of", "json",
+    ], { stream: true });
+    if (result.code === 0) {
+      try {
+        const content = await ctx.readFile(outFile);
+        const data = JSON.parse(content) as { results?: Array<{ url: string; status: number; length: number }> };
+        for (const p of data.results ?? []) {
+          await ctx.emit("PathDiscovered", { url: p.url, status: p.status, size: p.length });
+        }
+        if (!data.results?.length) await ctx.discover("negative", "web", `ffuf: 0 directories on ${hostname}:${port}`);
+      } catch {
+        await ctx.discover("negative", "web", `ffuf output parse failed on ${hostname}:${port}`);
       }
     }
   },
@@ -407,6 +441,27 @@ const lateralMovement: Action = {
   llm: { agent: "exploit-agent", session: "fresh" },
 };
 
+const exploitAvailable: Action = {
+  name: "exploit_from_cve",
+  description: "Auto-create a finding when a CVE match is found in the exploit index",
+  on: (e) => e.type === "ExploitAvailable",
+  emits: ["FindingAdded"],
+  async run(ctx) {
+    const { cve, product, cvss, pocPath } = ctx.event.payload;
+    const score = cvss as number ?? 0;
+    const severity = score >= 9.0 ? "critical" : score >= 7.0 ? "high" : score >= 4.0 ? "medium" : "low";
+    await ctx.emit("FindingAdded", {
+      title: `${cve} - ${product}`,
+      severity,
+      cvss: score,
+      cve: cve as string,
+      description: `Exploit index match: ${cve} for ${product} (CVSS ${score}). PoC at ${pocPath ?? "N/A"}.`,
+      status: "triage",
+    });
+    await ctx.discover("positive", "cve", `CVE match: ${cve} for ${product} (${severity}, CVSS ${score})`);
+  },
+};
+
 /** @module Fallback */
 
 const stallDetection: Action = {
@@ -423,13 +478,13 @@ export const CTF_PLAYBOOK: Playbook = {
   description: "Reactive CTF playbook: scan, enumerate per service, exploit, escalate, capture flags.",
   actions: [
     // Recon
-    portScan, udpScan, webRecon, sslHostnames, dirBrute, vhostBrute,
+    portScan, udpScan, webRecon, sslHostnames, dirBrute, dirBruteVhost, vhostBrute,
     // Enumeration
     nucleiScan, smbEnum, ftpEnum, snmpEnum, nfsEnum, imapEnum,
     cveSearch, sourceCodeAnalysis, defaultCreds,
     webVulnTests, pathTraversalAction,
     // Exploitation
-    exploit,
+    exploitAvailable, exploit,
     // Post-exploitation
     postExploitEnum, privesc, credCrack, flagCapture,
     // Fallback

@@ -1,4 +1,4 @@
-export { webFingerprint, wafDetect, headerInspect } from "./web-recon.js";
+export { webFingerprint, wafDetect, headerInspect, schemeForPort } from "./web-recon.js";
 export { linuxPrivesc, windowsPrivesc } from "./privesc.js";
 export { crackHashes, passwordSpray } from "./cred-cracking.js";
 export { sysinfo, localCreds, internalNet } from "./post-exploit.js";

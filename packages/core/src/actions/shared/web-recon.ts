@@ -1,11 +1,20 @@
 import type { RunContext } from "../../sdk.js";
 
-export async function webFingerprint(ctx: RunContext, port: number) {
-  const result = await ctx.exec("whatweb", [`http://${ctx.target}:${port}`, "--log-json=-"], { stream: true });
+const TLS_PORTS = new Set([443, 8443, 9443]);
+
+export function schemeForPort(port: number, service?: string): "http" | "https" {
+  if (service === "https" || service === "ssl/http") return "https";
+  if (TLS_PORTS.has(port)) return "https";
+  return "http";
+}
+
+export async function webFingerprint(ctx: RunContext, port: number, service?: string) {
+  const scheme = schemeForPort(port, service);
+  const result = await ctx.exec("whatweb", [`${scheme}://${ctx.target}:${port}`, "--log-json=-"], { stream: true });
   if (result.code !== 0) {
     await ctx.discover("negative", "web", `whatweb failed on port ${port}: exit ${result.code}`);
     // Fallback: extract versions from HTTP headers directly
-    await headerVersions(ctx, port);
+    await headerVersions(ctx, port, service);
     return;
   }
   try {
@@ -22,12 +31,13 @@ export async function webFingerprint(ctx: RunContext, port: number) {
     }
   } catch {
     await ctx.discover("positive", "web", `whatweb raw output on port ${port}`, { raw: result.stdout.slice(0, 2000) });
-    await headerVersions(ctx, port);
+    await headerVersions(ctx, port, service);
   }
 }
 
-async function headerVersions(ctx: RunContext, port: number) {
-  const result = await ctx.exec("curl", ["-sI", `http://${ctx.target}:${port}`]);
+async function headerVersions(ctx: RunContext, port: number, service?: string) {
+  const scheme = schemeForPort(port, service);
+  const result = await ctx.exec("curl", ["-skI", `${scheme}://${ctx.target}:${port}`]);
   const headers = result.stdout;
 
   const server = headers.match(/^Server:\s*(.+)$/mi);
@@ -47,8 +57,9 @@ async function headerVersions(ctx: RunContext, port: number) {
   }
 }
 
-export async function wafDetect(ctx: RunContext, port: number) {
-  const result = await ctx.exec("wafw00f", [`http://${ctx.target}:${port}`]);
+export async function wafDetect(ctx: RunContext, port: number, service?: string) {
+  const scheme = schemeForPort(port, service);
+  const result = await ctx.exec("wafw00f", [`${scheme}://${ctx.target}:${port}`]);
   if (result.stdout.includes("is behind")) {
     const match = result.stdout.match(/is behind\s+(.+)/);
     if (match) {
@@ -57,8 +68,9 @@ export async function wafDetect(ctx: RunContext, port: number) {
   }
 }
 
-export async function headerInspect(ctx: RunContext, port: number) {
-  const result = await ctx.exec("curl", ["-sI", `http://${ctx.target}:${port}`]);
+export async function headerInspect(ctx: RunContext, port: number, service?: string) {
+  const scheme = schemeForPort(port, service);
+  const result = await ctx.exec("curl", ["-skI", `${scheme}://${ctx.target}:${port}`]);
   const headers = result.stdout;
   const redirect = headers.match(/^Location:\s*(.+)$/mi);
   if (redirect) {
