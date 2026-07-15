@@ -69,6 +69,38 @@ function resolveAgentImage(action: Action, phase: string): string {
   return PHASE_IMAGES[phase] ?? "pk-agent-attack";
 }
 
+async function waitForCartridge(containerName: string, timeoutMs = 30000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const result = await new Promise<string>((resolve, reject) => {
+        execFile("docker", ["exec", containerName, "curl", "-sf", "http://localhost:4500/api/health"],
+          { timeout: 3000 }, (err, stdout) => err ? reject(err) : resolve(stdout));
+      });
+      if (result.includes("ok")) return;
+    } catch {}
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  throw new Error(`Cartridge API not ready on ${containerName} after ${timeoutMs}ms`);
+}
+
+async function startCartridgeAgent(containerName: string, prompt: string, provider = "claude", model?: string): Promise<string> {
+  const body: Record<string, unknown> = { provider, prompt, timeout: 3600 };
+  if (model) body.options = { model };
+
+  const result = await new Promise<string>((resolve, reject) => {
+    execFile("docker", [
+      "exec", containerName, "curl", "-sf",
+      "-X", "POST", "http://localhost:4500/api/agents",
+      "-H", "Content-Type: application/json",
+      "-d", JSON.stringify(body),
+    ], { timeout: 10000 }, (err, stdout) => err ? reject(err) : resolve(stdout));
+  });
+
+  const parsed = JSON.parse(result) as { id: string };
+  return parsed.id;
+}
+
 async function spawnAgentContainer(engagementId: string, image: string, target: string): Promise<string> {
   const eng = await getEngagement(engagementId) as { slug: string; name: string; scope?: string; phase?: string } | null;
   if (!eng) throw new Error(`Engagement ${engagementId} not found`);
@@ -254,15 +286,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         const priorFails = spawnFailures.get(failKey) ?? 0;
 
         if (priorFails >= MAX_SPAWN_RETRIES) {
-          console.log(`[supervisor] skipping "${action.name}" (spawn failed ${priorFails}x for ${agentImage}, sending to inbox only)`);
-          const interpolated = action.prompt.replace(/\{(\w+)\}/g, (_: string, key: string) =>
-            String(event.payload[key] ?? `{${key}}`));
-          await sendMessage({
-            engagementId: opts.engagementId,
-            direction: "inbound",
-            author: "supervisor",
-            body: `[agent-task:${action.name}] (image ${agentImage} unavailable)\n\n${interpolated}`,
-          });
+          console.log(`[supervisor] skipping "${action.name}" (spawn failed ${priorFails}x for ${agentImage})`);
           return;
         }
 
@@ -286,38 +310,30 @@ export async function startSupervisor(opts: SupervisorOpts) {
           const containerName = await spawnAgentContainer(opts.engagementId, agentImage, primaryTarget);
           console.log(`[supervisor] spawned: ${containerName}`);
 
-          // Send the prompt to the inbox so the agent picks it up
-          await sendMessage({
-            engagementId: opts.engagementId,
-            direction: "inbound",
-            author: "supervisor",
-            body: `[agent-task:${action.name}]\n\n${interpolated}`,
-          });
+          // Wait for Cartridge API, then start agent with prompt
+          const provider = process.env.PK_HARNESS ?? "claude";
+          const model = process.env.PK_MODEL || undefined;
+          await waitForCartridge(containerName);
+          const agentId = await startCartridgeAgent(containerName, interpolated, provider, model);
+          console.log(`[supervisor] agent started: ${containerName} (${agentId})`);
 
           await addDiscovery({
             engagementId: opts.engagementId,
             type: "attempted",
             category: "agent",
-            summary: `Agent "${action.name}" spawned as ${containerName} (${agentImage})`,
+            summary: `Agent "${action.name}" started as ${containerName} (${agentImage}, ${agentId})`,
           });
 
-          ws.sendEvent({ type: "AgentSpawned", payload: { action: action.name, container: containerName, image: agentImage } });
+          ws.sendEvent({ type: "AgentSpawned", payload: { action: action.name, container: containerName, image: agentImage, agentId } });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           spawnFailures.set(failKey, priorFails + 1);
           console.error(`[supervisor] spawn failed for "${action.name}" (${priorFails + 1}/${MAX_SPAWN_RETRIES}): ${msg}`);
-          // Fall back to inbox-only dispatch (orchestrator picks it up manually)
-          await sendMessage({
-            engagementId: opts.engagementId,
-            direction: "inbound",
-            author: "supervisor",
-            body: `[agent-task:${action.name}] (spawn failed: ${msg})\n\n${interpolated}`,
-          });
           await addDiscovery({
             engagementId: opts.engagementId,
             type: "negative",
             category: "agent",
-            summary: `Agent spawn failed for "${action.name}": ${msg}. Task sent to inbox.`,
+            summary: `Agent spawn failed for "${action.name}": ${msg}`,
           });
         }
       }
