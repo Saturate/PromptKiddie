@@ -38,4 +38,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # pk config directory (mounted at runtime)
 RUN mkdir -p /etc/pk /workspace/.tool-log
 
+# PK entrypoint: starts supervisor in standby, then delegates to Cartridge
+COPY packages/containers/orchestrator/entrypoint.sh /usr/local/bin/pk-entrypoint
+RUN chmod +x /usr/local/bin/pk-entrypoint
+
 WORKDIR /workspace
+ENTRYPOINT ["pk-entrypoint"]

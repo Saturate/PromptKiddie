@@ -454,12 +454,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
 // CLI entry point (only when run directly, not when imported by pk CLI)
 const isDirectRun = process.argv[1]?.includes("supervisor");
 if (isDirectRun) {
-  const engagementId = process.argv[2];
-  if (!engagementId) {
-    console.error("Usage: pk supervisor start <engagement-id> [--mode race|standard|methodical|learning]");
-    process.exit(1);
-  }
-
+  const standby = process.argv.includes("--standby");
   const modeArgIdx = process.argv.indexOf("--mode");
   const cliMode = modeArgIdx >= 0 ? (process.argv[modeArgIdx + 1] as SupervisorMode | undefined) : undefined;
   const validModes: SupervisorMode[] = ["race", "standard", "methodical", "learning"];
@@ -468,8 +463,56 @@ if (isDirectRun) {
     process.exit(1);
   }
 
-  startSupervisor({ engagementId, mode: cliMode }).catch((err) => {
-    console.error("[supervisor] fatal:", err);
-    process.exit(1);
-  });
+  if (standby) {
+    // Standby mode: listen for any engagement, start supervisor instances on demand
+    const activeSupervisors = new Map<string, { stop: () => void }>();
+
+    const listener = new Client({ connectionString: DATABASE_URL });
+    listener.connect().then(async () => {
+      await listener.query("LISTEN pk_events");
+      console.log("[supervisor] standby mode - waiting for engagements...");
+
+      listener.on("notification", async (msg) => {
+        if (msg.channel !== "pk_events" || !msg.payload) return;
+        try {
+          const parsed = JSON.parse(msg.payload) as { id?: string; engagement_id?: string; type?: string };
+          const engId = parsed.engagement_id;
+          if (!engId || activeSupervisors.has(engId)) return;
+
+          // Check if this is an EngagementStarted event
+          if (parsed.type === "EngagementStarted") {
+            console.log(`[supervisor] starting for engagement ${engId}`);
+            const sup = await startSupervisor({ engagementId: engId, mode: cliMode });
+            activeSupervisors.set(engId, sup);
+          }
+        } catch {}
+      });
+    }).catch((err) => {
+      console.error("[supervisor] standby connect failed:", err);
+      process.exit(1);
+    });
+
+    process.on("SIGINT", () => {
+      for (const [, sup] of activeSupervisors) sup.stop();
+      listener.end();
+      process.exit(0);
+    });
+    process.on("SIGTERM", () => {
+      for (const [, sup] of activeSupervisors) sup.stop();
+      listener.end();
+      process.exit(0);
+    });
+  } else {
+    const engagementId = process.argv[2];
+    if (!engagementId) {
+      console.error("Usage: pk supervisor <engagement-id> [--mode race|standard|methodical|learning]");
+      console.error("       pk supervisor --standby [--mode ...]");
+      process.exit(1);
+    }
+
+    startSupervisor({ engagementId, mode: cliMode }).catch((err) => {
+      console.error("[supervisor] fatal:", err);
+      process.exit(1);
+    });
+  }
 }

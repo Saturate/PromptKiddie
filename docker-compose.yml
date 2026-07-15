@@ -148,6 +148,30 @@ services:
     networks:
       - pk-network
 
+  # Orchestrator (Cartridge + pk CLI + supervisor in standby)
+  orchestrator:
+    build:
+      context: .
+      dockerfile: packages/containers/orchestrator/Dockerfile
+    container_name: pk-orchestrator
+    profiles: ["hosted"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${PK_SSH_PORT:-2222}:22"
+      - "${PK_TTYD_PORT:-7681}:7681"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@pk-db:5432/${POSTGRES_DB:-promptkiddie}
+      PK_CONTAINER: "1"
+    volumes:
+      - ./engagements:/workspace/engagements
+      - ./vpn:/vpn:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - pk-network
+
   # --- Test targets (optional) ---
   dvwa:
     image: vulnerables/web-dvwa
