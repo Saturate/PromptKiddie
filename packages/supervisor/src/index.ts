@@ -89,6 +89,11 @@ async function spawnAgentContainer(engagementId: string, image: string, target: 
     "-e", "PK_CONTAINER=1",
   ];
 
+  // Forward provider keys so the harness can authenticate
+  for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "PK_HARNESS", "PK_MODEL"]) {
+    if (process.env[key]) dockerArgs.push("-e", `${key}=${process.env[key]}`);
+  }
+
   // /etc/hosts entries for target hostnames
   const SAFE_HOST = /^[a-zA-Z0-9.-]+$/;
   for (const t of targets.filter(t => t.inScope)) {

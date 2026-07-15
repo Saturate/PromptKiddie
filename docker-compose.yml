@@ -115,6 +115,10 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@pk-db:5432/${POSTGRES_DB:-promptkiddie}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PK_HARNESS: ${PK_HARNESS:-claude}
+      PK_MODEL: ${PK_MODEL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./engagements:/workspace/engagements
