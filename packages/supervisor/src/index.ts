@@ -89,10 +89,22 @@ async function spawnAgentContainer(engagementId: string, image: string, target: 
     "-e", "PK_CONTAINER=1",
   ];
 
-  // Forward provider keys so the harness can authenticate
-  for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "PK_HARNESS", "PK_MODEL"]) {
-    if (process.env[key]) dockerArgs.push("-e", `${key}=${process.env[key]}`);
-  }
+  // Write cartridge.toml so the harness inside the container can authenticate
+  const { writeFileSync, mkdirSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const configDir = "/tmp/pk-agent-configs";
+  mkdirSync(configDir, { recursive: true });
+  const tomlPath = join(configDir, `${containerName}.toml`);
+  const tomlLines = ["[providers]"];
+  if (process.env.ANTHROPIC_API_KEY) tomlLines.push(`anthropic_api_key = "${process.env.ANTHROPIC_API_KEY}"`);
+  if (process.env.OPENAI_API_KEY) tomlLines.push(`openai_api_key = "${process.env.OPENAI_API_KEY}"`);
+  writeFileSync(tomlPath, tomlLines.join("\n") + "\n", { mode: 0o600 });
+  dockerArgs.push("-v", `${tomlPath}:/etc/cartridge/config.toml:ro`);
+
+  // Harness selection
+  const harness = process.env.PK_HARNESS ?? "claude";
+  dockerArgs.push("-e", `PK_HARNESS=${harness}`);
+  if (process.env.PK_MODEL) dockerArgs.push("-e", `PK_MODEL=${process.env.PK_MODEL}`);
 
   // /etc/hosts entries for target hostnames
   const SAFE_HOST = /^[a-zA-Z0-9.-]+$/;
