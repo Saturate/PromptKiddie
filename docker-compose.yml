@@ -121,7 +121,7 @@ services:
     networks:
       - pk-network
 
-  # --- App services (optional, for hosted/frontend use) ---
+  # --- App services ---
   web:
     build:
       context: .
@@ -129,7 +129,6 @@ services:
       target: web
     container_name: pk-web
     restart: unless-stopped
-    profiles: ["hosted"]
     depends_on:
       postgres:
         condition: service_healthy
