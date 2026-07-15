@@ -1096,22 +1096,31 @@ vpn
           console.error("[vpn] Warning: could not configure VM forwarding");
         }
 
-        // Add host routes
+        // Add host routes (best-effort, containers route through VM natively)
         const isMac = process.platform === "darwin";
-        let routesNeeded = false;
+        let routesAdded = 0;
+        let routesFailed = false;
         for (const subnet of VPN_SUBNETS) {
           try {
             if (isMac) {
-              exec("sudo", ["route", "-n", "add", "-net", subnet, colima.vmIP!], { timeout: 15000, stdio: "inherit" });
+              exec("sudo", ["route", "-n", "add", "-net", subnet, colima.vmIP!], { timeout: 5000, stdio: "pipe" });
             } else {
-              exec("sudo", ["ip", "route", "add", subnet, "via", colima.vmIP!], { timeout: 15000, stdio: "inherit" });
+              exec("sudo", ["ip", "route", "add", subnet, "via", colima.vmIP!], { timeout: 5000, stdio: "pipe" });
             }
-            routesNeeded = true;
-          } catch {}
+            routesAdded++;
+          } catch (e: any) {
+            if (e.message?.includes("password") || e.message?.includes("sudo") || e.status === 1) {
+              routesFailed = true;
+            }
+          }
         }
 
-        if (routesNeeded) {
+        if (routesAdded > 0) {
           console.error(`[vpn] Host routes -> ${colima.vmIP} (transparent from host)`);
+        } else if (routesFailed) {
+          console.error(`[vpn] Host routes skipped (sudo not available). Containers route through VM natively.`);
+          console.error(`[vpn] For host access, run: sudo route -n add -net 10.129.0.0/16 ${colima.vmIP}`);
+          console.error(`[vpn] Or once: echo "$USER ALL=(ALL) NOPASSWD: /sbin/route" | sudo tee /etc/sudoers.d/pk-routes`);
         } else {
           console.error(`[vpn] Host routes already configured (${colima.vmIP})`);
         }
