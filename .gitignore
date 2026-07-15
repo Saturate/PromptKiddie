@@ -47,3 +47,5 @@ vpn/
 engagements/*/
 .pk/config.toml
 vpn/*.ovpn
+pk-bin
+tmp/
