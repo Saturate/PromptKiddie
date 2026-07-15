@@ -133,6 +133,11 @@ async function spawnAgentContainer(engagementId: string, image: string, target: 
   writeFileSync(tomlPath, tomlLines.join("\n") + "\n", { mode: 0o600 });
   dockerArgs.push("-v", `${tomlPath}:/etc/cartridge/config.toml:ro`);
 
+  // Forward auth tokens
+  for (const key of ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) {
+    if (process.env[key]) dockerArgs.push("-e", `${key}=${process.env[key]}`);
+  }
+
   // Harness selection
   const harness = process.env.PK_HARNESS ?? "claude";
   dockerArgs.push("-e", `PK_HARNESS=${harness}`);

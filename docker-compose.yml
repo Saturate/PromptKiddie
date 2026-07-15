@@ -117,6 +117,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@pk-db:5432/${POSTGRES_DB:-promptkiddie}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       PK_HARNESS: ${PK_HARNESS:-claude}
       PK_MODEL: ${PK_MODEL:-}
     volumes:
