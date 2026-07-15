@@ -179,6 +179,8 @@ export async function startSupervisor(opts: SupervisorOpts) {
   const pendingLlmTasks: PendingLlmTask[] = [];
   const spawnFailures = new Map<string, number>();
   const MAX_SPAWN_RETRIES = 2;
+  const MAX_STALL_AGENTS = 2;
+  let stallAgentCount = 0;
 
   // Track current phase for advancement logic
   let currentPhase = "scoping";
@@ -233,7 +235,12 @@ export async function startSupervisor(opts: SupervisorOpts) {
   function resetStallTimer() {
     if (stallTimer) clearTimeout(stallTimer);
     stallTimer = setTimeout(() => {
-      console.log("[supervisor] stall detected, emitting StallDetected");
+      if (stallAgentCount >= MAX_STALL_AGENTS) {
+        console.log(`[supervisor] stall detected but ${stallAgentCount}/${MAX_STALL_AGENTS} stall agents already spawned, skipping`);
+        return;
+      }
+      stallAgentCount++;
+      console.log(`[supervisor] stall detected (${stallAgentCount}/${MAX_STALL_AGENTS}), emitting StallDetected`);
       emitEvent(opts.engagementId, "StallDetected", { minutes: 5 }, "supervisor").catch(
         (err) => console.error("[supervisor] stall event emit failed:", err),
       );
