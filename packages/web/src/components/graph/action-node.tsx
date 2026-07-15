@@ -2,6 +2,8 @@
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 
+export type CoverageStatus = "pass" | "fail" | "untested" | undefined;
+
 export interface ActionNodeData {
   name: string;
   description?: string;
@@ -9,6 +11,7 @@ export interface ActionNodeData {
   emits: string[];
   running: number;
   eventCount: number;
+  coverage?: CoverageStatus;
 }
 
 const KIND_BADGE: Record<string, { label: string; color: string }> = {
@@ -35,9 +38,15 @@ export function ActionNode({ data }: NodeProps) {
     );
   }
 
+  const coverageBorder = !isRunning && d.coverage === "pass"
+    ? "border-emerald-500/40 bg-card"
+    : !isRunning && d.coverage === "fail"
+    ? "border-red-500/40 bg-card"
+    : null;
+
   const borderStyle = isRunning
     ? "border-pk-amber bg-pk-amber/5 shadow-[0_0_12px_rgba(232,160,64,0.15)]"
-    : "border-border bg-card";
+    : coverageBorder ?? "border-border bg-card";
 
   // Truncate description to ~60 chars
   const desc = d.description
@@ -52,6 +61,16 @@ export function ActionNode({ data }: NodeProps) {
       <Handle type="target" position={Position.Left} id="left" className="pk-handle" />
 
       <div className="flex items-center gap-1.5 mb-1">
+        {d.coverage && (
+          <span
+            className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+              d.coverage === "pass" ? "bg-emerald-400" :
+              d.coverage === "fail" ? "bg-red-400" :
+              "bg-muted-foreground/30"
+            }`}
+            title={d.coverage === "pass" ? "Tests passing" : d.coverage === "fail" ? "Tests failing" : "No tests"}
+          />
+        )}
         <span className="text-[10px] text-foreground font-semibold truncate">{d.name}</span>
         {isRunning && (
           <span className="ml-auto flex items-center gap-1">

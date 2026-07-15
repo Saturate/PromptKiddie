@@ -356,9 +356,25 @@ export interface Playbook {
   actions: Action[];
 }
 
+/** A mock exec result with optional delay and failure behavior. */
+export interface MockExecEntry extends ExecResult {
+  /** Simulated delay in ms before returning. Scaled by {@link MockContextOpts.timeScale}. */
+  delay?: number;
+  /** If true, the exec call throws an Error instead of returning. */
+  throws?: boolean;
+}
+
 /** Map of tool name or full command to mock exec result, for testing. */
 export interface MockExecMap {
-  [command: string]: ExecResult;
+  [command: string]: MockExecEntry;
+}
+
+/** A recorded exec call for test assertions. */
+export interface ExecCall {
+  tool: string;
+  args: string[];
+  opts?: ExecOpts;
+  timestamp: number;
 }
 
 /** Options for {@link createMockContext}. */
@@ -368,6 +384,13 @@ export interface MockContextOpts {
   engagement?: Partial<EngagementState>;
   /** Pre-configured exec results. Keyed by tool name or full command string. */
   execResults?: MockExecMap;
+  /**
+   * Time scale factor for mock delays.
+   * - `0` (default): all delays resolve instantly
+   * - `1`: real-time delays (use for timing tests)
+   * - `0.01`: 100x faster (1s delay becomes 10ms)
+   */
+  timeScale?: number;
 }
 
 /**
@@ -389,6 +412,10 @@ export interface MockContext extends RunContext {
   llmCalls: Array<{ task: string; opts?: LlmOpts }>;
   /** Files read via {@link RunContext.readFile}. */
   filesRead: string[];
+  /** Every exec() call with tool, args, opts, and timestamp. */
+  execCalls: ExecCall[];
+  /** The exec results map (mutable, so tests can update mid-run). */
+  execResults: MockExecMap;
 }
 
 /**
@@ -416,6 +443,9 @@ export function createMockContext(opts: MockContextOpts = {}): MockContext {
   const reprioritized: MockContext["reprioritized"] = [];
   const llmCalls: MockContext["llmCalls"] = [];
   const filesRead: string[] = [];
+  const execCalls: ExecCall[] = [];
+  const execResults: MockExecMap = { ...opts.execResults };
+  const timeScale = opts.timeScale ?? 0;
 
   const event: EngagementEvent = {
     id: "mock-event-id",
@@ -448,12 +478,28 @@ export function createMockContext(opts: MockContextOpts = {}): MockContext {
     reprioritized,
     llmCalls,
     filesRead,
+    execCalls,
+    execResults,
 
-    async exec(tool, args, _opts) {
+    async exec(tool, args, execOpts) {
+      const call: ExecCall = { tool, args: [...args], opts: execOpts, timestamp: Date.now() };
+      execCalls.push(call);
+
       const cmd = `${tool} ${args.join(" ")}`;
-      const match = opts.execResults?.[tool] ?? opts.execResults?.[cmd];
-      if (match) return match;
-      return { stdout: "", stderr: `mock: ${cmd} not configured`, code: 1, durationMs: 0 };
+      const match = execResults[tool] ?? execResults[cmd];
+      if (!match) {
+        return { stdout: "", stderr: `mock: ${cmd} not configured`, code: 1, durationMs: 0 };
+      }
+
+      if (match.delay && timeScale > 0) {
+        await new Promise((r) => setTimeout(r, match.delay! * timeScale));
+      }
+
+      if (match.throws) {
+        throw new Error(`mock exec failed: ${cmd}`);
+      }
+
+      return { stdout: match.stdout, stderr: match.stderr, code: match.code, durationMs: match.durationMs };
     },
 
     async emit(type, payload) {

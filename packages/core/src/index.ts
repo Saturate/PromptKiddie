@@ -43,14 +43,17 @@ export {
   type ExecOpts,
   type LlmRunner,
   type MockContext,
+  type MockExecEntry,
+  type MockExecMap,
+  type ExecCall,
+  type MockContextOpts,
   type ExploitHit,
   type LlmOpts,
   createMockContext,
 } from "./sdk.js";
 export { CTF_PLAYBOOK as CTF_ACTIONS } from "./actions/index.js";
 export { PENTEST_PLAYBOOK, runPhasedPentest } from "./actions/index.js";
-export { buildActionGraph, actionGraphToMermaid, simulateGraph, type ActionGraph, type ActionNode, type ActionEdge, type SimulationStep } from "./action-graph.js";
-export { DEMO_EVENTS } from "./demo-events.js";
+export { buildActionGraph, actionGraphToMermaid, type ActionGraph, type ActionNode, type ActionEdge } from "./action-graph.js";
 export {
   webFingerprint, headerInspect, wafDetect,
   linuxPrivesc, windowsPrivesc,

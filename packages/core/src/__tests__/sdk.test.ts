@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { createMockContext, simulateGraph, buildActionGraph } from "../index.js";
+import { createMockContext, buildActionGraph } from "../index.js";
+import { simulateGraph } from "../action-graph.js";
 import { CTF_PLAYBOOK } from "../actions/ctf.js";
 import { DEMO_EVENTS } from "../demo-events.js";
 

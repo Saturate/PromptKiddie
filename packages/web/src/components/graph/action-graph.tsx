@@ -10,21 +10,18 @@ import {
   BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ActionNode, type ActionNodeData } from "./action-node";
+import { ActionNode, type ActionNodeData, type CoverageStatus } from "./action-node";
 import { layoutGraph } from "./layout";
 import { useCallback, useMemo } from "react";
-import type { ActionGraph, ActionEdge, ActionNode as ActionNodeType } from "@promptkiddie/core";
-
-interface ActionNodeWithState extends ActionNodeType {
-  running: number;
-  eventCount: number;
-}
+import type { ActionGraph, ActionEdge } from "@promptkiddie/core";
+import type { ActionNodeWithState } from "@/hooks/graph-helpers";
 
 interface ActionGraphProps {
   graph: ActionGraph & { nodes: ActionNodeWithState[] };
   activeNodes?: Set<string>;
   doneNodes?: Set<string>;
   activeEdges?: Set<string>;
+  coverage?: Record<string, CoverageStatus>;
   onNodeClick?: (nodeId: string, data: ActionNodeData) => void;
   className?: string;
 }
@@ -36,6 +33,7 @@ function buildFlowGraph(
   activeNodes?: Set<string>,
   doneNodes?: Set<string>,
   activeEdges?: Set<string>,
+  coverage?: Record<string, CoverageStatus>,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = graph.nodes.map((n) => ({
     id: n.id,
@@ -48,6 +46,7 @@ function buildFlowGraph(
       emits: n.emits,
       running: activeNodes?.has(n.id) ? Math.max(n.running, 1) : n.running,
       eventCount: n.eventCount,
+      coverage: coverage?.[n.name],
     } satisfies ActionNodeData,
   }));
 
@@ -73,10 +72,10 @@ function buildFlowGraph(
   return layoutGraph(nodes, edges, "TB");
 }
 
-export function ActionGraphView({ graph, activeNodes, doneNodes, activeEdges, onNodeClick, className }: ActionGraphProps) {
+export function ActionGraphView({ graph, activeNodes, doneNodes, activeEdges, coverage, onNodeClick, className }: ActionGraphProps) {
   const { nodes, edges } = useMemo(
-    () => buildFlowGraph(graph, activeNodes, doneNodes, activeEdges),
-    [graph, activeNodes, doneNodes, activeEdges],
+    () => buildFlowGraph(graph, activeNodes, doneNodes, activeEdges, coverage),
+    [graph, activeNodes, doneNodes, activeEdges, coverage],
   );
 
   const handleNodeClick: NodeMouseHandler = useCallback((_event, node) => {

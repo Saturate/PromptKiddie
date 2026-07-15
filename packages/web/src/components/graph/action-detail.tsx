@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/sheet";
 import { ActionTerminal } from "./action-terminal";
 import type { ActionNodeData } from "./action-node";
-import type { LiveEvent, LiveOutputLine } from "@/hooks/use-live-mode";
+import type { LiveEvent, LiveOutputLine } from "@/hooks/graph-helpers";
 import { Radio } from "lucide-react";
 
 const KIND_BADGE: Record<string, { label: string; color: string }> = {
