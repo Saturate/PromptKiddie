@@ -14,14 +14,14 @@
 </p>
 
 <p align="center">
-    You can work from the web interface, or directly in your favorite harness, or the CLI if your that kind of kiddo. Script our own playbooks with the provided SDK. 
+    You can work from the web interface, directly in your favorite harness, or the CLI if you're that kind of kiddo. Script your own playbooks with the provided SDK.
 </p>
 
 ---
 
 **Key features:**
 
-- **Event-driven playbooks.** Write playbooks that reacts on events, trigger a automated portscan on engagement start, and act on the findings programaticlly or delegate to an agent.
+- **Event-driven playbooks.** Write playbooks that react to events, trigger an automated portscan on engagement start, and act on the findings programmatically or delegate to an agent.
 - **Judgment stays with the LLM, mechanics don't.** Port scanning, fingerprinting,
   and directory brute-forcing are scripted actions. The LLM only gets called for
   decisions that need reasoning: exploit selection, source code analysis, privesc
@@ -35,40 +35,38 @@
 ## Quick start
 
 ```bash
-cp .env.example .env          # set DATABASE_URL
-pnpm install && pnpm build
-docker compose up -d           # postgres + tooling containers
-pnpm db:migrate
-pnpm dev                       # web dashboard on localhost:3000
+npx @promptkiddie/init
 ```
 
-Then in your AI agent session:
+**Host mode** runs your AI agent locally (Claude Code, Codex, etc.) with PK services in Docker.
+**Hosted mode** runs everything in Docker with a web UI and SSH access.
 
-```bash
-pk engagement new --name "Box Name" --type ctf --scope "10.10.11.x"
-pk target add --kind host --id 10.10.11.x --in-scope
-pk supervisor <engagement-id>  # starts the reactive playbook
-```
+Open your agent or the web chat and tell it:
 
-The supervisor takes it from here. Watch progress at `localhost:3000/playbook`.
+> Add 127.0.0.1:3000 as a CTF engagement named "OWASP Juice Shop" then start it
 
-## How it works
+View progress at `localhost:3100`.
 
-```
-You (scope + steer)
-  |
-  v
-Orchestrator (AI session)
-  |
-  ├── pk supervisor ──> Event-driven playbook
-  |     port_scan ──> web_recon ──> dir_brute ──> cve_search ──> exploit
-  |     Each arrow is an event (PortDiscovered, VersionIdentified, ...)
-  |
-  ├── pk spawn agent ──> Isolated containers with attack tools
-  |
-  ├── pk shell / pk tunnel ──> Gleipnir (persistent reverse shells + SOCKS)
-  |
-  └── pk msg ──> Inbox (human-agent communication)
+## Architecture
+
+```mermaid
+graph LR
+    Human <--> WebUI["Web UI<br>(Next.js)"]
+    Human <--> Orchestrator["Orchestrator<br>(AI harness)"]
+
+    WebUI <--> DB[(Postgres)]
+    WebUI <-->|WebSocket| Supervisor
+
+    Orchestrator <-->|pk CLI / MCP| DB
+    Orchestrator -->|docker| Agents["Agent containers"]
+
+    Supervisor <-->|LISTEN/NOTIFY| DB
+    Supervisor -->|playbook actions| Agents
+
+    Agents <-->|pk CLI| DB
+    Agents --> Target["Target"]
+    Agents <--> Gleipnir["Gleipnir<br>(reverse shells)"]
+    Gleipnir <--> Target
 ```
 
 ## Engagement types
@@ -82,21 +80,20 @@ Orchestrator (AI session)
 
 ## Knowledge base
 
-PK ships 22 exploit cards (Log4Shell, EternalBlue, PwnKit, Spring4Shell, ...) and
-technique cards (MSSQL CLR privesc, NTLM relay, ...) in OKF format. The supervisor
-auto-matches discovered versions against the exploit index and fires when it finds a
-hit. Add your own cards to `packages/core/src/knowledge/exploits/`.
+PK ships exploits and techniques as structured knowledge in [OKF](packages/core/src/knowledge/SPEC.md) format. The supervisor auto-matches discovered versions against the exploit index and fires when it finds a hit. Sources include HackTricks and GTFOBins.
 
 ## Documentation
 
 - [Getting started: host mode](docs/getting-started-host.md) - AI agent runs locally, infra in Docker
 - [Getting started: hosted mode](docs/getting-started-hosted.md) - everything in Docker, web UI + SSH
-- `docs/METHODOLOGY.md` - phased process and rules of engagement
-- `docs/ARCHITECTURE.md` - how the pieces fit together
-- `AGENTS.md` - orchestrator instructions (read by your AI agent)
+- [Methodology](docs/METHODOLOGY.md) - phased process and rules of engagement
+- [Architecture](docs/ARCHITECTURE.md) - how the pieces fit together
+- [AGENTS.md](AGENTS.md) - repo structure, package scopes, build and contribution guide
 
 ## Safety
 
 For authorized testing, CTFs, and education only. Every engagement requires a
 Rules-of-Engagement record with scope, allowed actions, and time windows. The
 orchestrator refuses to act outside defined scope.
+
+LLMs with access to live machines and networks can be quite dangerous. Use at your own risk.

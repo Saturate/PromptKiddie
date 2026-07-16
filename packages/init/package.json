@@ -4,6 +4,7 @@
   "description": "Scaffold a PromptKiddie workspace with Docker Compose, env config, and orchestrator instructions.",
   "type": "module",
   "bin": {
+    "promptkiddie": "./dist/index.js",
     "pk-init": "./dist/index.js"
   },
   "files": [
@@ -20,11 +21,18 @@
     "node": ">=18"
   },
   "homepage": "https://github.com/Saturate/PromptKiddie#readme",
-  "keywords": ["pentesting", "ctf", "security", "ai", "hacking", "promptkiddie"],
+  "keywords": [
+    "pentesting",
+    "ctf",
+    "security",
+    "ai",
+    "hacking",
+    "promptkiddie"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Saturate/PromptKiddie.git",
+    "url": "git+https://github.com/Saturate/PromptKiddie.git",
     "directory": "packages/init"
   }
 }

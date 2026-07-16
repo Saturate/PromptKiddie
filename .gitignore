@@ -43,6 +43,9 @@ vpn/
 # Local CLI state (active engagement pointer)
 .pk/
 
+# Claude Code local settings (engagement hooks, not for dev)
+.claude/settings.local.json
+
 # PromptKiddie
 engagements/*/
 .pk/config.toml
