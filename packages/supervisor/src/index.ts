@@ -11,15 +11,10 @@ import { Client } from "pg";
 import { execFile } from "node:child_process";
 import {
   CTF_ACTIONS,
-  emitEvent,
-  addDiscovery,
-  listTargets,
-  getEngagement,
-  listEngagements,
-  advancePhase,
-  sendMessage,
+  getRepo,
   type Action,
   type Playbook,
+  type Repo,
 } from "@promptkiddie/core";
 import { createRunContext } from "./run-context.js";
 import { EventBus } from "./event-bus.js";
@@ -101,11 +96,11 @@ async function startCartridgeAgent(containerName: string, prompt: string, provid
   return parsed.id;
 }
 
-async function spawnAgentContainer(engagementId: string, image: string, target: string): Promise<string> {
-  const eng = await getEngagement(engagementId) as { slug: string; name: string; scope?: string; phase?: string } | null;
+async function spawnAgentContainer(repo: Repo, engagementId: string, image: string, target: string): Promise<string> {
+  const eng = await repo.getEngagement(engagementId) as { slug: string; name: string; scope?: string; phase?: string } | null;
   if (!eng) throw new Error(`Engagement ${engagementId} not found`);
 
-  const targets = await listTargets(engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
+  const targets = await repo.listTargets(engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
   const slug = eng.slug.replace(/[^a-zA-Z0-9_-]/g, "_");
   const containerName = `pk-agent-${slug}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -166,6 +161,7 @@ async function spawnAgentContainer(engagementId: string, image: string, target: 
 }
 
 export async function startSupervisor(opts: SupervisorOpts) {
+  const repo = getRepo();
   const playbook = opts.playbook ?? CTF_ACTIONS;
   const mode: SupervisorMode = opts.mode ?? "standard";
   const maxConcurrent = opts.maxConcurrent ?? MODE_CONCURRENCY[mode];
@@ -220,11 +216,12 @@ export async function startSupervisor(opts: SupervisorOpts) {
     origOnOutput?.(actionName, line);
   };
 
-  const engagement = await getEngagement(opts.engagementId);
-  if (!engagement) throw new Error(`Engagement ${opts.engagementId} not found`);
+  const engOrNull = await repo.getEngagement(opts.engagementId) as { name: string; type: string; phase?: string; slug: string } | null;
+  if (!engOrNull) throw new Error(`Engagement ${opts.engagementId} not found`);
+  const engagement = engOrNull;
   currentPhase = engagement.phase ?? "scoping";
 
-  const targets = await listTargets(opts.engagementId);
+  const targets = await repo.listTargets(opts.engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
   const primaryTarget = targets.find((t) => t.inScope)?.identifier ?? targets[0]?.identifier ?? "unknown";
 
   console.log(`[supervisor] starting for "${engagement.name}" (${opts.engagementId})`);
@@ -241,7 +238,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
       stallAgentCount++;
       console.log(`[supervisor] stall detected (${stallAgentCount}/${MAX_STALL_AGENTS}), emitting StallDetected`);
-      emitEvent(opts.engagementId, "StallDetected", { minutes: 5 }, "supervisor").catch(
+      repo.emitEvent(opts.engagementId, "StallDetected", { minutes: 5 }, "supervisor").catch(
         (err) => console.error("[supervisor] stall event emit failed:", err),
       );
     }, STALL_TIMEOUT);
@@ -264,6 +261,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         const ctx = createRunContext({
           engagementId: opts.engagementId,
           target: primaryTarget,
+          repo,
           actionName: action.name,
           event: {
             id: event.id ?? `evt-${Date.now()}`,
@@ -305,7 +303,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         console.log(`[supervisor] agent action "${action.name}" -> spawning ${agentImage}`);
 
         if (mode === "learning") {
-          await sendMessage({
+          await repo.sendMessage({
             engagementId: opts.engagementId,
             direction: "outbound",
             author: "supervisor",
@@ -319,7 +317,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         });
 
         try {
-          const containerName = await spawnAgentContainer(opts.engagementId, agentImage, primaryTarget);
+          const containerName = await spawnAgentContainer(repo, opts.engagementId, agentImage, primaryTarget);
           console.log(`[supervisor] spawned: ${containerName}`);
 
           // Wait for Cartridge API, then start agent with prompt
@@ -329,7 +327,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
           const agentId = await startCartridgeAgent(containerName, interpolated, provider, model);
           console.log(`[supervisor] agent started: ${containerName} (${agentId})`);
 
-          await addDiscovery({
+          await repo.addDiscovery({
             engagementId: opts.engagementId,
             type: "attempted",
             category: "agent",
@@ -341,7 +339,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
           const msg = err instanceof Error ? err.message : String(err);
           spawnFailures.set(failKey, priorFails + 1);
           console.error(`[supervisor] spawn failed for "${action.name}" (${priorFails + 1}/${MAX_SPAWN_RETRIES}): ${msg}`);
-          await addDiscovery({
+          await repo.addDiscovery({
             engagementId: opts.engagementId,
             type: "negative",
             category: "agent",
@@ -352,7 +350,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[supervisor] action "${action.name}" failed: ${msg}`);
-      await addDiscovery({
+      await repo.addDiscovery({
         engagementId: opts.engagementId,
         type: "negative",
         category: "error",
@@ -389,7 +387,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
 
       if (targetPhase && targetPhase !== currentPhase) {
-        const result = await advancePhase(eid, targetPhase as Parameters<typeof advancePhase>[1]);
+        const result = await repo.advancePhase(eid, targetPhase) as { warning?: string };
         currentPhase = targetPhase;
         console.log(`[supervisor] phase advanced: ${currentPhase}${result.warning ? ` (${result.warning})` : ""}`);
         ws.sendEvent({ type: "PhaseAdvanced", payload: { phase: currentPhase } });
@@ -490,11 +488,11 @@ export async function startSupervisor(opts: SupervisorOpts) {
   });
 
   // Fire EngagementStarted only on first run (skip if engagement already has events)
-  const { listEvents } = await import("@promptkiddie/core");
-  const priorEvents = await listEvents(opts.engagementId, { type: "EngagementStarted" });
+  
+  const priorEvents = await repo.listEvents(opts.engagementId, { type: "EngagementStarted" });
   if (priorEvents.length === 0) {
     console.log("[supervisor] emitting EngagementStarted");
-    await emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
+    await repo.emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
   } else {
     console.log("[supervisor] resuming (EngagementStarted already emitted, skipping)");
   }
@@ -554,15 +552,17 @@ export async function startStandby(opts: StandbyOpts = {}) {
     activeSupervisors.delete(engId);
   }
 
+  const standbyRepo = getRepo();
+
   const listener = new Client({ connectionString: DATABASE_URL });
   await listener.connect();
   await listener.query("LISTEN pk_events");
 
-  const existing = await listEngagements();
-  const active = existing.filter((e: { status: string }) => e.status === "active");
+  const existing = await standbyRepo.listEngagements() as Array<{ id: string; status: string }>;
+  const active = existing.filter((e) => e.status === "active");
   console.log(`[supervisor] standby mode - ${active.length} active engagement(s), listening for new ones...`);
   for (const eng of active) {
-    await ensureSupervisor(eng.id).catch((err) =>
+    await ensureSupervisor(eng.id).catch((err: Error) =>
       console.error(`[supervisor] failed to resume ${eng.id}:`, err.message));
   }
 
