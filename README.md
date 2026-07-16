@@ -68,6 +68,8 @@ Orchestrator (AI session)
   |
   ├── pk shell / pk tunnel ──> Gleipnir (persistent reverse shells + SOCKS)
   |
+  ├── ratatosk ──> Fast privesc scanner (Rust, runs on target, JSON output)
+  |
   └── pk msg ──> Inbox (human-agent communication)
 ```
 
@@ -82,21 +84,20 @@ Orchestrator (AI session)
 
 ## Knowledge base
 
-PK ships 22 exploit cards (Log4Shell, EternalBlue, PwnKit, Spring4Shell, ...) and
-technique cards (MSSQL CLR privesc, NTLM relay, ...) in OKF format. The supervisor
-auto-matches discovered versions against the exploit index and fires when it finds a
-hit. Add your own cards to `packages/core/src/knowledge/exploits/`.
+PK ships exploits and techniques as structured knowledge in [OKF](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing) format. The supervisor auto-matches discovered versions against the exploit index and fires when it finds a hit. Sources include HackTricks and GTFOBins.
 
 ## Documentation
 
 - [Getting started: host mode](docs/getting-started-host.md) - AI agent runs locally, infra in Docker
 - [Getting started: hosted mode](docs/getting-started-hosted.md) - everything in Docker, web UI + SSH
-- `docs/METHODOLOGY.md` - phased process and rules of engagement
-- `docs/ARCHITECTURE.md` - how the pieces fit together
-- `AGENTS.md` - orchestrator instructions (read by your AI agent)
+- [Methodology](docs/METHODOLOGY.md) - phased process and rules of engagement
+- [Architecture](docs/ARCHITECTURE.md) - how the pieces fit together
+- [AGENTS.md](AGENTS.md) - repo structure, package scopes, build and contribution guide
 
 ## Safety
 
 For authorized testing, CTFs, and education only. Every engagement requires a
 Rules-of-Engagement record with scope, allowed actions, and time windows. The
 orchestrator refuses to act outside defined scope.
+
+LLMs with access to live machines and networks can be quite dangerous. Use at your own risk.
