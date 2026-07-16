@@ -35,10 +35,9 @@
 ## Quick start
 
 ```bash
-cp .env.example .env          # set DATABASE_URL
+git clone https://github.com/Saturate/PromptKiddie && cd PromptKiddie
 pnpm install && pnpm build
-docker compose up -d           # postgres + tooling containers
-pnpm db:migrate
+pnpm pk init                   # scaffolds config, starts postgres, runs migrations
 pnpm dev                       # web dashboard on localhost:3000
 ```
 
@@ -47,7 +46,7 @@ Then in your AI agent session:
 ```bash
 pk engagement new --name "Box Name" --type ctf --scope "10.10.11.x"
 pk target add --kind host --id 10.10.11.x --in-scope
-pk supervisor <engagement-id>  # starts the reactive playbook
+pk supervisor                  # starts the reactive playbook
 ```
 
 The supervisor takes it from here. Watch progress at `localhost:3000/playbook`.
