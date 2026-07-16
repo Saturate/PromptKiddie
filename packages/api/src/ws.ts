@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "node:http";
 import pg from "pg";
-import { resolveKey } from "./middleware/auth.js";
+import { resolveKey, hasKeys } from "./middleware/auth.js";
 
 interface WsClient {
   ws: WebSocket;
@@ -16,9 +16,16 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
 
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const engagementId = url.searchParams.get("engagementId") ?? undefined;
     const key = url.searchParams.get("key") ?? "";
-    const identity = resolveKey(key)?.raw ?? "anonymous";
+    const resolved = resolveKey(key);
+
+    if (hasKeys() && !resolved) {
+      ws.close(4001, "unauthorized");
+      return;
+    }
+
+    const engagementId = url.searchParams.get("engagementId") ?? undefined;
+    const identity = resolved?.raw ?? "anonymous";
 
     const client: WsClient = { ws, engagementId, identity };
     clients.add(client);
@@ -60,6 +67,8 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
 
   ptyWss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");
+    const ptyKey = url.searchParams.get("key") ?? "";
+    if (hasKeys() && !resolveKey(ptyKey)) { ws.close(4001, "unauthorized"); return; }
     const agentId = url.searchParams.get("agentId");
     if (!agentId) { ws.close(4000, "agentId required"); return; }
 

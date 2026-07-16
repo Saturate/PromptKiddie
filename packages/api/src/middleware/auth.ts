@@ -24,6 +24,10 @@ export function resolveKey(token: string): KeyIdentity | null {
   return keyMap.get(token) ?? null;
 }
 
+export function hasKeys(): boolean {
+  return keyMap.size > 0;
+}
+
 export function authMiddleware(legacySecret?: string) {
   return async (c: Context, next: Next) => {
     const header = c.req.header("Authorization");

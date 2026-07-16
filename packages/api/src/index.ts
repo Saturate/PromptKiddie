@@ -8,6 +8,7 @@ import { setupWebSocket } from "./ws.js";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Hono } from "hono";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const config = loadConfig();
@@ -16,37 +17,38 @@ const databaseUrl = process.env.DATABASE_URL ?? "";
 
 initKeys(process.env.PK_API_KEYS);
 
-const app = createApp();
+const root = new Hono();
 
-app.use("/*", authMiddleware(config.api.secret ?? undefined));
+const api = createApp();
+api.use("/*", authMiddleware(config.api.secret ?? undefined));
 
-let wsBroadcast: ReturnType<typeof setupWebSocket> | null = null;
-
-app.post("/agents/:id/output", async (c) => {
+api.post("/agents/:id/output", async (c) => {
   const body = await c.req.json();
   wsBroadcast?.broadcastPty(c.req.param("id"), body.data ?? "");
   return c.json({ ok: true });
 });
 
-// Serve SPA static files if the build exists
+// API routes under /api/ prefix
+root.route("/api", api);
+
+// Also mount without prefix for backwards compat with createHttpRepo()
+root.route("/", api);
+
+let wsBroadcast: ReturnType<typeof setupWebSocket> | null = null;
+
+// Serve SPA static files (no auth required)
 const spaDir = resolve(__dirname, "../../spa/dist");
 if (existsSync(spaDir)) {
-  app.use("/*", serveStatic({ root: spaDir }));
-  // SPA fallback: serve index.html for non-API routes
-  app.get("*", (c) => {
+  root.use("/assets/*", serveStatic({ root: spaDir }));
+  root.get("*", (c) => {
     const path = c.req.path;
-    if (path.startsWith("/engagements") || path.startsWith("/ws") || path.startsWith("/agents") ||
-        path.startsWith("/targets") || path.startsWith("/findings") || path.startsWith("/services") ||
-        path.startsWith("/ports") || path.startsWith("/messages") || path.startsWith("/playbooks") ||
-        path.startsWith("/knowledge") || path.startsWith("/settings") || path.startsWith("/objectives") ||
-        path.startsWith("/agent-runs")) {
-      return c.notFound();
-    }
+    // Skip API-looking paths
+    if (path.startsWith("/api/")) return c.notFound();
     return c.html(readFileSync(`${spaDir}/index.html`, "utf-8"));
   });
 }
 
-const server = serve({ fetch: app.fetch, port }, () => {
+const server = serve({ fetch: root.fetch, port }, () => {
   console.log(`pk-api listening on http://localhost:${port}`);
   if (existsSync(spaDir)) console.log(`pk-api serving SPA from ${spaDir}`);
 });

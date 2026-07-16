@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { apiClient } from "@/api/client";
 
 interface ChatMessage {
   id: string;
@@ -25,9 +24,10 @@ export function useChat() {
     setError(null);
 
     try {
-      const res = await fetch(`${apiClient.baseUrl}/chat`, {
+      const base = import.meta.env.VITE_API_URL ?? "";
+      const res = await fetch(`${base}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...apiClient.authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [...messages, userMsg].map((m) => ({
             role: m.role,
