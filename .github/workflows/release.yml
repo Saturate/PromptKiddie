@@ -44,7 +44,7 @@ jobs:
 
       - name: Install knope
         if: steps.check.outputs.has_changesets == 'true'
-        uses: knope-dev/action@v2
+        uses: knope-dev/action@v2.1.2
         with:
           version: 0.23.0
 
