@@ -1,0 +1,55 @@
+name: ratatosk
+
+on:
+  release:
+    types: [published]
+
+defaults:
+  run:
+    working-directory: packages/ratatosk
+
+jobs:
+  build:
+    if: startsWith(github.event.release.tag_name, 'ratatosk/')
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: ratatosk-linux-amd64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: ratatosk-linux-arm64
+          - target: x86_64-pc-windows-gnu
+            os: ubuntu-latest
+            artifact: ratatosk-windows-amd64.exe
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/ratatosk
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - name: Install cross
+        run: cargo install cross --locked
+      - name: Build
+        run: cross build --release --target ${{ matrix.target }}
+      - name: Rename binary
+        run: |
+          src="target/${{ matrix.target }}/release/ratatosk"
+          if [ -f "${src}.exe" ]; then
+            cp "${src}.exe" "${{ matrix.artifact }}"
+          else
+            cp "${src}" "${{ matrix.artifact }}"
+          fi
+      - name: Upload to release
+        run: gh release upload "${{ github.event.release.tag_name }}" "${{ matrix.artifact }}" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

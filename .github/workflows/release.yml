@@ -1,0 +1,72 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.changeset/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.SATURATE_CI_APP_ID }}
+          private-key: ${{ secrets.SATURATE_CI_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Check for changesets
+        id: check
+        run: |
+          count=$(ls .changeset/*.md 2>/dev/null | wc -l)
+          if [ "$count" -gt 0 ]; then
+            echo "has_changesets=true" >> "$GITHUB_OUTPUT"
+            echo "$count changeset(s) pending"
+          else
+            echo "has_changesets=false" >> "$GITHUB_OUTPUT"
+            echo "No pending changesets"
+          fi
+
+      - name: Install knope
+        if: steps.check.outputs.has_changesets == 'true'
+        uses: knope-dev/action@v2
+        with:
+          version: 0.23.0
+
+      - name: Configure git
+        if: steps.check.outputs.has_changesets == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run knope release
+        if: steps.check.outputs.has_changesets == 'true'
+        run: knope release
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.check.outputs.has_changesets }}" = "true" ]; then
+            echo "## Release complete" >> "$GITHUB_STEP_SUMMARY"
+            echo "Knope consumed changesets, bumped versions, and created GitHub releases." >> "$GITHUB_STEP_SUMMARY"
+            echo "Downstream workflows triggered by release events." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## No release" >> "$GITHUB_STEP_SUMMARY"
+            echo "No pending changesets." >> "$GITHUB_STEP_SUMMARY"
+          fi
