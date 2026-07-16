@@ -256,8 +256,9 @@ let _repo: Repo | null = null;
 export function getRepo(): Repo {
   if (_repo) return _repo;
   const config = loadConfig();
-  _repo = config.api.url
-    ? createHttpRepo(config.api.url, config.api.secret)
-    : createLocalRepo();
+  if (!config.api.url) {
+    throw new Error("api.url is required. Set it in .pk/config.toml or run: pk init");
+  }
+  _repo = createHttpRepo(config.api.url, config.api.secret);
   return _repo;
 }

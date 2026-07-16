@@ -12,7 +12,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@hono/node-server": "^1",
+    "@hono/node-server": "^1.19.14",
     "@promptkiddie/core": "workspace:*",
     "dotenv": "^16",
     "hono": "^4",
