@@ -6,6 +6,7 @@
 import WebSocket from "ws";
 
 const API_URL = process.env.PK_API_URL ?? "http://localhost:3200";
+const API_BASE = API_URL.endsWith("/api") ? API_URL : `${API_URL}/api`;
 const API_KEY = process.env.PK_API_KEY ?? "";
 
 const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -13,7 +14,7 @@ if (API_KEY) headers["Authorization"] = `Bearer ${API_KEY}`;
 
 async function postToApi(path: string, body: unknown): Promise<void> {
   try {
-    await fetch(`${API_URL}${path}`, {
+    await fetch(`${API_BASE}${path}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),

@@ -52,13 +52,31 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
   });
 
   // Single pg LISTEN connection for event broadcasting
-  const listener = new pg.Client(databaseUrl);
-  listener.connect().then(async () => {
-    await listener.query("LISTEN pk_events");
-    console.log("[ws] listening on pk_events channel");
-  });
+  let listener: pg.Client;
 
-  listener.on("notification", (msg) => {
+  function connectListener() {
+    listener = new pg.Client(databaseUrl);
+    listener.connect().then(async () => {
+      await listener.query("LISTEN pk_events");
+      console.log("[ws] listening on pk_events channel");
+    }).catch((err) => {
+      console.error("[ws] pg listener connect failed:", err.message);
+      setTimeout(connectListener, 5000);
+    });
+
+    listener.on("error", (err) => {
+      console.error("[ws] pg listener error:", err.message);
+    });
+
+    listener.on("end", () => {
+      console.log("[ws] pg listener disconnected, reconnecting...");
+      setTimeout(connectListener, 2000);
+    });
+
+    listener.on("notification", onNotification);
+  }
+
+  function onNotification(msg: pg.Notification) {
     if (msg.channel !== "pk_events" || !msg.payload) return;
 
     let event: { engagementId?: string; type?: string; payload?: unknown };
@@ -75,7 +93,9 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
       if (client.engagementId && client.engagementId !== event.engagementId) continue;
       client.ws.send(data);
     }
-  });
+  }
+
+  connectListener();
 
   // PTY output relay: agents POST output, we broadcast to subscribed frontends
   const ptyClients = new Map<string, Set<WebSocket>>();

@@ -12,7 +12,11 @@ app.get("/knowledge", async (c) => {
   const q = c.req.query("q") ?? "";
   const limit = c.req.query("limit");
   const source = c.req.query("source");
-  const mode = c.req.query("mode") as "hybrid" | "vector" | "keyword" | undefined;
+  const rawMode = c.req.query("mode");
+  const validModes = ["hybrid", "vector", "keyword"] as const;
+  type SearchMode = typeof validModes[number];
+  const mode: SearchMode | undefined = rawMode && (validModes as readonly string[]).includes(rawMode)
+    ? rawMode as SearchMode : undefined;
   const results = await searchKnowledge(q, {
     limit: limit ? parseInt(limit, 10) : undefined,
     source,
