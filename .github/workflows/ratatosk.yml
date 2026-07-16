@@ -10,7 +10,7 @@ defaults:
 
 jobs:
   build:
-    if: startsWith(github.event.release.tag_name, 'ratatosk-v')
+    if: startsWith(github.event.release.tag_name, 'ratatosk/')
     strategy:
       matrix:
         include:

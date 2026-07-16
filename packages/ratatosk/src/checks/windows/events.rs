@@ -137,5 +137,5 @@ fn check_recent_logons(findings: &mut Vec<Finding>) {
 }
 
 fn truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max { s } else { &s[..max] }
+    if s.len() <= max { s } else { &s[..s.floor_char_boundary(max)] }
 }

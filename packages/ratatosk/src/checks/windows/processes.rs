@@ -89,7 +89,7 @@ fn check_av_processes(findings: &mut Vec<Finding>) {
         ("csagent.exe", "CrowdStrike"),
         ("cylancesvc.exe", "Cylance"),
         ("sentinelagent.exe", "SentinelOne"),
-        ("sfc.exe", "Cisco AMP"),
+        ("sfc-agent.exe", "Cisco Secure Endpoint"),
         ("xagt.exe", "FireEye"),
         ("elastic-agent.exe", "Elastic Agent"),
         ("elastic-endpoint.exe", "Elastic Endpoint"),

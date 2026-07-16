@@ -134,10 +134,15 @@ fn extract_path(line: &str) -> Option<String> {
 }
 
 fn is_writable(path: &str) -> bool {
-    Command::new("powershell")
-        .args(["-NoProfile", "-Command",
-            &format!("try {{ [IO.File]::OpenWrite('{path}\\test.tmp').Close(); Remove-Item '{path}\\test.tmp' -ErrorAction SilentlyContinue; 'writable' }} catch {{ 'no' }}")])
+    Command::new("icacls")
+        .arg(path)
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("writable"))
+        .map(|o| {
+            let perms = String::from_utf8_lossy(&o.stdout).to_lowercase();
+            let user = std::env::var("USERNAME").unwrap_or_default().to_lowercase();
+            let groups = ["everyone", "users", "authenticated users", user.as_str()];
+            (perms.contains("(f)") || perms.contains("(m)") || perms.contains("(w)"))
+                && groups.iter().any(|g| perms.contains(g))
+        })
         .unwrap_or(false)
 }

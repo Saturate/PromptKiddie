@@ -16,7 +16,7 @@ env:
 
 jobs:
   build-and-push:
-    if: ${{ !github.event.release || startsWith(github.event.release.tag_name, 'core-v') || startsWith(github.event.release.tag_name, 'web-v') || startsWith(github.event.release.tag_name, 'api-v') }}
+    if: ${{ !github.event.release || startsWith(github.event.release.tag_name, 'core/') || startsWith(github.event.release.tag_name, 'web/') || startsWith(github.event.release.tag_name, 'api/') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,7 +40,7 @@ jobs:
           tags: |
             type=sha
             type=raw,value=latest
-            type=match,pattern=\w+-v(.*),group=1,enable=${{ github.event_name == 'release' }}
+            type=match,pattern=\w+/v(.*),group=1,enable=${{ github.event_name == 'release' }}
 
       - uses: docker/build-push-action@v6
         with:
