@@ -6,6 +6,8 @@ on:
     paths:
       - "packages/tooling/**"
       - ".github/workflows/attackbox.yml"
+  release:
+    types: [published]
   workflow_dispatch:
 
 env:
@@ -14,6 +16,7 @@ env:
 
 jobs:
   build-and-push:
+    if: ${{ !github.event.release || startsWith(github.event.release.tag_name, 'tooling-mcp-v') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,6 +38,7 @@ jobs:
           tags: |
             type=sha
             type=raw,value=latest
+            type=match,pattern=\w+-v(.*),group=1,enable=${{ github.event_name == 'release' }}
 
       - uses: docker/build-push-action@v6
         with:
