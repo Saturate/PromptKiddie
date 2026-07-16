@@ -168,6 +168,23 @@ export async function runInit(options: InitOptions) {
     } else {
       console.error("  skip harness files (no templates found)");
     }
+
+    // Engagement hooks (gitignored, only active when pk init has been run)
+    const localSettings = {
+      hooks: {
+        SessionStart: [{
+          hooks: [{ type: "command", command: "bash .claude/hooks/session-start.sh" }],
+        }],
+        PreToolUse: [{
+          hooks: [{ type: "command", command: "bash .claude/hooks/pk-exec-check.sh" }],
+        }],
+      },
+    };
+    writeIfMissing(
+      join(cwd, ".claude", "settings.local.json"),
+      JSON.stringify(localSettings, null, 2) + "\n",
+      ".claude/settings.local.json (engagement hooks)",
+    );
   } else if (harness === "opencode" || harness === "pi") {
     console.error(`  ${harness} harness templates not yet available. Created config only.`);
     console.error("  Contribute templates at github.com/Saturate/PromptKiddie");
