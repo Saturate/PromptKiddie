@@ -7,7 +7,6 @@
  * Usage: pk supervisor start [--engagement <id>] [--playbook ctf]
  */
 import "dotenv/config";
-import { Client } from "pg";
 import { execFile } from "node:child_process";
 import {
   CTF_ACTIONS,
@@ -18,9 +17,10 @@ import {
 } from "@promptkiddie/core";
 import { createRunContext } from "./run-context.js";
 import { EventBus } from "./event-bus.js";
-import { createWsServer, type WsBroadcaster } from "./ws-server.js";
+import { createApiBroadcaster, connectEventStream, type ApiBroadcaster } from "./api-client.js";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie";
+const API_URL = process.env.PK_API_URL ?? "http://localhost:3200";
+const API_KEY = process.env.PK_API_KEY ?? "";
 
 /** Execution mode controls concurrency and LLM dispatch scheduling. */
 export type SupervisorMode = "race" | "standard" | "methodical" | "learning";
@@ -43,7 +43,7 @@ interface SupervisorOpts {
   mode?: SupervisorMode;
   maxConcurrent?: number;
   /** External WS broadcaster (e.g. from the API process). If omitted, creates a standalone WS server. */
-  ws?: WsBroadcaster;
+  ws?: ApiBroadcaster;
   onEvent?: (event: { type: string; payload: Record<string, unknown> }) => void;
   onActionStart?: (actionName: string) => void;
   onActionEnd?: (actionName: string) => void;
@@ -112,7 +112,8 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
     "-e", `TARGETS=${targets.filter(t => t.inScope).map(t => t.identifier).join(",")}`,
     "-e", `ENGAGEMENT_ID=${engagementId}`,
     "-e", `ENGAGEMENT_SLUG=${eng.slug}`,
-    "-e", `DATABASE_URL=${DATABASE_URL}`,
+    "-e", `PK_API_URL=${API_URL}`,
+    "-e", `PK_API_KEY=${API_KEY}`,
     "-e", "PK_CONTAINER=1",
   ];
 
@@ -192,7 +193,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   // WebSocket: use external broadcaster if provided, otherwise create standalone
   const ownsWs = !opts.ws;
-  const ws: WsBroadcaster = opts.ws ?? createWsServer(parseInt(process.env.PK_WS_PORT ?? "3201", 10));
+  const ws: ApiBroadcaster = opts.ws ?? createApiBroadcaster(opts.engagementId);
 
   // Wrap caller-provided callbacks so they also broadcast over WebSocket
   const origOnEvent = opts.onEvent;
@@ -457,35 +458,13 @@ export async function startSupervisor(opts: SupervisorOpts) {
     return released;
   }
 
-  // Connect to Postgres and LISTEN for events
-  const client = new Client({ connectionString: DATABASE_URL });
+  // Connect to API WebSocket for event streaming
   let closing = false;
-  client.on("error", (err) => {
+  const eventStream = connectEventStream(opts.engagementId, (event) => {
     if (closing) return;
-    console.error("[supervisor] pg client error:", err.message);
+    evaluateAndDispatch({ type: event.type, payload: event.payload, id: event.id });
   });
-  await client.connect();
-  await client.query("LISTEN pk_events");
-  console.log("[supervisor] listening on pk_events");
-
-  client.on("notification", (msg) => {
-    if (msg.channel !== "pk_events" || !msg.payload) return;
-    try {
-      const parsed = JSON.parse(msg.payload) as { id: string; type: string; engagement_id: string };
-      if (parsed.engagement_id !== opts.engagementId) return;
-
-      // Fetch the full event payload from DB
-      client.query("SELECT type, payload FROM events WHERE id = $1", [parsed.id])
-        .then((result) => {
-          if (result.rows.length === 0) return;
-          const row = result.rows[0] as { type: string; payload: Record<string, unknown> };
-          evaluateAndDispatch({ type: row.type, payload: row.payload, id: parsed.id });
-        })
-        .catch((err) => { if (!closing) console.error("[supervisor] event fetch error:", err); });
-    } catch {
-      // malformed notification
-    }
-  });
+  console.log("[supervisor] connecting to event stream");
 
   // Fire EngagementStarted only on first run (skip if engagement already has events)
   
@@ -504,7 +483,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     if (stallTimer) clearTimeout(stallTimer);
     for (const [, ac] of activeActions) ac.abort();
     if (ownsWs) await ws.close();
-    await client.end().catch(() => {});
+    eventStream.close();
   };
 
   const shutdown = async () => {
@@ -531,7 +510,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
 export interface StandbyOpts {
   mode?: SupervisorMode;
   /** External WS broadcaster shared across all supervisor instances. */
-  ws?: WsBroadcaster;
+  ws?: ApiBroadcaster;
 }
 
 export async function startStandby(opts: StandbyOpts = {}) {
@@ -554,10 +533,6 @@ export async function startStandby(opts: StandbyOpts = {}) {
 
   const standbyRepo = getRepo();
 
-  const listener = new Client({ connectionString: DATABASE_URL });
-  await listener.connect();
-  await listener.query("LISTEN pk_events");
-
   const existing = await standbyRepo.listEngagements() as Array<{ id: string; status: string }>;
   const active = existing.filter((e) => e.status === "active");
   console.log(`[supervisor] standby mode - ${active.length} active engagement(s), listening for new ones...`);
@@ -566,21 +541,20 @@ export async function startStandby(opts: StandbyOpts = {}) {
       console.error(`[supervisor] failed to resume ${eng.id}:`, err.message));
   }
 
-  listener.on("notification", async (msg) => {
-    if (msg.channel !== "pk_events" || !msg.payload) return;
-    try {
-      const parsed = JSON.parse(msg.payload) as { id?: string; engagement_id?: string; type?: string };
-      const engId = parsed.engagement_id;
-      if (!engId) return;
+  // Subscribe to all events (no engagementId filter) for standby routing
+  const standbyStream = connectEventStream("", async (event) => {
+    const engId = (event as Record<string, unknown>).engagementId as string | undefined
+      ?? (event as Record<string, unknown>).engagement_id as string | undefined;
+    if (!engId) return;
 
-      if (parsed.type === "EngagementStarted") {
+    try {
+      if (event.type === "EngagementStarted") {
         await ensureSupervisor(engId);
-      } else if (parsed.type === "StatusChanged") {
-        const result = await listener.query("SELECT payload FROM events WHERE id = $1", [parsed.id]);
-        const payload = result.rows[0]?.payload as { status?: string } | undefined;
-        if (payload?.status === "active") {
+      } else if (event.type === "StatusChanged") {
+        const payload = event.payload as { status?: string };
+        if (payload.status === "active") {
           await ensureSupervisor(engId);
-        } else if (payload?.status === "paused" || payload?.status === "done") {
+        } else if (payload.status === "paused" || payload.status === "done") {
           await stopSupervisorFor(engId);
         }
       }
@@ -590,7 +564,7 @@ export async function startStandby(opts: StandbyOpts = {}) {
   const shutdown = async () => {
     console.log("[supervisor] shutting down all instances...");
     for (const [, sup] of activeSupervisors) await sup.stop();
-    await listener.end().catch(() => {});
+    standbyStream.close();
   };
 
   return {
@@ -613,8 +587,7 @@ if (isDirectRun) {
   }
 
   if (standby) {
-    const sharedWs = createWsServer(parseInt(process.env.PK_WS_PORT ?? "3201", 10));
-    startStandby({ mode: cliMode, ws: sharedWs }).then((s) => {
+    startStandby({ mode: cliMode }).then((s) => {
       process.on("SIGINT", async () => { await s.shutdown(); process.exit(0); });
       process.on("SIGTERM", async () => { await s.shutdown(); process.exit(0); });
     }).catch((err) => {
