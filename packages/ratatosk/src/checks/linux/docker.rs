@@ -2,6 +2,7 @@ use crate::checks::Check;
 use crate::output::{Finding, Severity};
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 pub struct DockerCheck;
 
@@ -9,37 +10,38 @@ impl Check for DockerCheck {
     fn run(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        if Path::new("/var/run/docker.sock").exists()
+        let sock_accessible = Path::new("/var/run/docker.sock").exists()
             && fs::metadata("/var/run/docker.sock")
                 .map(|m| {
                     use std::os::unix::fs::MetadataExt;
                     let mode = m.mode();
-                    mode & 0o006 != 0
+                    mode & 0o066 != 0
                 })
-                .unwrap_or(false)
-        {
+                .unwrap_or(false);
+
+        if sock_accessible {
             findings.push(Finding {
                 check: "docker",
                 severity: Severity::Critical,
-                title: "docker socket is world-accessible".into(),
+                title: "docker socket is accessible".into(),
                 detail: "/var/run/docker.sock readable/writable".into(),
                 path: Some("/var/run/docker.sock".into()),
-                exploit_hint: Some("docker run -v /:/mnt --rm -it alpine chroot /mnt sh".into()),
+                exploit_hint: None,
             });
         }
 
-        if let Ok(groups_output) = std::process::Command::new("id").output() {
+        let mut in_docker_group = false;
+        if let Ok(groups_output) = Command::new("id").output() {
             let groups = String::from_utf8_lossy(&groups_output.stdout);
             if groups.contains("docker") {
+                in_docker_group = true;
                 findings.push(Finding {
                     check: "docker",
                     severity: Severity::Critical,
                     title: "current user in docker group".into(),
                     detail: "docker group membership allows root-equivalent access".into(),
                     path: None,
-                    exploit_hint: Some(
-                        "docker run -v /:/mnt --rm -it alpine chroot /mnt sh".into(),
-                    ),
+                    exploit_hint: None,
                 });
             }
             if groups.contains("lxd") || groups.contains("lxc") {
@@ -51,6 +53,50 @@ impl Check for DockerCheck {
                     path: None,
                     exploit_hint: Some("lxd init + mount host filesystem".into()),
                 });
+            }
+        }
+
+        // If we can use docker, list available images for the exploit hint
+        if in_docker_group || sock_accessible {
+            if let Ok(output) = Command::new("docker")
+                .args(["images", "--format", "{{.Repository}}:{{.Tag}}"])
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let images: Vec<&str> = stdout
+                    .lines()
+                    .filter(|l| !l.is_empty() && *l != "<none>:<none>")
+                    .collect();
+
+                if !images.is_empty() {
+                    let best = images[0];
+                    findings.push(Finding {
+                        check: "docker",
+                        severity: Severity::Critical,
+                        title: format!("{} docker image(s) available", images.len()),
+                        detail: images
+                            .iter()
+                            .take(10)
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        path: None,
+                        exploit_hint: Some(format!(
+                            "docker run -v /:/mnt --rm -it {best} chroot /mnt sh"
+                        )),
+                    });
+                } else {
+                    findings.push(Finding {
+                        check: "docker",
+                        severity: Severity::High,
+                        title: "docker accessible but no local images".into(),
+                        detail: "pull any image to exploit".into(),
+                        path: None,
+                        exploit_hint: Some(
+                            "docker run -v /:/mnt --rm -it alpine chroot /mnt sh".into(),
+                        ),
+                    });
+                }
             }
         }
 
