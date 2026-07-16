@@ -1,7 +1,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActionGraph } from "@promptkiddie/core";
-import { type ActionNodeWithState, buildEmitterMap, buildConsumerMap } from "./graph-helpers";
+import { type ActionNodeWithState, buildEmitterMap, buildConsumerMap } from "@/lib/graph-helpers";
 
 export interface ReplayEvent {
   id: string;

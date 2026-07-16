@@ -25,7 +25,8 @@ import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
 const config = loadConfig();
 if (!config.api.url) {
-  console.error("[pk] warning: no api.url configured, using direct DB access. Set api.url in .pk/config.toml for the recommended HTTP path.");
+  console.error("[pk] error: api.url not configured. Run 'pk init' or set api.url in .pk/config.toml");
+  process.exit(1);
 }
 const repo = getRepo();
 const isContainer = config.container;

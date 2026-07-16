@@ -28,11 +28,8 @@ api.post("/agents/:id/output", async (c) => {
   return c.json({ ok: true });
 });
 
-// API routes under /api/ prefix
+// All API routes under /api/ prefix
 root.route("/api", api);
-
-// Also mount without prefix for backwards compat with createHttpRepo()
-root.route("/", api);
 
 let wsBroadcast: ReturnType<typeof setupWebSocket> | null = null;
 

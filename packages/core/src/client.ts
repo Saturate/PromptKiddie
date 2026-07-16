@@ -151,31 +151,32 @@ function createLocalRepo(): Repo {
 }
 
 function createHttpRepo(baseUrl: string, secret: string | null): Repo {
+  const base = baseUrl.endsWith("/api") ? baseUrl : `${baseUrl}/api`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (secret) headers["Authorization"] = `Bearer ${secret}`;
 
   const get = async <T = unknown>(path: string): Promise<T> => {
-    const res = await fetch(`${baseUrl}${path}`, { headers });
+    const res = await fetch(`${base}${path}`, { headers });
     if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
     return res.json() as Promise<T>;
   };
   const post = async (path: string, body: unknown) => {
-    const res = await fetch(`${baseUrl}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+    const res = await fetch(`${base}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
     return res.json();
   };
   const patch = async (path: string, body: unknown) => {
-    const res = await fetch(`${baseUrl}${path}`, { method: "PATCH", headers, body: JSON.stringify(body) });
+    const res = await fetch(`${base}${path}`, { method: "PATCH", headers, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
     return res.json();
   };
   const put = async (path: string, body: unknown) => {
-    const res = await fetch(`${baseUrl}${path}`, { method: "PUT", headers, body: JSON.stringify(body) });
+    const res = await fetch(`${base}${path}`, { method: "PUT", headers, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
     return res.json();
   };
   const del = async (path: string) => {
-    const res = await fetch(`${baseUrl}${path}`, { method: "DELETE", headers });
+    const res = await fetch(`${base}${path}`, { method: "DELETE", headers });
     if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
     return res.json();
   };

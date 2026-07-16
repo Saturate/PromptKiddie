@@ -13,7 +13,7 @@ import { ActionNode, type ActionNodeData, type CoverageStatus } from "./action-n
 import { layoutGraph } from "./layout";
 import { useCallback, useMemo } from "react";
 import type { ActionGraph, ActionEdge } from "@promptkiddie/core";
-import type { ActionNodeWithState } from "@/hooks/graph-helpers";
+import type { ActionNodeWithState } from "@/lib/graph-helpers";
 
 interface ActionGraphProps {
   graph: ActionGraph & { nodes: ActionNodeWithState[] };
