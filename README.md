@@ -14,14 +14,14 @@
 </p>
 
 <p align="center">
-    You can work from the web interface, or directly in your favorite harness, or the CLI if your that kind of kiddo. Script our own playbooks with the provided SDK. 
+    You can work from the web interface, directly in your favorite harness, or the CLI if you're that kind of kiddo. Script your own playbooks with the provided SDK.
 </p>
 
 ---
 
 **Key features:**
 
-- **Event-driven playbooks.** Write playbooks that reacts on events, trigger a automated portscan on engagement start, and act on the findings programaticlly or delegate to an agent.
+- **Event-driven playbooks.** Write playbooks that react to events, trigger an automated portscan on engagement start, and act on the findings programmatically or delegate to an agent.
 - **Judgment stays with the LLM, mechanics don't.** Port scanning, fingerprinting,
   and directory brute-forcing are scripted actions. The LLM only gets called for
   decisions that need reasoning: exploit selection, source code analysis, privesc
@@ -35,41 +35,36 @@
 ## Quick start
 
 ```bash
-git clone https://github.com/Saturate/PromptKiddie && cd PromptKiddie
-pnpm install && pnpm build
-pnpm pk init                   # scaffolds config, starts postgres, runs migrations
-pnpm dev                       # web dashboard on localhost:3000
+npx @promptkiddie/init
 ```
 
-Then in your AI agent session:
+**Host mode** runs your AI agent locally (Claude Code, Codex, etc.) with PK services in Docker.
+**Hosted mode** runs everything in Docker with a web UI and SSH access.
 
-```bash
-pk engagement new --name "Box Name" --type ctf --scope "10.10.11.x"
-pk target add --kind host --id 10.10.11.x --in-scope
-pk supervisor                  # starts the reactive playbook
-```
+Open your agent or the web chat and tell it:
 
-The supervisor takes it from here. Watch progress at `localhost:3000/playbook`.
+> Add 127.0.0.1:3000 as a CTF engagement named "OWASP Juice Shop" then start it
 
-## How it works
+View progress at `localhost:3100`.
 
-```
-You (scope + steer)
-  |
-  v
-Orchestrator (AI session)
-  |
-  ├── pk supervisor ──> Event-driven playbook
-  |     port_scan ──> web_recon ──> dir_brute ──> cve_search ──> exploit
-  |     Each arrow is an event (PortDiscovered, VersionIdentified, ...)
-  |
-  ├── pk spawn agent ──> Isolated containers with attack tools
-  |
-  ├── pk shell / pk tunnel ──> Gleipnir (persistent reverse shells + SOCKS)
-  |
-  ├── ratatosk ──> Fast privesc scanner (Rust, runs on target, JSON output)
-  |
-  └── pk msg ──> Inbox (human-agent communication)
+## Overview
+
+```mermaid
+graph TD
+    You["You (scope + steer)"] --> Orchestrator["Orchestrator (AI session)"]
+
+    Orchestrator --> Supervisor["pk supervisor"]
+    Orchestrator --> Agents["pk spawn agent"]
+    Orchestrator --> Gleipnir["pk shell / pk tunnel"]
+
+    Supervisor --> |PortDiscovered| WebRecon["web_recon"]
+    Supervisor --> |VersionIdentified| CVESearch["cve_search"]
+    Supervisor --> |VulnConfirmed| Exploit["exploit"]
+
+    Agents --> Containers["Isolated containers\nwith attack tools"]
+
+    Gleipnir --> Shells["Persistent reverse shells\n+ SOCKS proxy"]
+    Gleipnir --> Ratatosk["ratatosk\n(privesc scanner)"]
 ```
 
 ## Engagement types
@@ -83,7 +78,7 @@ Orchestrator (AI session)
 
 ## Knowledge base
 
-PK ships exploits and techniques as structured knowledge in [OKF](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing) format. The supervisor auto-matches discovered versions against the exploit index and fires when it finds a hit. Sources include HackTricks and GTFOBins.
+PK ships exploits and techniques as structured knowledge in [OKF](packages/core/src/knowledge/SPEC.md) format. The supervisor auto-matches discovered versions against the exploit index and fires when it finds a hit. Sources include HackTricks and GTFOBins.
 
 ## Documentation
 
