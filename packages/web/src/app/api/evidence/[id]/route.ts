@@ -17,7 +17,7 @@ export async function GET(
   const filename = row.path?.split("/").pop() ?? "evidence";
   const isViewable = !forceDownload && (mime.startsWith("image/") || mime.startsWith("text/") || mime === "application/pdf");
 
-  return new NextResponse(row.data, {
+  return new NextResponse(new Uint8Array(row.data), {
     headers: {
       "Content-Type": mime,
       "Content-Disposition": isViewable ? "inline" : `attachment; filename="${filename}"`,

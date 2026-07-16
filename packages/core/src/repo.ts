@@ -119,6 +119,7 @@ export async function setEngagementStatus(
     .set({ status })
     .where(eq(engagements.id, id))
     .returning();
+  await emitEvent(id, "StatusChanged", { status }, "system");
   return row;
 }
 

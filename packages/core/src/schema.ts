@@ -110,7 +110,7 @@ export const engagements = pgTable("engagements", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   type: engagementType("type").notNull(),
-  status: engagementStatus("status").notNull().default("created"),
+  status: engagementStatus("status").notNull().default("active"),
   /** Current methodology phase (state machine). */
   phase: phase("phase").notNull().default("scoping"),
   /** Grouping label (e.g. "HTB", "THM", "Internal"). */

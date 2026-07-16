@@ -102,7 +102,31 @@ services:
       - ./.build:/build
     command: tail -f /dev/null
 
-  # --- App services (optional, for hosted/frontend use) ---
+  # Supervisor (event-driven playbook executor, one instance per active engagement)
+  supervisor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: supervisor
+    container_name: pk-supervisor
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-promptkiddie}:${POSTGRES_PASSWORD:-changeme_local_only}@pk-db:5432/${POSTGRES_DB:-promptkiddie}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      PK_HARNESS: ${PK_HARNESS:-claude}
+      PK_MODEL: ${PK_MODEL:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./engagements:/workspace/engagements
+    networks:
+      - pk-network
+
+  # --- App services ---
   web:
     build:
       context: .
@@ -110,7 +134,6 @@ services:
       target: web
     container_name: pk-web
     restart: unless-stopped
-    profiles: ["hosted"]
     depends_on:
       postgres:
         condition: service_healthy

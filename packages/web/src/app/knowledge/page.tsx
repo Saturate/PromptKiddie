@@ -91,7 +91,7 @@ function SearchTab() {
             <SelectItem value="vector" className="font-mono text-xs">Vector</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={sourceFilter} onValueChange={setSourceFilter}>
+        <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v ?? "all")}>
           <SelectTrigger className="w-44 font-mono text-xs">
             <SelectValue />
           </SelectTrigger>

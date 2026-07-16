@@ -536,7 +536,7 @@ pk engagement show   # get full context`}
                 <Label className="font-mono text-xs uppercase tracking-wider">Provider</Label>
                 <Select
                   value={chat.provider}
-                  onValueChange={(v) => updateChat({ provider: v as Provider })}
+                  onValueChange={(v) => v && updateChat({ provider: v as Provider })}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -572,7 +572,7 @@ pk engagement show   # get full context`}
                 {availableModels.length > 0 ? (
                   <Select
                     value={chat.orchestratorModel || placeholders.orchestrator}
-                    onValueChange={(v) => updateChat({ orchestratorModel: v })}
+                    onValueChange={(v) => v && updateChat({ orchestratorModel: v })}
                   >
                     <SelectTrigger className="w-full font-mono text-sm">
                       <SelectValue />
@@ -602,7 +602,7 @@ pk engagement show   # get full context`}
                 {availableModels.length > 0 ? (
                   <Select
                     value={chat.subagentModel || placeholders.subagent}
-                    onValueChange={(v) => updateChat({ subagentModel: v })}
+                    onValueChange={(v) => v && updateChat({ subagentModel: v })}
                   >
                     <SelectTrigger className="w-full font-mono text-sm">
                       <SelectValue />

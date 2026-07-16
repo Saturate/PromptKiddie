@@ -14,12 +14,13 @@ function ChatWidgetInner() {
   const [mode, setMode] = useState<string>("loading");
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
-  const { messages, sendMessage, isLoading, error } = useChat({ transport });
+  const { messages, sendMessage, status, error } = useChat({ transport });
+  const isLoading = status === "streaming" || status === "submitted";
 
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.ok ? r.json() : {})
-      .then((s) => setMode((s["chat.mode"] as string) ?? "floating"))
+      .then((s) => setMode(((s as Record<string, unknown>)["chat.mode"] as string) ?? "floating"))
       .catch(() => setMode("floating"));
   }, []);
 
@@ -100,16 +101,17 @@ function ChatWidgetInner() {
                         </div>
                       );
                     }
-                    if (part.type === "tool-invocation" && showTools) {
+                    if (part.type.startsWith("tool-") && showTools) {
+                      const tp = part as unknown as { toolName?: string; state?: string; result?: unknown };
                       return (
                         <div key={i} className="bg-muted/50 border rounded-lg px-2 py-1 text-[10px] font-mono">
                           <span className="text-muted-foreground">tool: </span>
-                          <span className="text-blue-400">{part.toolInvocation.toolName}</span>
-                          {part.toolInvocation.state === "result" && (
+                          <span className="text-blue-400">{tp.toolName}</span>
+                          {tp.state === "result" && (
                             <details className="mt-0.5">
                               <summary className="cursor-pointer text-muted-foreground">result</summary>
                               <pre className="mt-0.5 overflow-x-auto text-[10px] max-h-24 overflow-y-auto">
-                                {JSON.stringify(part.toolInvocation.result, null, 2)?.slice(0, 300)}
+                                {JSON.stringify(tp.result, null, 2)?.slice(0, 300)}
                               </pre>
                             </details>
                           )}

@@ -236,7 +236,8 @@ function ChatPanelInner() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState("");
-  const { messages, sendMessage, isLoading, error } = useChat({ transport });
+  const { messages, sendMessage, status, error } = useChat({ transport });
+  const isLoading = status === "streaming" || status === "submitted";
   const activeEng = useActiveEngagement();
 
   const toggle = useCallback((v: boolean) => {
@@ -249,7 +250,7 @@ function ChatPanelInner() {
     fetch("/api/settings")
       .then((r) => r.ok ? r.json() : {})
       .then((s) => {
-        const m = (s["chat.mode"] as string) ?? "harness";
+        const m = ((s as Record<string, unknown>)["chat.mode"] as string) ?? "harness";
         setMode(m);
       })
       .catch(() => setMode("harness"));
@@ -326,16 +327,17 @@ function ChatPanelInner() {
                         </div>
                       );
                     }
-                    if (part.type === "tool-invocation" && showTools) {
+                    if (part.type.startsWith("tool-") && showTools) {
+                      const tp = part as unknown as { toolName?: string; state?: string; result?: unknown };
                       return (
                         <div key={i} className="bg-muted/50 border border-border rounded px-2.5 py-1 text-[9px] font-mono">
                           <span className="text-muted-foreground">tool:</span>{" "}
-                          <span className="text-blue-400">{part.toolInvocation.toolName}</span>
-                          {part.toolInvocation.state === "result" && (
+                          <span className="text-blue-400">{tp.toolName}</span>
+                          {tp.state === "result" && (
                             <details className="mt-0.5">
                               <summary className="cursor-pointer text-muted-foreground">result</summary>
                               <pre className="mt-0.5 overflow-x-auto text-[9px] max-h-20 overflow-y-auto">
-                                {JSON.stringify(part.toolInvocation.result, null, 2)?.slice(0, 300)}
+                                {JSON.stringify(tp.result, null, 2)?.slice(0, 300)}
                               </pre>
                             </details>
                           )}

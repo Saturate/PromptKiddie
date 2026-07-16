@@ -33,3 +33,11 @@ COPY --from=build /app/packages/api ./packages/api
 COPY --from=build /app/package.json ./
 EXPOSE 3200
 CMD ["node", "packages/api/dist/index.js"]
+
+FROM base AS supervisor
+RUN apk add --no-cache docker-cli
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/core ./packages/core
+COPY --from=build /app/packages/supervisor ./packages/supervisor
+COPY --from=build /app/package.json ./
+CMD ["node", "packages/supervisor/dist/index.js", "--standby"]

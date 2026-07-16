@@ -28,6 +28,7 @@ export function ActionTerminal({ output, className }: ActionTerminalProps) {
     (async () => {
       const { Terminal } = await import("xterm");
       const { FitAddon } = await import("@xterm/addon-fit");
+      // @ts-expect-error xterm CSS import handled by Next.js bundler
       await import("xterm/css/xterm.css");
 
       if (!containerRef.current) return;

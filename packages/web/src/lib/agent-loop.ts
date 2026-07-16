@@ -5,11 +5,10 @@
  * Calls generateText with maxSteps:1 per turn, accumulating messages
  * until the model stops requesting tool calls or maxTurns is reached.
  */
-import { generateText, type ToolSet } from "ai";
-import type { LanguageModelV1 } from "@ai-sdk/provider";
+import { generateText, isStepCount, type ToolSet, type LanguageModel } from "ai";
 
 interface AgentLoopOptions {
-  model: LanguageModelV1;
+  model: LanguageModel;
   system: string;
   messages: Array<{ role: string; content: unknown }>;
   tools: ToolSet;
@@ -45,11 +44,10 @@ export async function agentLoop({
     const result = await generateText({
       model,
       system,
-      messages: history as Parameters<typeof generateText>[0]["messages"],
-      maxSteps: 1,
+      messages: history,
+      stopWhen: [isStepCount(1)],
       tools,
-      experimental_telemetry: telemetry as Parameters<typeof generateText>[0]["experimental_telemetry"],
-    });
+    } as Parameters<typeof generateText>[0]);
 
     const step = result.steps[0];
     if (!step) break;
@@ -60,9 +58,9 @@ export async function agentLoop({
 
     if (step.toolCalls?.length) {
       for (const tc of step.toolCalls) {
-        onToolCall?.(tc.toolName, tc.args);
+        onToolCall?.(tc.toolName, tc.input);
 
-        const sig = callSignature(tc.toolName, tc.args);
+        const sig = callSignature(tc.toolName, tc.input);
         recentCalls.push(sig);
         if (recentCalls.length > maxRepeats) recentCalls.shift();
 

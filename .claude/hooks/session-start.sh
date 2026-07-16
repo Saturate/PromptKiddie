@@ -58,7 +58,7 @@ if command -v docker >/dev/null 2>&1; then
   fi
 fi
 
-# Check for active engagements and remind about supervisor.
+# Check for active engagements and ensure supervisor is running.
 if command -v pnpm >/dev/null 2>&1; then
   ACTIVE=$(pnpm --silent pk engagement list 2>/dev/null \
     | jq -r '.[] | select(.status == "active") | "\(.id) \(.name)"' 2>/dev/null | head -1)
@@ -66,7 +66,11 @@ if command -v pnpm >/dev/null 2>&1; then
     EID=$(echo "$ACTIVE" | cut -d' ' -f1)
     ENAME=$(echo "$ACTIVE" | cut -d' ' -f2-)
     echo "[promptkiddie] active engagement: $ENAME ($EID)"
-    echo "[promptkiddie] start supervisor with: pk supervisor $EID"
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q pk-supervisor; then
+      echo "[promptkiddie] supervisor running (pk-supervisor container)"
+    else
+      echo "[promptkiddie] start supervisor with: docker compose up -d supervisor"
+    fi
   fi
 fi
 

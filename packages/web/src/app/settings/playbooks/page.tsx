@@ -126,8 +126,8 @@ function PlaybooksInner() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   // Block drill-down
   const [editingBlock, setEditingBlock] = useState<BlockDef | null>(null);
@@ -215,7 +215,7 @@ function PlaybooksInner() {
   }
 
   function handleNodeDoubleClick(_: React.MouseEvent, node: Node) {
-    const data = node.data as StepNodeData;
+    const data = node.data as unknown as StepNodeData;
     if (data.nodeType === "block_ref") {
       const step = editing?.phases.flatMap((p) => p.steps).find((s) => s.key === node.id);
       if (step?.blockRef) drillIntoBlock(step.blockRef);
@@ -225,12 +225,12 @@ function PlaybooksInner() {
   function updateStep(key: string, field: string, value: unknown) {
     if (editingBlock) {
       const step = editingBlock.nodes.find((s) => s.key === key);
-      if (step) (step as Record<string, unknown>)[field] = value;
+      if (step) (step as unknown as Record<string, unknown>)[field] = value;
       setEditingBlock({ ...editingBlock });
     } else if (editing) {
       for (const phase of editing.phases) {
         const step = phase.steps.find((s) => s.key === key);
-        if (step) { (step as Record<string, unknown>)[field] = value; break; }
+        if (step) { (step as unknown as Record<string, unknown>)[field] = value; break; }
       }
       setEditing({ ...editing });
     }
