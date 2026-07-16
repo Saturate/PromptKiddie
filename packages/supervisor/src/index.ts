@@ -519,7 +519,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
   process.on("SIGTERM", shutdown);
 
   return {
-    stop: shutdown,
+    stop: cleanup,
     cleanup,
     dispatch: evaluateAndDispatch,
     releasePending,

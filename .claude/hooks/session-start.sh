@@ -66,10 +66,10 @@ if command -v pnpm >/dev/null 2>&1; then
     EID=$(echo "$ACTIVE" | cut -d' ' -f1)
     ENAME=$(echo "$ACTIVE" | cut -d' ' -f2-)
     echo "[promptkiddie] active engagement: $ENAME ($EID)"
-    if pgrep -f "pk supervisor" >/dev/null 2>&1; then
-      echo "[promptkiddie] supervisor already running"
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q pk-supervisor; then
+      echo "[promptkiddie] supervisor running (pk-supervisor container)"
     else
-      echo "[promptkiddie] start supervisor with: pk supervisor --standby"
+      echo "[promptkiddie] start supervisor with: docker compose up -d supervisor"
     fi
   fi
 fi
