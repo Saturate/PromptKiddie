@@ -47,24 +47,27 @@ Open your agent or the web chat and tell it:
 
 View progress at `localhost:3100`.
 
-## Overview
+## Architecture
 
 ```mermaid
-graph TD
-    You["You (scope + steer)"] --> Orchestrator["Orchestrator (AI session)"]
+graph LR
+    Human["Human"] <--> WebUI["Web UI"]
+    Human <--> Orchestrator["Orchestrator<br>(AI harness)"]
 
-    Orchestrator --> Supervisor["pk supervisor"]
-    Orchestrator --> Agents["pk spawn agent"]
-    Orchestrator --> Gleipnir["pk shell / pk tunnel"]
+    WebUI <--> API
+    Orchestrator <-->|pk CLI / MCP| API
 
-    Supervisor --> |PortDiscovered| WebRecon["web_recon"]
-    Supervisor --> |VersionIdentified| CVESearch["cve_search"]
-    Supervisor --> |VulnConfirmed| Exploit["exploit"]
+    API <--> DB[(Postgres)]
+    Supervisor <-->|events| DB
 
-    Agents --> Containers["Isolated containers\nwith attack tools"]
+    Supervisor -->|spawns| Agents["Agent containers"]
+    Orchestrator -->|spawns| Agents
 
-    Gleipnir --> Shells["Persistent reverse shells\n+ SOCKS proxy"]
-    Gleipnir --> Ratatosk["ratatosk\n(privesc scanner)"]
+    Agents -->|tools| Tooling["Attackbox<br>(nmap, ffuf, nuclei, ...)"]
+    Agents <-->|shells| Gleipnir["Gleipnir<br>(reverse shells + tunnels)"]
+
+    Gleipnir <--> Target["Target machine"]
+    Tooling --> Target
 ```
 
 ## Engagement types
