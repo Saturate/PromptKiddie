@@ -1,0 +1,41 @@
+import { Outlet, NavLink } from "react-router-dom";
+
+const NAV = [
+  { to: "/", label: "Dashboard" },
+  { to: "/engagements", label: "Engagements" },
+  { to: "/playbook", label: "Playbook" },
+  { to: "/chat", label: "Chat" },
+  { to: "/knowledge", label: "Knowledge" },
+  { to: "/tools", label: "Tools" },
+  { to: "/stats", label: "Stats" },
+  { to: "/settings", label: "Settings" },
+];
+
+export function Layout() {
+  return (
+    <div className="flex min-h-screen">
+      <nav className="w-56 border-r border-border bg-sidebar p-4 flex flex-col gap-1">
+        <div className="mb-4 text-lg font-bold text-primary">PK</div>
+        {NAV.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === "/"}
+            className={({ isActive }) =>
+              `block rounded-md px-3 py-2 text-sm ${
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+              }`
+            }
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+      <main className="flex-1 p-6 overflow-auto">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
