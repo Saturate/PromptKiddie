@@ -1,4 +1,4 @@
-import { ToolLoopAgent, streamText, generateText, tool, isStepCount, type StopCondition, type ToolSet } from "ai";
+import { ToolLoopAgent, streamText, generateText, tool, isStepCount, type StopCondition, type ToolSet, type LanguageModel } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -61,7 +61,7 @@ function isRepeatedToolCalls(maxRepeats = MAX_IDENTICAL_CALLS): StopCondition<To
     const lastStep = steps[steps.length - 1];
     if (!lastStep?.toolCalls?.length) return false;
     for (const tc of lastStep.toolCalls) {
-      const sig = `${tc.toolName}:${JSON.stringify(tc.args)}`;
+      const sig = `${tc.toolName}:${JSON.stringify(tc.input)}`;
       recentSignatures.push(sig);
       if (recentSignatures.length > maxRepeats) recentSignatures.shift();
       if (
@@ -105,15 +105,15 @@ async function getModelConfig() {
   };
 }
 
-function getModel(provider: string, modelId: string, baseUrl?: string | null) {
+function getModel(provider: string, modelId: string, baseUrl?: string | null): LanguageModel {
   switch (provider) {
-    case "openai": return openai(modelId);
-    case "google": return google(modelId);
+    case "openai": return openai(modelId) as unknown as LanguageModel;
+    case "google": return google(modelId) as unknown as LanguageModel;
     case "custom": {
       const custom = createOpenAICompatible({ name: "custom", baseURL: baseUrl || "http://localhost:11434/v1", apiKey: "ollama" });
-      return custom.chatModel(modelId);
+      return custom.chatModel(modelId) as unknown as LanguageModel;
     }
-    default: return anthropic(modelId);
+    default: return anthropic(modelId) as unknown as LanguageModel;
   }
 }
 
@@ -142,6 +142,7 @@ const pkTools = {
   }),
   listEngagements: tool({
     description: "List all engagements. No parameters needed.",
+    inputSchema: z.object({}),
     execute: async () => listEngagements(),
   }),
   getEngagement: tool({
@@ -425,7 +426,7 @@ function buildSubAgentTool(
   name: string,
   description: string,
   systemPrompt: string,
-  model: ReturnType<typeof getModel>,
+  model: LanguageModel,
 ) {
   return tool({
     description,
@@ -447,7 +448,7 @@ function buildSubAgentTool(
           prompt: context,
           stopWhen: [isStepCount(15), isRepeatedToolCalls()],
           tools: pkTools,
-          telemetry: telemetryConfig,
+          ...(telemetryConfig ? { telemetry: telemetryConfig as never } : {}),
         });
         const stuck = result.steps.length > 0 &&
           result.steps[result.steps.length - 1]?.toolCalls?.length > 0;
@@ -508,8 +509,8 @@ export async function POST(req: Request) {
       isRepeatedToolCalls(),
     ],
     tools: { ...pkTools, ...subAgentTools },
-    telemetry: telemetryConfig,
+    ...(telemetryConfig ? { telemetry: telemetryConfig as never } : {}),
   });
 
-  return result.toDataStreamResponse();
+  return result.toTextStreamResponse();
 }

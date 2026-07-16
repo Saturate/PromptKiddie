@@ -44,8 +44,8 @@ function buildFlowGraph(
       description: n.description,
       kind: n.kind,
       emits: n.emits,
-      running: activeNodes?.has(n.id) ? Math.max(n.running, 1) : n.running,
-      eventCount: n.eventCount,
+      running: activeNodes?.has(n.id) ? Math.max((n as unknown as { running: number }).running ?? 0, 1) : (n as unknown as { running: number }).running ?? 0,
+      eventCount: (n as unknown as { eventCount: number }).eventCount ?? 0,
       coverage: coverage?.[n.name],
     } satisfies ActionNodeData,
   }));

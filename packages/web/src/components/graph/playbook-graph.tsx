@@ -122,7 +122,7 @@ function buildGraph(steps: StepRow[]): { nodes: Node[]; edges: Edge[] } {
         data: {
           title: step.title,
           stepKey: step.stepKey,
-          status: step.status,
+          status: step.status as StepNodeData["status"],
           nodeType: step.nodeType,
           type: step.stepKey.includes("scan") || step.stepKey.includes("fuzz") || step.stepKey.includes("exec") || step.stepKey.includes("curl") || step.stepKey.includes("nmap") || step.stepKey.includes("enum4linux") ? "mechanical" : "judgment",
           priority: step.priority,
