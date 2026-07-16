@@ -1,0 +1,76 @@
+[github]
+owner = "Saturate"
+repo = "PromptKiddie"
+
+[packages.core]
+versioned_files = ["packages/core/package.json"]
+changelog = "packages/core/CHANGELOG.md"
+scopes = ["core", "playbook", "knowledge", "sdk", "schema", "config"]
+
+[packages.cli]
+versioned_files = ["packages/cli/package.json"]
+changelog = "packages/cli/CHANGELOG.md"
+scopes = ["cli", "shell-logger"]
+
+[packages.api]
+versioned_files = ["packages/api/package.json"]
+changelog = "packages/api/CHANGELOG.md"
+scopes = ["api"]
+
+[packages.web]
+versioned_files = ["packages/web/package.json"]
+changelog = "packages/web/CHANGELOG.md"
+scopes = ["web"]
+
+[packages.mcp-server]
+versioned_files = ["packages/mcp-server/package.json"]
+changelog = "packages/mcp-server/CHANGELOG.md"
+scopes = ["mcp-server", "mcp"]
+
+[packages.supervisor]
+versioned_files = ["packages/supervisor/package.json"]
+changelog = "packages/supervisor/CHANGELOG.md"
+scopes = ["supervisor", "hosted", "containers", "spawn", "compose"]
+
+[packages.init]
+versioned_files = ["packages/init/package.json"]
+changelog = "packages/init/CHANGELOG.md"
+scopes = ["init"]
+
+[packages.tooling-mcp]
+versioned_files = ["packages/tooling-mcp/package.json"]
+changelog = "packages/tooling-mcp/CHANGELOG.md"
+scopes = ["tooling-mcp", "tooling", "vpn"]
+
+[packages.gleipnir]
+versioned_files = [
+  "packages/gleipnir/Cargo.toml",
+  { path = "packages/gleipnir/Cargo.lock", dependency = "gleipnir-relay" },
+]
+changelog = "packages/gleipnir/CHANGELOG.md"
+scopes = ["gleipnir"]
+
+[[workflows]]
+name = "release"
+help_text = "Prepare and create a new release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+[[workflows.steps]]
+type = "Command"
+command = 'git commit -m "chore: prepare release"'
+
+[[workflows.steps]]
+type = "Command"
+command = "git push"
+
+[[workflows.steps]]
+type = "Release"
+
+[[workflows]]
+name = "document-change"
+help_text = "Create a new changeset file"
+
+[[workflows.steps]]
+type = "CreateChangeFile"
