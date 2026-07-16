@@ -51,23 +51,22 @@ View progress at `localhost:3100`.
 
 ```mermaid
 graph LR
-    Human["Human"] <--> WebUI["Web UI"]
+    Human <--> WebUI["Web UI<br>(Next.js)"]
     Human <--> Orchestrator["Orchestrator<br>(AI harness)"]
 
-    WebUI <--> API
-    Orchestrator <-->|pk CLI / MCP| API
+    WebUI <--> DB[(Postgres)]
+    WebUI <-->|WebSocket| Supervisor
 
-    API <--> DB[(Postgres)]
-    Supervisor <-->|events| DB
+    Orchestrator <-->|pk CLI / MCP| DB
+    Orchestrator -->|docker| Agents["Agent containers"]
 
-    Supervisor -->|spawns| Agents["Agent containers"]
-    Orchestrator -->|spawns| Agents
+    Supervisor <-->|LISTEN/NOTIFY| DB
+    Supervisor -->|playbook actions| Agents
 
-    Agents -->|tools| Tooling["Attackbox<br>(nmap, ffuf, nuclei, ...)"]
-    Agents <-->|shells| Gleipnir["Gleipnir<br>(reverse shells + tunnels)"]
-
-    Gleipnir <--> Target["Target machine"]
-    Tooling --> Target
+    Agents <-->|pk CLI| DB
+    Agents --> Target["Target"]
+    Agents <--> Gleipnir["Gleipnir<br>(reverse shells)"]
+    Gleipnir <--> Target
 ```
 
 ## Engagement types
