@@ -5,15 +5,51 @@ use std::process::Command;
 pub struct TokenCheck;
 
 const DANGEROUS_PRIVS: &[(&str, Severity, &str)] = &[
-    ("SeImpersonatePrivilege", Severity::Critical, "potato family (GodPotato, PrintSpoofer, JuicyPotato)"),
-    ("SeAssignPrimaryTokenPrivilege", Severity::Critical, "potato family or token manipulation"),
-    ("SeDebugPrivilege", Severity::Critical, "inject into any process, dump LSASS"),
-    ("SeBackupPrivilege", Severity::High, "read any file including SAM/SYSTEM"),
-    ("SeRestorePrivilege", Severity::High, "write any file, DLL hijack system services"),
-    ("SeTakeOwnershipPrivilege", Severity::High, "take ownership of any object"),
-    ("SeLoadDriverPrivilege", Severity::High, "load vulnerable kernel driver for LPE"),
-    ("SeManageVolumePrivilege", Severity::Medium, "read raw disk, access any file"),
-    ("SeTcbPrivilege", Severity::Critical, "act as part of the OS"),
+    (
+        "SeImpersonatePrivilege",
+        Severity::Critical,
+        "potato family (GodPotato, PrintSpoofer, JuicyPotato)",
+    ),
+    (
+        "SeAssignPrimaryTokenPrivilege",
+        Severity::Critical,
+        "potato family or token manipulation",
+    ),
+    (
+        "SeDebugPrivilege",
+        Severity::Critical,
+        "inject into any process, dump LSASS",
+    ),
+    (
+        "SeBackupPrivilege",
+        Severity::High,
+        "read any file including SAM/SYSTEM",
+    ),
+    (
+        "SeRestorePrivilege",
+        Severity::High,
+        "write any file, DLL hijack system services",
+    ),
+    (
+        "SeTakeOwnershipPrivilege",
+        Severity::High,
+        "take ownership of any object",
+    ),
+    (
+        "SeLoadDriverPrivilege",
+        Severity::High,
+        "load vulnerable kernel driver for LPE",
+    ),
+    (
+        "SeManageVolumePrivilege",
+        Severity::Medium,
+        "read raw disk, access any file",
+    ),
+    (
+        "SeTcbPrivilege",
+        Severity::Critical,
+        "act as part of the OS",
+    ),
 ];
 
 impl Check for TokenCheck {
@@ -37,15 +73,22 @@ fn check_privileges(findings: &mut Vec<Finding>) {
 
     for (priv_name, severity, hint) in DANGEROUS_PRIVS {
         if stdout.contains(priv_name) {
-            let enabled = stdout.lines()
+            let enabled = stdout
+                .lines()
                 .find(|l| l.contains(priv_name))
                 .is_some_and(|l| l.contains("Enabled"));
 
             findings.push(Finding {
                 check: "tokens",
                 severity: *severity,
-                title: format!("{priv_name} {}",
-                    if enabled { "(enabled)" } else { "(disabled, may be enableable)" }),
+                title: format!(
+                    "{priv_name} {}",
+                    if enabled {
+                        "(enabled)"
+                    } else {
+                        "(disabled, may be enableable)"
+                    }
+                ),
                 detail: "current user holds this privilege".into(),
                 path: None,
                 exploit_hint: Some(hint.to_string()),

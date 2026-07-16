@@ -1,20 +1,20 @@
-mod suid;
-mod sudo;
 mod capabilities;
-mod cron;
-mod kernel;
-mod docker;
-mod perms;
-mod network;
 mod credentials;
-mod processes;
-mod user_groups;
-mod systemd_services;
-mod mounts;
-mod ssh_config;
-mod env_vars;
+mod cron;
 mod dbus;
+mod docker;
+mod env_vars;
+mod kernel;
+mod mounts;
+mod network;
+mod perms;
+mod processes;
 mod snap_lxd;
+mod ssh_config;
+mod sudo;
+mod suid;
+mod systemd_services;
+mod user_groups;
 
 use super::Check;
 

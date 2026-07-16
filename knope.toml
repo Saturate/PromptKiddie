@@ -50,6 +50,11 @@ versioned_files = [
 changelog = "packages/gleipnir/CHANGELOG.md"
 scopes = ["gleipnir"]
 
+[packages.ratatosk]
+versioned_files = ["packages/ratatosk/Cargo.toml"]
+changelog = "packages/ratatosk/CHANGELOG.md"
+scopes = ["ratatosk"]
+
 [[workflows]]
 name = "release"
 help_text = "Prepare and create a new release"

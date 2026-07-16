@@ -30,10 +30,7 @@ fn check_unquoted_paths(findings: &mut Vec<Finding>) {
 
     for line in stdout.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty()
-            || trimmed.starts_with("DisplayName")
-            || trimmed.starts_with("Name")
-        {
+        if trimmed.is_empty() || trimmed.starts_with("DisplayName") || trimmed.starts_with("Name") {
             continue;
         }
 
@@ -42,7 +39,9 @@ fn check_unquoted_paths(findings: &mut Vec<Finding>) {
             let exe_path = path_portion.split("  ").next().unwrap_or(path_portion);
 
             if exe_path.contains(' ') && !exe_path.starts_with('"') {
-                if exe_path.starts_with("C:\\Windows\\") { continue; }
+                if exe_path.starts_with("C:\\Windows\\") {
+                    continue;
+                }
 
                 findings.push(Finding {
                     check: "services",
@@ -50,7 +49,9 @@ fn check_unquoted_paths(findings: &mut Vec<Finding>) {
                     title: "unquoted service path with spaces".into(),
                     detail: trimmed.to_string(),
                     path: Some(exe_path.to_string()),
-                    exploit_hint: Some("place a binary at the truncated path to hijack service start".into()),
+                    exploit_hint: Some(
+                        "place a binary at the truncated path to hijack service start".into(),
+                    ),
                 });
             }
         }
@@ -70,22 +71,30 @@ fn check_writable_service_binaries(findings: &mut Vec<Finding>) {
 
     for line in stdout.lines().skip(1) {
         let trimmed = line.trim();
-        if trimmed.is_empty() { continue; }
+        if trimmed.is_empty() {
+            continue;
+        }
 
         if let Some(path_start) = trimmed.find("C:\\") {
             let path_portion = &trimmed[path_start..];
             let exe_path = path_portion
                 .trim_matches('"')
-                .split(" /").next()
+                .split(" /")
+                .next()
                 .unwrap_or(path_portion)
-                .split(" -").next()
+                .split(" -")
+                .next()
                 .unwrap_or(path_portion)
                 .trim();
 
-            if exe_path.starts_with("C:\\Windows\\System32") { continue; }
+            if exe_path.starts_with("C:\\Windows\\System32") {
+                continue;
+            }
 
             let path = Path::new(exe_path);
-            if !path.exists() { continue; }
+            if !path.exists() {
+                continue;
+            }
 
             if let Ok(icacls) = Command::new("icacls").arg(exe_path).output() {
                 let perms = String::from_utf8_lossy(&icacls.stdout).to_lowercase();
@@ -99,7 +108,10 @@ fn check_writable_service_binaries(findings: &mut Vec<Finding>) {
                             title: "writable service binary".into(),
                             detail: perms.lines().take(3).collect::<Vec<_>>().join(" | "),
                             path: Some(exe_path.to_string()),
-                            exploit_hint: Some("replace binary with payload, restart service for SYSTEM shell".into()),
+                            exploit_hint: Some(
+                                "replace binary with payload, restart service for SYSTEM shell"
+                                    .into(),
+                            ),
                         });
                     }
                 }
@@ -109,7 +121,10 @@ fn check_writable_service_binaries(findings: &mut Vec<Finding>) {
 }
 
 fn check_modifiable_services(findings: &mut Vec<Finding>) {
-    let output = match Command::new("sc").args(["query", "type=", "service", "state=", "all"]).output() {
+    let output = match Command::new("sc")
+        .args(["query", "type=", "service", "state=", "all"])
+        .output()
+    {
         Ok(o) => o,
         Err(_) => return,
     };
@@ -135,7 +150,9 @@ fn check_modifiable_services(findings: &mut Vec<Finding>) {
                             title: format!("modifiable SYSTEM service: {svc}"),
                             detail: "service runs as LocalSystem and may be reconfigurable".into(),
                             path: None,
-                            exploit_hint: Some("sc config <svc> binpath= \"cmd /c payload.exe\"".into()),
+                            exploit_hint: Some(
+                                "sc config <svc> binpath= \"cmd /c payload.exe\"".into(),
+                            ),
                         });
                     }
                 }

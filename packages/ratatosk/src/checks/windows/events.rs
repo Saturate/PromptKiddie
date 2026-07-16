@@ -18,7 +18,10 @@ impl Check for EventCheck {
 
 fn check_powershell_scriptblock_logs(findings: &mut Vec<Finding>) {
     let output = match Command::new("reg")
-        .args(["query", r"HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging"])
+        .args([
+            "query",
+            r"HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging",
+        ])
         .output()
     {
         Ok(o) => o,
@@ -60,7 +63,10 @@ fn check_powershell_scriptblock_logs(findings: &mut Vec<Finding>) {
 
 fn check_powershell_transcripts(findings: &mut Vec<Finding>) {
     let output = match Command::new("reg")
-        .args(["query", r"HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription"])
+        .args([
+            "query",
+            r"HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription",
+        ])
         .output()
     {
         Ok(o) => o,
@@ -69,7 +75,8 @@ fn check_powershell_transcripts(findings: &mut Vec<Finding>) {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     if stdout.contains("EnableTranscripting") && stdout.contains("0x1") {
-        let output_dir = stdout.lines()
+        let output_dir = stdout
+            .lines()
             .find(|l| l.contains("OutputDirectory"))
             .and_then(|l| l.split_whitespace().last())
             .unwrap_or("");
@@ -79,7 +86,11 @@ fn check_powershell_transcripts(findings: &mut Vec<Finding>) {
             severity: Severity::Medium,
             title: "PowerShell transcription enabled".into(),
             detail: format!("output dir: {output_dir}"),
-            path: if output_dir.is_empty() { None } else { Some(output_dir.to_string()) },
+            path: if output_dir.is_empty() {
+                None
+            } else {
+                Some(output_dir.to_string())
+            },
             exploit_hint: Some("transcripts may contain credentials typed in PS sessions".into()),
         });
 
@@ -93,7 +104,9 @@ fn check_powershell_transcripts(findings: &mut Vec<Finding>) {
                         title: format!("{count} PowerShell transcript files accessible"),
                         detail: "may contain plaintext credentials from past sessions".into(),
                         path: Some(output_dir.to_string()),
-                        exploit_hint: Some("search transcript files for password/credential strings".into()),
+                        exploit_hint: Some(
+                            "search transcript files for password/credential strings".into(),
+                        ),
                     });
                 }
             }

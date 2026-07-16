@@ -19,32 +19,43 @@ impl Check for TaskCheck {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         for line in stdout.lines() {
-            let fields: Vec<&str> = line.split(',')
-                .map(|f| f.trim_matches('"'))
-                .collect();
+            let fields: Vec<&str> = line.split(',').map(|f| f.trim_matches('"')).collect();
 
-            if fields.len() < 9 { continue; }
+            if fields.len() < 9 {
+                continue;
+            }
 
             let task_name = fields[1];
             let task_to_run = fields[8];
 
-            if task_name.starts_with("\\Microsoft\\") { continue; }
-            if task_to_run == "Task To Run" { continue; }
+            if task_name.starts_with("\\Microsoft\\") {
+                continue;
+            }
+            if task_to_run == "Task To Run" {
+                continue;
+            }
 
-            let run_as = fields.iter()
-                .find(|f| f.contains("SYSTEM") || f.contains("Administrator") || f.contains("LOCAL"))
+            let run_as = fields
+                .iter()
+                .find(|f| {
+                    f.contains("SYSTEM") || f.contains("Administrator") || f.contains("LOCAL")
+                })
                 .copied()
                 .unwrap_or("");
 
             let runs_as_system = run_as.contains("SYSTEM") || run_as.contains("LOCALSERVICE");
 
-            if !runs_as_system { continue; }
+            if !runs_as_system {
+                continue;
+            }
 
             let exe_path = task_to_run
                 .trim_matches('"')
-                .split(" /").next()
+                .split(" /")
+                .next()
                 .unwrap_or(task_to_run)
-                .split(" -").next()
+                .split(" -")
+                .next()
                 .unwrap_or(task_to_run)
                 .trim();
 
@@ -69,7 +80,9 @@ impl Check for TaskCheck {
                         title: "writable SYSTEM scheduled task binary".into(),
                         detail: format!("task: {task_name}"),
                         path: Some(exe_path.to_string()),
-                        exploit_hint: Some("replace binary, wait for task execution as SYSTEM".into()),
+                        exploit_hint: Some(
+                            "replace binary, wait for task execution as SYSTEM".into(),
+                        ),
                     });
                 }
             }

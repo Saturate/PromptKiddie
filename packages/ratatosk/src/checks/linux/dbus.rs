@@ -70,7 +70,11 @@ fn check_polkit(findings: &mut Vec<Finding>) {
         });
     }
 
-    let rule_dirs = ["/etc/polkit-1/rules.d", "/usr/share/polkit-1/rules.d", "/etc/polkit-1/localauthority.conf.d"];
+    let rule_dirs = [
+        "/etc/polkit-1/rules.d",
+        "/usr/share/polkit-1/rules.d",
+        "/etc/polkit-1/localauthority.conf.d",
+    ];
 
     for dir in &rule_dirs {
         if let Ok(entries) = std::fs::read_dir(dir) {
@@ -85,7 +89,9 @@ fn check_polkit(findings: &mut Vec<Finding>) {
                             title: format!("polkit rule: {}", entry.file_name().to_string_lossy()),
                             detail: "may grant elevated privileges without authentication".into(),
                             path: Some(path.to_string_lossy().to_string()),
-                            exploit_hint: Some("review rule to see what actions are auto-authorized".into()),
+                            exploit_hint: Some(
+                                "review rule to see what actions are auto-authorized".into(),
+                            ),
                         });
                     }
                 }

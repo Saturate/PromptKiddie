@@ -25,7 +25,9 @@ fn check_passwd_users(findings: &mut Vec<Finding>) {
 
     for line in passwd.lines() {
         let fields: Vec<&str> = line.split(':').collect();
-        if fields.len() < 7 { continue; }
+        if fields.len() < 7 {
+            continue;
+        }
 
         let user = fields[0];
         let uid: u32 = fields[2].parse().unwrap_or(u32::MAX);
@@ -57,7 +59,9 @@ fn check_passwd_users(findings: &mut Vec<Finding>) {
     if let Ok(shadow) = fs::read_to_string("/etc/shadow") {
         for line in shadow.lines() {
             let fields: Vec<&str> = line.split(':').collect();
-            if fields.len() < 2 { continue; }
+            if fields.len() < 2 {
+                continue;
+            }
             let user = fields[0];
             let hash = fields[1];
             if hash.is_empty() {
@@ -79,7 +83,9 @@ fn check_sudoers(findings: &mut Vec<Finding>) {
         if let Ok(content) = fs::read_to_string(path) {
             for line in content.lines() {
                 let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
 
                 if trimmed.contains("NOPASSWD") {
                     findings.push(Finding {
@@ -112,7 +118,9 @@ fn check_sudoers(findings: &mut Vec<Finding>) {
             if let Ok(content) = fs::read_to_string(&path) {
                 for line in content.lines() {
                     let trimmed = line.trim();
-                    if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+                    if trimmed.is_empty() || trimmed.starts_with('#') {
+                        continue;
+                    }
                     if trimmed.contains("NOPASSWD") {
                         findings.push(Finding {
                             check: "user_groups",
@@ -137,9 +145,13 @@ fn check_other_ssh_keys(findings: &mut Vec<Finding>) {
         .lines()
         .filter_map(|l| {
             let fields: Vec<&str> = l.split(':').collect();
-            if fields.len() < 6 { return None; }
+            if fields.len() < 6 {
+                return None;
+            }
             let uid: u32 = fields[2].parse().ok()?;
-            if uid == my_uid { return None; }
+            if uid == my_uid {
+                return None;
+            }
             Some(fields[5].to_string())
         })
         .collect();
@@ -147,7 +159,10 @@ fn check_other_ssh_keys(findings: &mut Vec<Finding>) {
     for home in &home_dirs {
         let auth_keys = format!("{home}/.ssh/authorized_keys");
         if let Ok(content) = fs::read_to_string(&auth_keys) {
-            let key_count = content.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).count();
+            let key_count = content
+                .lines()
+                .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+                .count();
             if key_count > 0 {
                 findings.push(Finding {
                     check: "user_groups",
@@ -181,7 +196,9 @@ fn check_uid_collisions(findings: &mut Vec<Finding>) {
     if let Ok(passwd) = fs::read_to_string("/etc/passwd") {
         for line in passwd.lines() {
             let fields: Vec<&str> = line.split(':').collect();
-            if fields.len() < 7 { continue; }
+            if fields.len() < 7 {
+                continue;
+            }
             let uid: u32 = match fields[2].parse() {
                 Ok(u) => u,
                 Err(_) => continue,
@@ -198,7 +215,9 @@ fn check_uid_collisions(findings: &mut Vec<Finding>) {
                 title: format!("UID collision: uid {uid} shared by {} users", users.len()),
                 detail: users.join(", "),
                 path: Some("/etc/passwd".into()),
-                exploit_hint: Some("multiple accounts with same uid share all file permissions".into()),
+                exploit_hint: Some(
+                    "multiple accounts with same uid share all file permissions".into(),
+                ),
             });
         }
     }

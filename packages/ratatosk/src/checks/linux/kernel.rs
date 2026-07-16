@@ -104,12 +104,16 @@ impl Check for KernelCheck {
                 }
 
                 if exploit.cve == "CVE-2021-3156" {
-                    if let Ok(output) = std::process::Command::new("sudo").arg("--version").output() {
+                    if let Ok(output) = std::process::Command::new("sudo").arg("--version").output()
+                    {
                         let ver = String::from_utf8_lossy(&output.stdout);
                         findings.push(Finding {
                             check: "kernel",
                             severity: Severity::Info,
-                            title: format!("{}: {} (check sudo version)", exploit.name, exploit.cve),
+                            title: format!(
+                                "{}: {} (check sudo version)",
+                                exploit.name, exploit.cve
+                            ),
                             detail: ver.lines().next().unwrap_or("").to_string(),
                             path: None,
                             exploit_hint: Some("vulnerable if sudo < 1.9.5p2".into()),
@@ -125,7 +129,9 @@ impl Check for KernelCheck {
                         title: format!("{}: {} (check glibc version)", exploit.name, exploit.cve),
                         detail: "run ldd --version to check".into(),
                         path: None,
-                        exploit_hint: Some("vulnerable glibc 2.34-2.39, check GLIBC_TUNABLES".into()),
+                        exploit_hint: Some(
+                            "vulnerable glibc 2.34-2.39, check GLIBC_TUNABLES".into(),
+                        ),
                     });
                     continue;
                 }
@@ -136,9 +142,15 @@ impl Check for KernelCheck {
                         check: "kernel",
                         severity: exploit.severity,
                         title: format!("{}: {}", exploit.name, exploit.cve),
-                        detail: format!("kernel {major}.{minor}.{patch} in range {}.{}.{}-{}.{}.{}",
-                            exploit.min_version.0, exploit.min_version.1, exploit.min_version.2,
-                            exploit.max_version.0, exploit.max_version.1, exploit.max_version.2),
+                        detail: format!(
+                            "kernel {major}.{minor}.{patch} in range {}.{}.{}-{}.{}.{}",
+                            exploit.min_version.0,
+                            exploit.min_version.1,
+                            exploit.min_version.2,
+                            exploit.max_version.0,
+                            exploit.max_version.1,
+                            exploit.max_version.2
+                        ),
                         path: None,
                         exploit_hint: Some(format!("search for {} exploit binary", exploit.name)),
                     });
@@ -151,12 +163,12 @@ impl Check for KernelCheck {
 }
 
 fn parse_kernel_version(version_str: &str) -> Option<(u32, u32, u32)> {
-    let version_part = version_str
-        .split_whitespace()
-        .nth(2)?;
+    let version_part = version_str.split_whitespace().nth(2)?;
 
     let nums: Vec<&str> = version_part.split(|c: char| !c.is_ascii_digit()).collect();
-    if nums.len() < 3 { return None; }
+    if nums.len() < 3 {
+        return None;
+    }
 
     Some((
         nums[0].parse().ok()?,

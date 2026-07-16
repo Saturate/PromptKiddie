@@ -11,11 +11,17 @@ pub trait Check: Sync {
 
 pub fn all() -> Vec<Box<dyn Check>> {
     #[cfg(target_os = "linux")]
-    { linux::all() }
+    {
+        linux::all()
+    }
 
     #[cfg(target_os = "windows")]
-    { windows::all() }
+    {
+        windows::all()
+    }
 
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    { vec![] }
+    {
+        vec![]
+    }
 }

@@ -9,24 +9,23 @@ impl Check for DockerCheck {
     fn run(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        if Path::new("/var/run/docker.sock").exists() {
-            if fs::metadata("/var/run/docker.sock")
+        if Path::new("/var/run/docker.sock").exists()
+            && fs::metadata("/var/run/docker.sock")
                 .map(|m| {
                     use std::os::unix::fs::MetadataExt;
                     let mode = m.mode();
                     mode & 0o006 != 0
                 })
                 .unwrap_or(false)
-            {
-                findings.push(Finding {
-                    check: "docker",
-                    severity: Severity::Critical,
-                    title: "docker socket is world-accessible".into(),
-                    detail: "/var/run/docker.sock readable/writable".into(),
-                    path: Some("/var/run/docker.sock".into()),
-                    exploit_hint: Some("docker run -v /:/mnt --rm -it alpine chroot /mnt sh".into()),
-                });
-            }
+        {
+            findings.push(Finding {
+                check: "docker",
+                severity: Severity::Critical,
+                title: "docker socket is world-accessible".into(),
+                detail: "/var/run/docker.sock readable/writable".into(),
+                path: Some("/var/run/docker.sock".into()),
+                exploit_hint: Some("docker run -v /:/mnt --rm -it alpine chroot /mnt sh".into()),
+            });
         }
 
         if let Ok(groups_output) = std::process::Command::new("id").output() {
@@ -38,7 +37,9 @@ impl Check for DockerCheck {
                     title: "current user in docker group".into(),
                     detail: "docker group membership allows root-equivalent access".into(),
                     path: None,
-                    exploit_hint: Some("docker run -v /:/mnt --rm -it alpine chroot /mnt sh".into()),
+                    exploit_hint: Some(
+                        "docker run -v /:/mnt --rm -it alpine chroot /mnt sh".into(),
+                    ),
                 });
             }
             if groups.contains("lxd") || groups.contains("lxc") {
@@ -64,17 +65,17 @@ impl Check for DockerCheck {
             });
         }
 
-        if let Ok(cgroup) = fs::read_to_string("/proc/1/cgroup") {
-            if cgroup.contains("docker") || cgroup.contains("lxc") || cgroup.contains("kubepods") {
-                findings.push(Finding {
-                    check: "docker",
-                    severity: Severity::Info,
-                    title: "containerized environment detected".into(),
-                    detail: "container runtime visible in /proc/1/cgroup".into(),
-                    path: None,
-                    exploit_hint: None,
-                });
-            }
+        if let Ok(cgroup) = fs::read_to_string("/proc/1/cgroup")
+            && (cgroup.contains("docker") || cgroup.contains("lxc") || cgroup.contains("kubepods"))
+        {
+            findings.push(Finding {
+                check: "docker",
+                severity: Severity::Info,
+                title: "containerized environment detected".into(),
+                detail: "container runtime visible in /proc/1/cgroup".into(),
+                path: None,
+                exploit_hint: None,
+            });
         }
 
         if let Ok(status) = fs::read_to_string("/proc/1/status") {

@@ -17,7 +17,12 @@ impl Check for WinProcessCheck {
 
 fn check_system_processes(findings: &mut Vec<Finding>) {
     let output = match Command::new("wmic")
-        .args(["process", "get", "Name,ExecutablePath,ProcessId", "/format:csv"])
+        .args([
+            "process",
+            "get",
+            "Name,ExecutablePath,ProcessId",
+            "/format:csv",
+        ])
         .output()
     {
         Ok(o) => o,
@@ -30,13 +35,19 @@ fn check_system_processes(findings: &mut Vec<Finding>) {
 
     for line in stdout.lines() {
         let fields: Vec<&str> = line.split(',').collect();
-        if fields.len() < 4 { continue; }
+        if fields.len() < 4 {
+            continue;
+        }
 
         let exe_path = fields[1].trim();
         let name = fields[2].trim();
 
-        if exe_path.is_empty() { continue; }
-        if exe_path.to_lowercase().starts_with("c:\\windows\\system32") { continue; }
+        if exe_path.is_empty() {
+            continue;
+        }
+        if exe_path.to_lowercase().starts_with("c:\\windows\\system32") {
+            continue;
+        }
 
         if let Ok(icacls) = Command::new("icacls").arg(exe_path).output() {
             let perms = String::from_utf8_lossy(&icacls.stdout).to_lowercase();

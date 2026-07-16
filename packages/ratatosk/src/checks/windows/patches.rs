@@ -49,10 +49,7 @@ impl Check for PatchCheck {
 }
 
 fn check_os_version(findings: &mut Vec<Finding>) {
-    let output = match Command::new("cmd")
-        .args(["/c", "ver"])
-        .output()
-    {
+    let output = match Command::new("cmd").args(["/c", "ver"]).output() {
         Ok(o) => o,
         Err(_) => return,
     };
@@ -95,7 +92,8 @@ fn check_installed_patches(findings: &mut Vec<Finding>) {
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let patches: Vec<&str> = stdout.lines()
+    let patches: Vec<&str> = stdout
+        .lines()
         .filter(|l| l.contains("KB"))
         .map(|l| l.trim())
         .collect();
@@ -114,7 +112,11 @@ fn check_installed_patches(findings: &mut Vec<Finding>) {
 
 fn check_print_spooler(findings: &mut Vec<Finding>) {
     let output = match Command::new("powershell")
-        .args(["-NoProfile", "-Command", "Get-Service Spooler | Select-Object -ExpandProperty Status"])
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Get-Service Spooler | Select-Object -ExpandProperty Status",
+        ])
         .output()
     {
         Ok(o) => o,

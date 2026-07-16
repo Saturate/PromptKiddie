@@ -35,7 +35,9 @@ fn check_aws_metadata(findings: &mut Vec<Finding>) {
             title: "AWS IMDS accessible (IMDSv1)".into(),
             detail: "instance metadata service reachable without token".into(),
             path: None,
-            exploit_hint: Some("curl http://169.254.169.254/latest/meta-data/iam/security-credentials/".into()),
+            exploit_hint: Some(
+                "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/".into(),
+            ),
         });
     }
 }
@@ -88,16 +90,46 @@ fn check_gcp_metadata(findings: &mut Vec<Finding>) {
 
 fn check_cloud_creds_files(findings: &mut Vec<Finding>) {
     let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
-    if user_profile.is_empty() { return; }
+    if user_profile.is_empty() {
+        return;
+    }
 
     let cloud_files = [
-        (format!("{user_profile}\\.aws\\credentials"), "AWS credentials", Severity::Critical),
-        (format!("{user_profile}\\.aws\\config"), "AWS config", Severity::Medium),
-        (format!("{user_profile}\\.azure\\accessTokens.json"), "Azure access tokens", Severity::Critical),
-        (format!("{user_profile}\\.azure\\azureProfile.json"), "Azure profile", Severity::Medium),
-        (format!("{user_profile}\\.config\\gcloud\\credentials.db"), "GCP credentials DB", Severity::Critical),
-        (format!("{user_profile}\\.config\\gcloud\\application_default_credentials.json"), "GCP default credentials", Severity::Critical),
-        (format!("{user_profile}\\.kube\\config"), "Kubernetes config", Severity::High),
+        (
+            format!("{user_profile}\\.aws\\credentials"),
+            "AWS credentials",
+            Severity::Critical,
+        ),
+        (
+            format!("{user_profile}\\.aws\\config"),
+            "AWS config",
+            Severity::Medium,
+        ),
+        (
+            format!("{user_profile}\\.azure\\accessTokens.json"),
+            "Azure access tokens",
+            Severity::Critical,
+        ),
+        (
+            format!("{user_profile}\\.azure\\azureProfile.json"),
+            "Azure profile",
+            Severity::Medium,
+        ),
+        (
+            format!("{user_profile}\\.config\\gcloud\\credentials.db"),
+            "GCP credentials DB",
+            Severity::Critical,
+        ),
+        (
+            format!("{user_profile}\\.config\\gcloud\\application_default_credentials.json"),
+            "GCP default credentials",
+            Severity::Critical,
+        ),
+        (
+            format!("{user_profile}\\.kube\\config"),
+            "Kubernetes config",
+            Severity::High,
+        ),
     ];
 
     for (path, desc, severity) in &cloud_files {

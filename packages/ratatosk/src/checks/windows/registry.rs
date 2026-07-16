@@ -18,8 +18,14 @@ impl Check for RegistryCheck {
 }
 
 fn check_always_install_elevated(findings: &mut Vec<Finding>) {
-    let hklm = reg_query(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer", "AlwaysInstallElevated");
-    let hkcu = reg_query(r"HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer", "AlwaysInstallElevated");
+    let hklm = reg_query(
+        r"HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer",
+        "AlwaysInstallElevated",
+    );
+    let hkcu = reg_query(
+        r"HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer",
+        "AlwaysInstallElevated",
+    );
 
     if hklm.contains("0x1") && hkcu.contains("0x1") {
         findings.push(Finding {
@@ -45,7 +51,9 @@ fn check_autologon(findings: &mut Vec<Finding>) {
             title: "autologon credentials in registry".into(),
             detail: format!("user: {}", username.trim()),
             path: Some(key.to_string()),
-            exploit_hint: Some("plaintext password stored in DefaultPassword registry value".into()),
+            exploit_hint: Some(
+                "plaintext password stored in DefaultPassword registry value".into(),
+            ),
         });
     }
 }
@@ -59,10 +67,7 @@ fn check_autorun_entries(findings: &mut Vec<Finding>) {
     ];
 
     for key in &autorun_keys {
-        let output = match Command::new("reg")
-            .args(["query", key])
-            .output()
-        {
+        let output = match Command::new("reg").args(["query", key]).output() {
             Ok(o) => o,
             Err(_) => continue,
         };
@@ -70,7 +75,9 @@ fn check_autorun_entries(findings: &mut Vec<Finding>) {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with("HKEY_") { continue; }
+            if trimmed.is_empty() || trimmed.starts_with("HKEY_") {
+                continue;
+            }
 
             if let Some(path) = extract_path(trimmed) {
                 if is_writable(&path) {
@@ -114,7 +121,9 @@ fn reg_query(key: &str, value: &str) -> String {
 
 fn extract_path(line: &str) -> Option<String> {
     let parts: Vec<&str> = line.splitn(3, "    ").collect();
-    if parts.len() < 3 { return None; }
+    if parts.len() < 3 {
+        return None;
+    }
     let val = parts[2].trim();
     let path = val.trim_matches('"').split_whitespace().next()?;
     if path.contains('\\') || path.contains('/') {

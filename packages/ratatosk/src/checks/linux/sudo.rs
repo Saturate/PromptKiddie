@@ -5,27 +5,67 @@ use std::process::Command;
 pub struct SudoCheck;
 
 const DANGEROUS_SUDO: &[&str] = &[
-    "ALL", "NOPASSWD", "env_keep",
-    "bash", "sh", "dash", "zsh", "python", "python3", "perl", "ruby",
-    "vim", "vi", "nano", "less", "more", "find", "awk",
-    "cp", "mv", "dd", "tar", "zip",
-    "wget", "curl", "nc", "ncat",
-    "docker", "lxc", "env", "strace", "gdb",
-    "nmap", "tee", "chmod", "chown",
-    "systemctl", "journalctl", "apt", "apt-get", "yum", "dnf",
-    "pip", "pip3", "npm", "node",
-    "mysql", "psql", "sqlite3",
-    "ssh", "scp", "rsync",
-    "openssl", "base64",
+    "ALL",
+    "NOPASSWD",
+    "env_keep",
+    "bash",
+    "sh",
+    "dash",
+    "zsh",
+    "python",
+    "python3",
+    "perl",
+    "ruby",
+    "vim",
+    "vi",
+    "nano",
+    "less",
+    "more",
+    "find",
+    "awk",
+    "cp",
+    "mv",
+    "dd",
+    "tar",
+    "zip",
+    "wget",
+    "curl",
+    "nc",
+    "ncat",
+    "docker",
+    "lxc",
+    "env",
+    "strace",
+    "gdb",
+    "nmap",
+    "tee",
+    "chmod",
+    "chown",
+    "systemctl",
+    "journalctl",
+    "apt",
+    "apt-get",
+    "yum",
+    "dnf",
+    "pip",
+    "pip3",
+    "npm",
+    "node",
+    "mysql",
+    "psql",
+    "sqlite3",
+    "ssh",
+    "scp",
+    "rsync",
+    "openssl",
+    "base64",
 ];
 
 impl Check for SudoCheck {
     fn run(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        let output = Command::new("sudo")
-            .args(["-l", "-n"])
-            .output();
+        let output = Command::new("sudo").args(["-l", "-n"]).output();
 
         let output = match output {
             Ok(o) => o,
@@ -41,7 +81,8 @@ impl Check for SudoCheck {
 
         for line in stdout.lines() {
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with("Matching") || trimmed.starts_with("User") {
+            if trimmed.is_empty() || trimmed.starts_with("Matching") || trimmed.starts_with("User")
+            {
                 continue;
             }
 

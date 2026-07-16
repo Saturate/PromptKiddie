@@ -1,16 +1,16 @@
-mod services;
-mod registry;
-mod tokens;
-mod scheduled_tasks;
+mod ad_recon;
+mod cloud;
 mod credentials;
 mod dll_hijack;
+mod events;
 mod network;
 mod patches;
-mod uac;
-mod ad_recon;
 mod processes;
-mod cloud;
-mod events;
+mod registry;
+mod scheduled_tasks;
+mod services;
+mod tokens;
+mod uac;
 
 use super::Check;
 

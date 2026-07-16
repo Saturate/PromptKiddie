@@ -19,13 +19,22 @@ impl Check for SystemdCheck {
         let my_uid = nix::unistd::getuid().as_raw();
 
         for dir in UNIT_DIRS {
-            for entry in WalkDir::new(dir).max_depth(2).into_iter().filter_map(|e| e.ok()) {
-                if !entry.file_type().is_file() { continue; }
+            for entry in WalkDir::new(dir)
+                .max_depth(2)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                if !entry.file_type().is_file() {
+                    continue;
+                }
 
                 let path = entry.path();
                 let name = entry.file_name().to_string_lossy();
 
-                if !name.ends_with(".service") && !name.ends_with(".timer") && !name.ends_with(".socket") {
+                if !name.ends_with(".service")
+                    && !name.ends_with(".timer")
+                    && !name.ends_with(".socket")
+                {
                     continue;
                 }
 
@@ -51,7 +60,9 @@ impl Check for SystemdCheck {
                 if let Ok(content) = fs::read_to_string(path) {
                     for line in content.lines() {
                         let trimmed = line.trim();
-                        if !trimmed.starts_with("ExecStart=") && !trimmed.starts_with("ExecStartPre=") {
+                        if !trimmed.starts_with("ExecStart=")
+                            && !trimmed.starts_with("ExecStartPre=")
+                        {
                             continue;
                         }
 
@@ -59,7 +70,9 @@ impl Check for SystemdCheck {
                         let cmd = cmd.trim_start_matches(['-', '+', '!', '@']);
                         let binary = cmd.split_whitespace().next().unwrap_or("");
 
-                        if binary.is_empty() || !binary.starts_with('/') { continue; }
+                        if binary.is_empty() || !binary.starts_with('/') {
+                            continue;
+                        }
 
                         if let Ok(meta) = fs::metadata(binary) {
                             let mode = meta.mode();
@@ -67,15 +80,22 @@ impl Check for SystemdCheck {
                             let writable = mode & 0o002 != 0 || (owner == my_uid && my_uid != 0);
 
                             if writable {
-                                let runs_as_root = !content.contains("User=") || content.contains("User=root");
+                                let runs_as_root =
+                                    !content.contains("User=") || content.contains("User=root");
 
                                 findings.push(Finding {
                                     check: "systemd",
-                                    severity: if runs_as_root { Severity::Critical } else { Severity::High },
+                                    severity: if runs_as_root {
+                                        Severity::Critical
+                                    } else {
+                                        Severity::High
+                                    },
                                     title: format!("writable service binary in {name}"),
                                     detail: format!("{binary} (mode: {mode:o})"),
                                     path: Some(binary.to_string()),
-                                    exploit_hint: Some("replace binary with payload, restart service".into()),
+                                    exploit_hint: Some(
+                                        "replace binary with payload, restart service".into(),
+                                    ),
                                 });
                             }
                         }

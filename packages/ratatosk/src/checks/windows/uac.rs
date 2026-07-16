@@ -28,7 +28,10 @@ impl Check for UacCheck {
 
 fn check_uac_settings(findings: &mut Vec<Finding>) {
     let output = match Command::new("reg")
-        .args(["query", r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"])
+        .args([
+            "query",
+            r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System",
+        ])
         .output()
     {
         Ok(o) => o,
@@ -115,7 +118,8 @@ fn check_is_admin_but_filtered(findings: &mut Vec<Finding>) {
     };
 
     let is_admin_group = groups.contains("S-1-5-32-544");
-    let has_limited_privs = !priv_output.contains("SeDebugPrivilege") && !priv_output.contains("SeTakeOwnershipPrivilege");
+    let has_limited_privs = !priv_output.contains("SeDebugPrivilege")
+        && !priv_output.contains("SeTakeOwnershipPrivilege");
 
     if is_admin_group && has_limited_privs {
         findings.push(Finding {
@@ -130,11 +134,9 @@ fn check_is_admin_but_filtered(findings: &mut Vec<Finding>) {
 }
 
 fn extract_reg_dword(output: &str, name: &str) -> Option<u32> {
-    output.lines()
-        .find(|l| l.contains(name))
-        .and_then(|l| {
-            l.split_whitespace()
-                .last()
-                .and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok())
-        })
+    output.lines().find(|l| l.contains(name)).and_then(|l| {
+        l.split_whitespace()
+            .last()
+            .and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok())
+    })
 }

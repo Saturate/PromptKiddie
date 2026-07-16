@@ -26,13 +26,20 @@ fn check_writable_path_dirs(findings: &mut Vec<Finding>) {
 
     for dir in path_var.split(';') {
         let dir = dir.trim();
-        if dir.is_empty() { continue; }
+        if dir.is_empty() {
+            continue;
+        }
 
-        if dir.to_lowercase().starts_with("c:\\windows") { continue; }
+        if dir.to_lowercase().starts_with("c:\\windows") {
+            continue;
+        }
 
         if let Ok(icacls) = Command::new("icacls").arg(dir).output() {
             let perms = String::from_utf8_lossy(&icacls.stdout).to_lowercase();
-            if (perms.contains("(f)") || perms.contains("(m)") || perms.contains("(w)") || perms.contains("(oi)(ci)(f)"))
+            if (perms.contains("(f)")
+                || perms.contains("(m)")
+                || perms.contains("(w)")
+                || perms.contains("(oi)(ci)(f)"))
                 && groups.iter().any(|g| perms.contains(g))
             {
                 findings.push(Finding {
@@ -51,8 +58,16 @@ fn check_writable_path_dirs(findings: &mut Vec<Finding>) {
 fn check_missing_dlls(findings: &mut Vec<Finding>) {
     let known_hijackable = [
         ("wlbsctrl.dll", "IKEEXT service", "net start IKEEXT"),
-        ("wlanapi.dll", "WLAN AutoConfig", "common on servers without WiFi"),
-        ("CRYPTBASE.dll", "various services via KnownDLLs bypass", "place in app directory"),
+        (
+            "wlanapi.dll",
+            "WLAN AutoConfig",
+            "common on servers without WiFi",
+        ),
+        (
+            "CRYPTBASE.dll",
+            "various services via KnownDLLs bypass",
+            "place in app directory",
+        ),
         ("profapi.dll", "various services", "place in writable PATH"),
     ];
 

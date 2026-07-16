@@ -2,12 +2,15 @@ mod checks;
 mod output;
 
 use clap::Parser;
-use output::{Finding, Severity, ScanResult};
+use output::{Finding, ScanResult, Severity};
 use rayon::prelude::*;
 use std::time::Instant;
 
 #[derive(Parser)]
-#[command(name = "ratatosk", about = "Fast parallel privilege escalation scanner")]
+#[command(
+    name = "ratatosk",
+    about = "Fast parallel privilege escalation scanner"
+)]
 struct Cli {
     /// Output format: json (default) or text
     #[arg(short, long, default_value = "json")]
@@ -27,11 +30,10 @@ fn main() {
     let findings: Vec<Finding> = all_checks
         .par_iter()
         .flat_map(|check| {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| check.run()));
-            match result {
-                Ok(findings) => findings,
-                Err(_) => vec![],
-            }
+            let result: Vec<Finding> =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| check.run()))
+                    .unwrap_or_default();
+            result
         })
         .filter(|f| f.severity >= cli.min_severity)
         .collect();
@@ -64,20 +66,28 @@ fn hostname() -> String {
         std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".into())
     }
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    { "unknown".into() }
+    {
+        "unknown".into()
+    }
 }
 
 fn whoami() -> String {
     #[cfg(not(target_os = "windows"))]
-    { std::env::var("USER").unwrap_or_else(|_| "unknown".into()) }
+    {
+        std::env::var("USER").unwrap_or_else(|_| "unknown".into())
+    }
 
     #[cfg(target_os = "windows")]
-    { std::env::var("USERNAME").unwrap_or_else(|_| "unknown".into()) }
+    {
+        std::env::var("USERNAME").unwrap_or_else(|_| "unknown".into())
+    }
 }
 
 fn platform_identity() -> String {
     #[cfg(target_os = "linux")]
-    { format!("uid={}", nix::unistd::getuid().as_raw()) }
+    {
+        format!("uid={}", nix::unistd::getuid().as_raw())
+    }
 
     #[cfg(target_os = "windows")]
     {
@@ -87,12 +97,20 @@ fn platform_identity() -> String {
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    { "unknown".into() }
+    {
+        "unknown".into()
+    }
 }
 
 fn print_text(result: &ScanResult) {
-    println!("ratatosk scan: {} as {} ({})", result.hostname, result.user, result.identity);
-    println!("found {} issues in {}ms\n", result.finding_count, result.duration_ms);
+    println!(
+        "ratatosk scan: {} as {} ({})",
+        result.hostname, result.user, result.identity
+    );
+    println!(
+        "found {} issues in {}ms\n",
+        result.finding_count, result.duration_ms
+    );
 
     for f in &result.findings {
         let sev = match f.severity {

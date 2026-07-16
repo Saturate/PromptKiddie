@@ -83,14 +83,27 @@ fn check_dir_for_creds(dir: &str, findings: &mut Vec<Finding>) {
     for filename in INTERESTING_FILES {
         let path = format!("{dir}/{filename}");
         if let Ok(meta) = fs::metadata(&path) {
-            if !meta.is_file() { continue; }
+            if !meta.is_file() {
+                continue;
+            }
 
             let readable = fs::read_to_string(&path).is_ok();
-            if !readable { continue; }
+            if !readable {
+                continue;
+            }
 
-            let severity = if filename.contains("id_rsa") || filename.contains("id_ed25519") || filename.contains("id_ecdsa") {
+            let severity = if filename.contains("id_rsa")
+                || filename.contains("id_ed25519")
+                || filename.contains("id_ecdsa")
+            {
                 Severity::Critical
-            } else if filename.contains("credentials") || filename.contains("password") || *filename == ".git-credentials" || *filename == ".pgpass" || *filename == ".my.cnf" || *filename == ".netrc" {
+            } else if filename.contains("credentials")
+                || filename.contains("password")
+                || *filename == ".git-credentials"
+                || *filename == ".pgpass"
+                || *filename == ".my.cnf"
+                || *filename == ".netrc"
+            {
                 Severity::High
             } else if filename.contains("history") {
                 Severity::Medium
@@ -114,8 +127,14 @@ fn check_config_files(findings: &mut Vec<Finding>) {
     let config_dirs = ["/etc", "/opt", "/var/www", "/srv"];
 
     for dir in &config_dirs {
-        for entry in WalkDir::new(dir).max_depth(4).into_iter().filter_map(|e| e.ok()) {
-            if !entry.file_type().is_file() { continue; }
+        for entry in WalkDir::new(dir)
+            .max_depth(4)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if !entry.file_type().is_file() {
+                continue;
+            }
 
             let path = entry.path();
             let name = entry.file_name().to_string_lossy();
@@ -129,7 +148,9 @@ fn check_config_files(findings: &mut Vec<Finding>) {
                 || name.ends_with(".env")
                 || name.ends_with(".properties");
 
-            if !is_config { continue; }
+            if !is_config {
+                continue;
+            }
 
             if let Ok(content) = fs::read_to_string(path) {
                 for (line_num, line) in content.lines().enumerate() {
@@ -137,7 +158,10 @@ fn check_config_files(findings: &mut Vec<Finding>) {
                     for pattern in PASSWORD_PATTERNS {
                         if lower.contains(pattern) && (line.contains('=') || line.contains(':')) {
                             let trimmed = line.trim();
-                            if trimmed.starts_with('#') || trimmed.starts_with("//") || trimmed.starts_with("<!--") {
+                            if trimmed.starts_with('#')
+                                || trimmed.starts_with("//")
+                                || trimmed.starts_with("<!--")
+                            {
                                 continue;
                             }
 
@@ -145,7 +169,11 @@ fn check_config_files(findings: &mut Vec<Finding>) {
                                 check: "credentials",
                                 severity: Severity::High,
                                 title: "potential credential in config".into(),
-                                detail: format!("line {}: {}", line_num + 1, truncate(trimmed, 120)),
+                                detail: format!(
+                                    "line {}: {}",
+                                    line_num + 1,
+                                    truncate(trimmed, 120)
+                                ),
                                 path: Some(path.to_string_lossy().to_string()),
                                 exploit_hint: None,
                             });
@@ -163,8 +191,14 @@ fn check_backup_files(findings: &mut Vec<Finding>) {
     let search_dirs = ["/etc", "/opt", "/var/www", "/tmp", "/var/tmp"];
 
     for dir in &search_dirs {
-        for entry in WalkDir::new(dir).max_depth(3).into_iter().filter_map(|e| e.ok()) {
-            if !entry.file_type().is_file() { continue; }
+        for entry in WalkDir::new(dir)
+            .max_depth(3)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if !entry.file_type().is_file() {
+                continue;
+            }
 
             let name = entry.file_name().to_string_lossy();
             let is_backup = backup_patterns.iter().any(|p| {

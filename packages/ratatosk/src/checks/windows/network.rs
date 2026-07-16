@@ -24,9 +24,13 @@ fn check_listening_ports(findings: &mut Vec<Finding>) {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
-        if !line.contains("LISTENING") { continue; }
+        if !line.contains("LISTENING") {
+            continue;
+        }
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 5 { continue; }
+        if parts.len() < 5 {
+            continue;
+        }
 
         let local = parts[1];
         let pid = parts[4];
@@ -54,13 +58,18 @@ fn check_shares(findings: &mut Vec<Finding>) {
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines().skip(4) {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("The command") { continue; }
+        if trimmed.is_empty() || trimmed.starts_with("The command") {
+            continue;
+        }
 
         if !trimmed.contains('$') {
             findings.push(Finding {
                 check: "network",
                 severity: Severity::Low,
-                title: format!("non-default share: {}", trimmed.split_whitespace().next().unwrap_or("")),
+                title: format!(
+                    "non-default share: {}",
+                    trimmed.split_whitespace().next().unwrap_or("")
+                ),
                 detail: trimmed.to_string(),
                 path: None,
                 exploit_hint: None,

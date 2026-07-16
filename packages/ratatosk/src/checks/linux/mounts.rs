@@ -24,7 +24,9 @@ fn check_mount_options(findings: &mut Vec<Finding>) {
 
     for line in mounts.lines() {
         let fields: Vec<&str> = line.split_whitespace().collect();
-        if fields.len() < 4 { continue; }
+        if fields.len() < 4 {
+            continue;
+        }
 
         let mountpoint = fields[1];
         let fstype = fields[2];
@@ -74,24 +76,29 @@ fn check_fstab_creds(findings: &mut Vec<Finding>) {
 
     for line in fstab.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
 
         let lower = trimmed.to_lowercase();
-        if lower.contains("password=") || lower.contains("credentials=") || lower.contains("username=") {
-            if lower.contains("credentials=") {
-                if let Some(cred_start) = lower.find("credentials=") {
-                    let rest = &trimmed[cred_start + 12..];
-                    let cred_file = rest.split(',').next().unwrap_or("").trim();
-                    if fs::read_to_string(cred_file).is_ok() {
-                        findings.push(Finding {
-                            check: "mounts",
-                            severity: Severity::High,
-                            title: "readable mount credentials file".into(),
-                            detail: "referenced from fstab".into(),
-                            path: Some(cred_file.to_string()),
-                            exploit_hint: Some("may contain plaintext mount credentials".into()),
-                        });
-                    }
+        if lower.contains("password=")
+            || lower.contains("credentials=")
+            || lower.contains("username=")
+        {
+            if lower.contains("credentials=")
+                && let Some(cred_start) = lower.find("credentials=")
+            {
+                let rest = &trimmed[cred_start + 12..];
+                let cred_file = rest.split(',').next().unwrap_or("").trim();
+                if fs::read_to_string(cred_file).is_ok() {
+                    findings.push(Finding {
+                        check: "mounts",
+                        severity: Severity::High,
+                        title: "readable mount credentials file".into(),
+                        detail: "referenced from fstab".into(),
+                        path: Some(cred_file.to_string()),
+                        exploit_hint: Some("may contain plaintext mount credentials".into()),
+                    });
                 }
             }
 

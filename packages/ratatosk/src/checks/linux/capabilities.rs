@@ -44,11 +44,19 @@ impl Check for CapCheck {
                 .filter(|cap| line.to_lowercase().contains(**cap))
                 .collect();
 
-            if dangerous.is_empty() { continue; }
+            if dangerous.is_empty() {
+                continue;
+            }
 
-            let severity = if dangerous.iter().any(|c| **c == "cap_setuid" || **c == "cap_sys_admin") {
+            let severity = if dangerous
+                .iter()
+                .any(|c| **c == "cap_setuid" || **c == "cap_sys_admin")
+            {
                 Severity::Critical
-            } else if dangerous.iter().any(|c| **c == "cap_dac_override" || **c == "cap_sys_ptrace") {
+            } else if dangerous
+                .iter()
+                .any(|c| **c == "cap_dac_override" || **c == "cap_sys_ptrace")
+            {
                 Severity::High
             } else {
                 Severity::Medium

@@ -25,7 +25,9 @@ fn check_snap_packages(findings: &mut Vec<Finding>) {
 
     for line in stdout.lines().skip(1) {
         let fields: Vec<&str> = line.split_whitespace().collect();
-        if fields.len() < 5 { continue; }
+        if fields.len() < 5 {
+            continue;
+        }
 
         let name = fields[0];
         let confinement = fields.get(4).unwrap_or(&"");
@@ -44,7 +46,10 @@ fn check_snap_packages(findings: &mut Vec<Finding>) {
 }
 
 fn check_lxd_containers(findings: &mut Vec<Finding>) {
-    let output = match Command::new("lxc").args(["list", "--format", "csv"]).output() {
+    let output = match Command::new("lxc")
+        .args(["list", "--format", "csv"])
+        .output()
+    {
         Ok(o) => o,
         Err(_) => return,
     };
@@ -52,7 +57,9 @@ fn check_lxd_containers(findings: &mut Vec<Finding>) {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     for line in stdout.lines() {
-        if line.trim().is_empty() { continue; }
+        if line.trim().is_empty() {
+            continue;
+        }
         let fields: Vec<&str> = line.split(',').collect();
         let name = fields.first().unwrap_or(&"");
 
@@ -66,13 +73,17 @@ fn check_lxd_containers(findings: &mut Vec<Finding>) {
         });
     }
 
-    if let Ok(output) = Command::new("lxc").args(["storage", "list", "--format", "csv"]).output() {
+    if let Ok(output) = Command::new("lxc")
+        .args(["storage", "list", "--format", "csv"])
+        .output()
+    {
         let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.trim().is_empty() {
-            if let Ok(id_out) = Command::new("id").output() {
-                let groups = String::from_utf8_lossy(&id_out.stdout);
-                if groups.contains("lxd") {
-                    findings.push(Finding {
+        if stdout.trim().is_empty()
+            && let Ok(id_out) = Command::new("id").output()
+        {
+            let groups = String::from_utf8_lossy(&id_out.stdout);
+            if groups.contains("lxd") {
+                findings.push(Finding {
                         check: "snap_lxd",
                         severity: Severity::Critical,
                         title: "LXD not initialized, user in lxd group".into(),
@@ -80,7 +91,6 @@ fn check_lxd_containers(findings: &mut Vec<Finding>) {
                         path: None,
                         exploit_hint: Some("lxd init (all defaults) -> lxc launch ubuntu:latest test -c security.privileged=true -> lxc exec test -- /bin/bash".into()),
                     });
-                }
             }
         }
     }

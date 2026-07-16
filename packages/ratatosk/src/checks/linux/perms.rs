@@ -15,11 +15,23 @@ const SENSITIVE_FILES: &[(&str, Severity)] = &[
 ];
 
 const WRITABLE_CHECK: &[(&str, Severity, &str)] = &[
-    ("/etc/passwd", Severity::Critical, "add a root-equivalent user: echo 'root2::0:0::/root:/bin/bash' >> /etc/passwd"),
-    ("/etc/shadow", Severity::Critical, "overwrite root password hash"),
+    (
+        "/etc/passwd",
+        Severity::Critical,
+        "add a root-equivalent user: echo 'root2::0:0::/root:/bin/bash' >> /etc/passwd",
+    ),
+    (
+        "/etc/shadow",
+        Severity::Critical,
+        "overwrite root password hash",
+    ),
     ("/etc/sudoers", Severity::Critical, "add NOPASSWD ALL rule"),
     ("/etc/crontab", Severity::High, "inject cron job as root"),
-    ("/root/.ssh/authorized_keys", Severity::High, "inject SSH public key"),
+    (
+        "/root/.ssh/authorized_keys",
+        Severity::High,
+        "inject SSH public key",
+    ),
 ];
 
 impl Check for PermsCheck {
@@ -71,7 +83,9 @@ impl Check for PermsCheck {
                             title: format!("writable PATH directory: {dir}"),
                             detail: format!("mode: {mode:o}, owner uid: {owner}"),
                             path: Some(dir.to_string()),
-                            exploit_hint: Some("place a trojan binary to hijack a root cron/service".into()),
+                            exploit_hint: Some(
+                                "place a trojan binary to hijack a root cron/service".into(),
+                            ),
                         });
                     }
                 }
@@ -87,7 +101,9 @@ impl Check for PermsCheck {
                         title: "NFS no_root_squash".into(),
                         detail: line.trim().to_string(),
                         path: Some("/etc/exports".into()),
-                        exploit_hint: Some("mount the share remotely, create SUID binary as root".into()),
+                        exploit_hint: Some(
+                            "mount the share remotely, create SUID binary as root".into(),
+                        ),
                     });
                 }
             }

@@ -21,13 +21,19 @@ fn check_listening_services(findings: &mut Vec<Finding>) {
 
     for line in tcp.lines().chain(tcp6.lines()).skip(1) {
         let fields: Vec<&str> = line.split_whitespace().collect();
-        if fields.len() < 4 { continue; }
+        if fields.len() < 4 {
+            continue;
+        }
 
-        if fields[3] != "0A" { continue; }
+        if fields[3] != "0A" {
+            continue;
+        }
 
         let local = fields[1];
         let parts: Vec<&str> = local.split(':').collect();
-        if parts.len() != 2 { continue; }
+        if parts.len() != 2 {
+            continue;
+        }
 
         let port = u16::from_str_radix(parts[1], 16).unwrap_or(0);
         let addr_hex = parts[0];

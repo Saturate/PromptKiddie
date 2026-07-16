@@ -61,7 +61,9 @@ fn check_sam_backup(findings: &mut Vec<Finding>) {
                 title: "SAM/SYSTEM backup accessible".into(),
                 detail: "extract hashes with secretsdump or mimikatz".into(),
                 path: Some(path.to_string()),
-                exploit_hint: Some("copy SAM + SYSTEM, run: secretsdump.py -sam SAM -system SYSTEM LOCAL".into()),
+                exploit_hint: Some(
+                    "copy SAM + SYSTEM, run: secretsdump.py -sam SAM -system SYSTEM LOCAL".into(),
+                ),
             });
         }
     }
@@ -85,7 +87,11 @@ fn check_unattend_files(findings: &mut Vec<Finding>) {
 
             findings.push(Finding {
                 check: "credentials",
-                severity: if contains_password { Severity::Critical } else { Severity::Medium },
+                severity: if contains_password {
+                    Severity::Critical
+                } else {
+                    Severity::Medium
+                },
                 title: "unattend.xml found".into(),
                 detail: if contains_password {
                     "contains password element (may be base64 encoded)".into()
@@ -105,7 +111,9 @@ fn check_unattend_files(findings: &mut Vec<Finding>) {
 
 fn check_dpapi_keys(findings: &mut Vec<Finding>) {
     let appdata = std::env::var("APPDATA").unwrap_or_default();
-    if appdata.is_empty() { return; }
+    if appdata.is_empty() {
+        return;
+    }
 
     let cred_dir = format!(r"{}\Microsoft\Credentials", appdata);
     if let Ok(entries) = std::fs::read_dir(&cred_dir) {
@@ -133,7 +141,8 @@ fn check_wifi_passwords(findings: &mut Vec<Finding>) {
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let profiles: Vec<&str> = stdout.lines()
+    let profiles: Vec<&str> = stdout
+        .lines()
         .filter(|l| l.contains("All User Profile"))
         .filter_map(|l| l.split(':').nth(1))
         .map(|s| s.trim())
@@ -164,7 +173,9 @@ fn check_wifi_passwords(findings: &mut Vec<Finding>) {
 
 fn check_interesting_files(findings: &mut Vec<Finding>) {
     let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
-    if user_profile.is_empty() { return; }
+    if user_profile.is_empty() {
+        return;
+    }
 
     let interesting = [
         (".git-credentials", Severity::High),
@@ -187,12 +198,18 @@ fn check_interesting_files(findings: &mut Vec<Finding>) {
     }
 
     // PowerShell history
-    let ps_history = format!(r"{}\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt", user_profile);
+    let ps_history = format!(
+        r"{}\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt",
+        user_profile
+    );
     if Path::new(&ps_history).exists() {
         if let Ok(content) = std::fs::read_to_string(&ps_history) {
             let has_creds = content.lines().any(|l| {
                 let lower = l.to_lowercase();
-                lower.contains("password") || lower.contains("securestring") || lower.contains("credential") || lower.contains("-pass")
+                lower.contains("password")
+                    || lower.contains("securestring")
+                    || lower.contains("credential")
+                    || lower.contains("-pass")
             });
             if has_creds {
                 findings.push(Finding {
@@ -210,8 +227,14 @@ fn check_interesting_files(findings: &mut Vec<Finding>) {
     // Web root configs
     let web_roots = [r"C:\inetpub\wwwroot", r"C:\xampp\htdocs"];
     for root in &web_roots {
-        if !Path::new(root).exists() { continue; }
-        for entry in WalkDir::new(root).max_depth(4).into_iter().filter_map(|e| e.ok()) {
+        if !Path::new(root).exists() {
+            continue;
+        }
+        for entry in WalkDir::new(root)
+            .max_depth(4)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let name = entry.file_name().to_string_lossy();
             if name == "web.config" || name == "appsettings.json" || name == ".env" {
                 if let Ok(content) = std::fs::read_to_string(entry.path()) {
