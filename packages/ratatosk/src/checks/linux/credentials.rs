@@ -221,5 +221,9 @@ fn check_backup_files(findings: &mut Vec<Finding>) {
 }
 
 fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len { s } else { &s[..s.floor_char_boundary(max_len)] }
+    if s.len() <= max_len {
+        s
+    } else {
+        &s[..s.floor_char_boundary(max_len)]
+    }
 }

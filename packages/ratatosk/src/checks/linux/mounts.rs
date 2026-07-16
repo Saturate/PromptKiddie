@@ -135,5 +135,9 @@ fn check_dev_shm(findings: &mut Vec<Finding>) {
 }
 
 fn truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max { s } else { &s[..s.floor_char_boundary(max)] }
+    if s.len() <= max {
+        s
+    } else {
+        &s[..s.floor_char_boundary(max)]
+    }
 }
