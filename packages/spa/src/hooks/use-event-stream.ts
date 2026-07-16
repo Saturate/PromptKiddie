@@ -27,13 +27,18 @@ export function useEventStream(engagementId?: string) {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      // Auth via first message if API key is configured
+      const apiKey = import.meta.env.VITE_API_KEY;
+      if (apiKey) ws.send(JSON.stringify({ key: apiKey }));
       setConnected(true);
       retryRef.current = 0;
     };
 
     ws.onmessage = (e) => {
       try {
-        const event = JSON.parse(e.data) as PkEvent;
+        const msg = JSON.parse(e.data);
+        if (msg.type === "authenticated") return;
+        const event = msg as PkEvent;
         setEvents((prev) => [...prev.slice(-200), event]);
       } catch {}
     };

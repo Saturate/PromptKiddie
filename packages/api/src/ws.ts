@@ -16,22 +16,39 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
 
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const key = url.searchParams.get("key") ?? "";
-    const resolved = resolveKey(key);
+    const engagementId = url.searchParams.get("engagementId") ?? undefined;
 
-    if (hasKeys() && !resolved) {
-      ws.close(4001, "unauthorized");
+    if (!hasKeys()) {
+      const client: WsClient = { ws, engagementId, identity: "anonymous" };
+      clients.add(client);
+      ws.on("close", () => clients.delete(client));
+      ws.on("error", () => clients.delete(client));
       return;
     }
 
-    const engagementId = url.searchParams.get("engagementId") ?? undefined;
-    const identity = resolved?.raw ?? "anonymous";
+    // Auth via first message: client sends { key: "..." }
+    const authTimeout = setTimeout(() => ws.close(4001, "auth timeout"), 5000);
 
-    const client: WsClient = { ws, engagementId, identity };
-    clients.add(client);
+    ws.once("message", (data) => {
+      clearTimeout(authTimeout);
+      let key = "";
+      try {
+        const msg = JSON.parse(data.toString());
+        key = msg.key ?? "";
+      } catch { /* invalid JSON */ }
 
-    ws.on("close", () => clients.delete(client));
-    ws.on("error", () => clients.delete(client));
+      const resolved = resolveKey(key);
+      if (!resolved) {
+        ws.close(4001, "unauthorized");
+        return;
+      }
+
+      const client: WsClient = { ws, engagementId, identity: resolved.raw };
+      clients.add(client);
+      ws.on("close", () => clients.delete(client));
+      ws.on("error", () => clients.delete(client));
+      ws.send(JSON.stringify({ type: "authenticated", identity: resolved.raw }));
+    });
   });
 
   // Single pg LISTEN connection for event broadcasting
@@ -67,17 +84,27 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
 
   ptyWss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const ptyKey = url.searchParams.get("key") ?? "";
-    if (hasKeys() && !resolveKey(ptyKey)) { ws.close(4001, "unauthorized"); return; }
     const agentId = url.searchParams.get("agentId");
     if (!agentId) { ws.close(4000, "agentId required"); return; }
 
-    if (!ptyClients.has(agentId)) ptyClients.set(agentId, new Set());
-    ptyClients.get(agentId)!.add(ws);
+    if (!hasKeys()) {
+      if (!ptyClients.has(agentId)) ptyClients.set(agentId, new Set());
+      ptyClients.get(agentId)!.add(ws);
+      ws.on("close", () => { ptyClients.get(agentId)?.delete(ws); if (ptyClients.get(agentId)?.size === 0) ptyClients.delete(agentId); });
+      return;
+    }
 
-    ws.on("close", () => {
-      ptyClients.get(agentId)?.delete(ws);
-      if (ptyClients.get(agentId)?.size === 0) ptyClients.delete(agentId);
+    const authTimeout = setTimeout(() => ws.close(4001, "auth timeout"), 5000);
+    ws.once("message", (data) => {
+      clearTimeout(authTimeout);
+      let key = "";
+      try { const msg = JSON.parse(data.toString()); key = msg.key ?? ""; } catch {}
+      if (!resolveKey(key)) { ws.close(4001, "unauthorized"); return; }
+
+      if (!ptyClients.has(agentId)) ptyClients.set(agentId, new Set());
+      ptyClients.get(agentId)!.add(ws);
+      ws.on("close", () => { ptyClients.get(agentId)?.delete(ws); if (ptyClients.get(agentId)?.size === 0) ptyClients.delete(agentId); });
+      ws.send(JSON.stringify({ type: "authenticated" }));
     });
   });
 

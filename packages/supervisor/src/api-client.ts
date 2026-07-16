@@ -67,7 +67,7 @@ export function connectEventStream(
   engagementId: string,
   onEvent: (event: { id?: string; type: string; payload: Record<string, unknown> }) => void,
 ): { close: () => void } {
-  const wsUrl = API_URL.replace(/^http/, "ws") + `/ws/events?engagementId=${engagementId}&key=${API_KEY}`;
+  const wsUrl = API_URL.replace(/^http/, "ws") + `/ws/events?engagementId=${engagementId}`;
   let ws: WebSocket | null = null;
   let closed = false;
 
@@ -77,6 +77,7 @@ export function connectEventStream(
 
     ws.on("open", () => {
       console.log("[event-stream] connected to API WebSocket");
+      if (API_KEY) ws!.send(JSON.stringify({ key: API_KEY }));
     });
 
     ws.on("message", (data) => {
