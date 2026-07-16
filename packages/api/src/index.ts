@@ -1,18 +1,17 @@
 import "dotenv/config";
-import { bearerAuth } from "hono/bearer-auth";
 import { serve } from "@hono/node-server";
 import { loadConfig } from "@promptkiddie/core";
 import { createApp } from "./app.js";
+import { initKeys, authMiddleware } from "./middleware/auth.js";
 
 const config = loadConfig();
 const port = config.api.port;
-const secret = config.api.secret;
+
+initKeys(process.env.PK_API_KEYS);
 
 const app = createApp();
 
-if (secret) {
-  app.use("/*", bearerAuth({ token: secret }));
-}
+app.use("/*", authMiddleware(config.api.secret ?? undefined));
 
 serve({ fetch: app.fetch, port }, () => {
   console.log(`pk-api listening on http://localhost:${port}`);
