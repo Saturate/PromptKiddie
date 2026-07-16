@@ -9,11 +9,8 @@ import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
 import { copyFileSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  addEvidence,
-  closeDb,
   createPlaybook,
   generateReport,
-  getEngagement,
   getPlaybook,
   getRepo,
   listPlaybooks,
@@ -27,6 +24,9 @@ import { execFileSync, type StdioOptions } from "node:child_process";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
 
 const config = loadConfig();
+if (!config.api.url) {
+  console.error("[pk] warning: no api.url configured, using direct DB access. Set api.url in .pk/config.toml for the recommended HTTP path.");
+}
 const repo = getRepo();
 const isContainer = config.container;
 
@@ -111,7 +111,7 @@ engagement
   .command("use")
   .argument("<id>")
   .action(async (id: string) => {
-    const row = await getEngagement(id);
+    const row = await repo.getEngagement(id) as Record<string, string> | null;
     if (!row) throw new Error(`No engagement with id ${id}`);
     await setActiveEngagement(id);
     console.error(`Active engagement: ${row.name} (${id})`);
@@ -393,7 +393,7 @@ ev.command("add")
   .option("--engagement <id>")
   .action(async (o) => {
     const eid = await resolveEngagementId(o.engagement);
-    out(await addEvidence({ engagementId: eid, path: o.path, type: o.type, findingId: o.finding }));
+    out(await repo.addEvidence({ engagementId: eid, path: o.path, type: o.type, findingId: o.finding }));
   });
 
 ev.command("list")
@@ -1427,14 +1427,14 @@ ws.command("exec")
 
     if (fullOutput.length > maxBytes) {
       const { mkdirSync, writeFileSync } = await import("node:fs");
-      const engRow = await getEngagement(eid);
-      const slug = engRow?.slug ?? eid;
+      const engRow = await repo.getEngagement(eid);
+      const slug = (engRow as Record<string, string> | null)?.slug ?? eid;
       const dir = `engagements/${slug}/webshell`;
       mkdirSync(dir, { recursive: true });
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       const outPath = `${dir}/${shell.name}-${ts}.txt`;
       writeFileSync(outPath, fullOutput);
-      await addEvidence({ engagementId: eid, path: outPath, type: "output" });
+      await repo.addEvidence({ engagementId: eid, path: outPath, type: "output" });
 
       process.stdout.write(fullOutput.slice(0, maxBytes));
       process.stderr.write(`\n[truncated: ${fullOutput.length} bytes total, full output at ${outPath}]\n`);
@@ -1459,7 +1459,7 @@ program
     const { mkdirSync, readFileSync, writeFileSync } = await import("node:fs");
     const container = config.attackbox.container;
 
-    const keyDir = `engagements/${(await getEngagement(eid))?.slug ?? eid}/ssh`;
+    const keyDir = `engagements/${((await repo.getEngagement(eid)) as Record<string, string> | null)?.slug ?? eid}/ssh`;
     mkdirSync(keyDir, { recursive: true });
     const keyPath = `${keyDir}/${o.user}_ed25519`;
 
@@ -2131,14 +2131,14 @@ program
 
     if (fullOutput.length > maxBytes) {
       const { mkdirSync, writeFileSync } = await import("node:fs");
-      const eng = await getEngagement(eid);
+      const eng = await repo.getEngagement(eid) as Record<string, string> | null;
       const slug = eng?.slug ?? eid;
       const dir = `engagements/${slug}/exec`;
       mkdirSync(dir, { recursive: true });
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       const outPath = `${dir}/${toolName}-${ts}.txt`;
       writeFileSync(outPath, fullOutput);
-      await addEvidence({ engagementId: eid, path: outPath, type: "output" });
+      await repo.addEvidence({ engagementId: eid, path: outPath, type: "output" });
 
       process.stdout.write(fullOutput.slice(0, maxBytes));
       process.stderr.write(`\n[truncated: ${fullOutput.length} bytes total, full output at ${outPath}]\n`);
@@ -2267,7 +2267,7 @@ program
       grepArgs.push(dir);
     } else {
       const eid = await resolveEngagementId(o.engagement);
-      const eng = await getEngagement(eid);
+      const eng = await repo.getEngagement(eid) as Record<string, string> | null;
       const slug = eng?.slug ?? eid;
       dir = `engagements/${slug}`;
       grepArgs = ["-rn", term, dir];
@@ -2486,7 +2486,7 @@ async function main() {
     console.error(`pk: ${(err as Error).message}`);
     process.exitCode = 1;
   } finally {
-    await closeDb();
+    // closeDb no longer needed when using HTTP repo
   }
 }
 
