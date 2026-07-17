@@ -7,25 +7,20 @@
  * Usage: pk supervisor start [--engagement <id>] [--playbook ctf]
  */
 import "dotenv/config";
-import { Client } from "pg";
 import { execFile } from "node:child_process";
 import {
   CTF_ACTIONS,
-  emitEvent,
-  addDiscovery,
-  listTargets,
-  getEngagement,
-  listEngagements,
-  advancePhase,
-  sendMessage,
+  getRepo,
   type Action,
   type Playbook,
+  type Repo,
 } from "@promptkiddie/core";
 import { createRunContext } from "./run-context.js";
 import { EventBus } from "./event-bus.js";
-import { createWsServer, type WsBroadcaster } from "./ws-server.js";
+import { createApiBroadcaster, connectEventStream, type ApiBroadcaster } from "./api-client.js";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie";
+const API_URL = process.env.PK_API_URL ?? "http://localhost:3200";
+const API_KEY = process.env.PK_API_KEY ?? "";
 
 /** Execution mode controls concurrency and LLM dispatch scheduling. */
 export type SupervisorMode = "race" | "standard" | "methodical" | "learning";
@@ -48,7 +43,7 @@ interface SupervisorOpts {
   mode?: SupervisorMode;
   maxConcurrent?: number;
   /** External WS broadcaster (e.g. from the API process). If omitted, creates a standalone WS server. */
-  ws?: WsBroadcaster;
+  ws?: ApiBroadcaster;
   onEvent?: (event: { type: string; payload: Record<string, unknown> }) => void;
   onActionStart?: (actionName: string) => void;
   onActionEnd?: (actionName: string) => void;
@@ -101,11 +96,11 @@ async function startCartridgeAgent(containerName: string, prompt: string, provid
   return parsed.id;
 }
 
-async function spawnAgentContainer(engagementId: string, image: string, target: string): Promise<string> {
-  const eng = await getEngagement(engagementId) as { slug: string; name: string; scope?: string; phase?: string } | null;
+async function spawnAgentContainer(repo: Repo, engagementId: string, image: string, target: string): Promise<string> {
+  const eng = await repo.getEngagement(engagementId) as { slug: string; name: string; scope?: string; phase?: string } | null;
   if (!eng) throw new Error(`Engagement ${engagementId} not found`);
 
-  const targets = await listTargets(engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
+  const targets = await repo.listTargets(engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
   const slug = eng.slug.replace(/[^a-zA-Z0-9_-]/g, "_");
   const containerName = `pk-agent-${slug}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -117,7 +112,8 @@ async function spawnAgentContainer(engagementId: string, image: string, target: 
     "-e", `TARGETS=${targets.filter(t => t.inScope).map(t => t.identifier).join(",")}`,
     "-e", `ENGAGEMENT_ID=${engagementId}`,
     "-e", `ENGAGEMENT_SLUG=${eng.slug}`,
-    "-e", `DATABASE_URL=${DATABASE_URL}`,
+    "-e", `PK_API_URL=${API_URL}`,
+    "-e", `PK_API_KEY=${API_KEY}`,
     "-e", "PK_CONTAINER=1",
   ];
 
@@ -166,6 +162,7 @@ async function spawnAgentContainer(engagementId: string, image: string, target: 
 }
 
 export async function startSupervisor(opts: SupervisorOpts) {
+  const repo = getRepo();
   const playbook = opts.playbook ?? CTF_ACTIONS;
   const mode: SupervisorMode = opts.mode ?? "standard";
   const maxConcurrent = opts.maxConcurrent ?? MODE_CONCURRENCY[mode];
@@ -196,7 +193,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   // WebSocket: use external broadcaster if provided, otherwise create standalone
   const ownsWs = !opts.ws;
-  const ws: WsBroadcaster = opts.ws ?? createWsServer(parseInt(process.env.PK_WS_PORT ?? "3201", 10));
+  const ws: ApiBroadcaster = opts.ws ?? createApiBroadcaster(opts.engagementId);
 
   // Wrap caller-provided callbacks so they also broadcast over WebSocket
   const origOnEvent = opts.onEvent;
@@ -220,11 +217,12 @@ export async function startSupervisor(opts: SupervisorOpts) {
     origOnOutput?.(actionName, line);
   };
 
-  const engagement = await getEngagement(opts.engagementId);
-  if (!engagement) throw new Error(`Engagement ${opts.engagementId} not found`);
+  const engOrNull = await repo.getEngagement(opts.engagementId) as { name: string; type: string; phase?: string; slug: string } | null;
+  if (!engOrNull) throw new Error(`Engagement ${opts.engagementId} not found`);
+  const engagement = engOrNull;
   currentPhase = engagement.phase ?? "scoping";
 
-  const targets = await listTargets(opts.engagementId);
+  const targets = await repo.listTargets(opts.engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
   const primaryTarget = targets.find((t) => t.inScope)?.identifier ?? targets[0]?.identifier ?? "unknown";
 
   console.log(`[supervisor] starting for "${engagement.name}" (${opts.engagementId})`);
@@ -241,7 +239,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
       stallAgentCount++;
       console.log(`[supervisor] stall detected (${stallAgentCount}/${MAX_STALL_AGENTS}), emitting StallDetected`);
-      emitEvent(opts.engagementId, "StallDetected", { minutes: 5 }, "supervisor").catch(
+      repo.emitEvent(opts.engagementId, "StallDetected", { minutes: 5 }, "supervisor").catch(
         (err) => console.error("[supervisor] stall event emit failed:", err),
       );
     }, STALL_TIMEOUT);
@@ -264,6 +262,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         const ctx = createRunContext({
           engagementId: opts.engagementId,
           target: primaryTarget,
+          repo,
           actionName: action.name,
           event: {
             id: event.id ?? `evt-${Date.now()}`,
@@ -305,7 +304,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         console.log(`[supervisor] agent action "${action.name}" -> spawning ${agentImage}`);
 
         if (mode === "learning") {
-          await sendMessage({
+          await repo.sendMessage({
             engagementId: opts.engagementId,
             direction: "outbound",
             author: "supervisor",
@@ -319,7 +318,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         });
 
         try {
-          const containerName = await spawnAgentContainer(opts.engagementId, agentImage, primaryTarget);
+          const containerName = await spawnAgentContainer(repo, opts.engagementId, agentImage, primaryTarget);
           console.log(`[supervisor] spawned: ${containerName}`);
 
           // Wait for Cartridge API, then start agent with prompt
@@ -329,7 +328,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
           const agentId = await startCartridgeAgent(containerName, interpolated, provider, model);
           console.log(`[supervisor] agent started: ${containerName} (${agentId})`);
 
-          await addDiscovery({
+          await repo.addDiscovery({
             engagementId: opts.engagementId,
             type: "attempted",
             category: "agent",
@@ -341,7 +340,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
           const msg = err instanceof Error ? err.message : String(err);
           spawnFailures.set(failKey, priorFails + 1);
           console.error(`[supervisor] spawn failed for "${action.name}" (${priorFails + 1}/${MAX_SPAWN_RETRIES}): ${msg}`);
-          await addDiscovery({
+          await repo.addDiscovery({
             engagementId: opts.engagementId,
             type: "negative",
             category: "agent",
@@ -352,7 +351,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[supervisor] action "${action.name}" failed: ${msg}`);
-      await addDiscovery({
+      await repo.addDiscovery({
         engagementId: opts.engagementId,
         type: "negative",
         category: "error",
@@ -389,7 +388,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
 
       if (targetPhase && targetPhase !== currentPhase) {
-        const result = await advancePhase(eid, targetPhase as Parameters<typeof advancePhase>[1]);
+        const result = await repo.advancePhase(eid, targetPhase) as { warning?: string };
         currentPhase = targetPhase;
         console.log(`[supervisor] phase advanced: ${currentPhase}${result.warning ? ` (${result.warning})` : ""}`);
         ws.sendEvent({ type: "PhaseAdvanced", payload: { phase: currentPhase } });
@@ -459,42 +458,20 @@ export async function startSupervisor(opts: SupervisorOpts) {
     return released;
   }
 
-  // Connect to Postgres and LISTEN for events
-  const client = new Client({ connectionString: DATABASE_URL });
+  // Connect to API WebSocket for event streaming
   let closing = false;
-  client.on("error", (err) => {
+  const eventStream = connectEventStream(opts.engagementId, (event) => {
     if (closing) return;
-    console.error("[supervisor] pg client error:", err.message);
+    evaluateAndDispatch({ type: event.type, payload: event.payload, id: event.id });
   });
-  await client.connect();
-  await client.query("LISTEN pk_events");
-  console.log("[supervisor] listening on pk_events");
-
-  client.on("notification", (msg) => {
-    if (msg.channel !== "pk_events" || !msg.payload) return;
-    try {
-      const parsed = JSON.parse(msg.payload) as { id: string; type: string; engagement_id: string };
-      if (parsed.engagement_id !== opts.engagementId) return;
-
-      // Fetch the full event payload from DB
-      client.query("SELECT type, payload FROM events WHERE id = $1", [parsed.id])
-        .then((result) => {
-          if (result.rows.length === 0) return;
-          const row = result.rows[0] as { type: string; payload: Record<string, unknown> };
-          evaluateAndDispatch({ type: row.type, payload: row.payload, id: parsed.id });
-        })
-        .catch((err) => { if (!closing) console.error("[supervisor] event fetch error:", err); });
-    } catch {
-      // malformed notification
-    }
-  });
+  console.log("[supervisor] connecting to event stream");
 
   // Fire EngagementStarted only on first run (skip if engagement already has events)
-  const { listEvents } = await import("@promptkiddie/core");
-  const priorEvents = await listEvents(opts.engagementId, { type: "EngagementStarted" });
+  
+  const priorEvents = await repo.listEvents(opts.engagementId, { type: "EngagementStarted" });
   if (priorEvents.length === 0) {
     console.log("[supervisor] emitting EngagementStarted");
-    await emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
+    await repo.emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
   } else {
     console.log("[supervisor] resuming (EngagementStarted already emitted, skipping)");
   }
@@ -506,7 +483,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     if (stallTimer) clearTimeout(stallTimer);
     for (const [, ac] of activeActions) ac.abort();
     if (ownsWs) await ws.close();
-    await client.end().catch(() => {});
+    eventStream.close();
   };
 
   const shutdown = async () => {
@@ -533,7 +510,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
 export interface StandbyOpts {
   mode?: SupervisorMode;
   /** External WS broadcaster shared across all supervisor instances. */
-  ws?: WsBroadcaster;
+  ws?: ApiBroadcaster;
 }
 
 export async function startStandby(opts: StandbyOpts = {}) {
@@ -554,33 +531,30 @@ export async function startStandby(opts: StandbyOpts = {}) {
     activeSupervisors.delete(engId);
   }
 
-  const listener = new Client({ connectionString: DATABASE_URL });
-  await listener.connect();
-  await listener.query("LISTEN pk_events");
+  const standbyRepo = getRepo();
 
-  const existing = await listEngagements();
-  const active = existing.filter((e: { status: string }) => e.status === "active");
+  const existing = await standbyRepo.listEngagements() as Array<{ id: string; status: string }>;
+  const active = existing.filter((e) => e.status === "active");
   console.log(`[supervisor] standby mode - ${active.length} active engagement(s), listening for new ones...`);
   for (const eng of active) {
-    await ensureSupervisor(eng.id).catch((err) =>
+    await ensureSupervisor(eng.id).catch((err: Error) =>
       console.error(`[supervisor] failed to resume ${eng.id}:`, err.message));
   }
 
-  listener.on("notification", async (msg) => {
-    if (msg.channel !== "pk_events" || !msg.payload) return;
-    try {
-      const parsed = JSON.parse(msg.payload) as { id?: string; engagement_id?: string; type?: string };
-      const engId = parsed.engagement_id;
-      if (!engId) return;
+  // Subscribe to all events (no engagementId filter) for standby routing
+  const standbyStream = connectEventStream("", async (event) => {
+    const engId = (event as Record<string, unknown>).engagementId as string | undefined
+      ?? (event as Record<string, unknown>).engagement_id as string | undefined;
+    if (!engId) return;
 
-      if (parsed.type === "EngagementStarted") {
+    try {
+      if (event.type === "EngagementStarted") {
         await ensureSupervisor(engId);
-      } else if (parsed.type === "StatusChanged") {
-        const result = await listener.query("SELECT payload FROM events WHERE id = $1", [parsed.id]);
-        const payload = result.rows[0]?.payload as { status?: string } | undefined;
-        if (payload?.status === "active") {
+      } else if (event.type === "StatusChanged") {
+        const payload = event.payload as { status?: string };
+        if (payload.status === "active") {
           await ensureSupervisor(engId);
-        } else if (payload?.status === "paused" || payload?.status === "done") {
+        } else if (payload.status === "paused" || payload.status === "done") {
           await stopSupervisorFor(engId);
         }
       }
@@ -590,7 +564,7 @@ export async function startStandby(opts: StandbyOpts = {}) {
   const shutdown = async () => {
     console.log("[supervisor] shutting down all instances...");
     for (const [, sup] of activeSupervisors) await sup.stop();
-    await listener.end().catch(() => {});
+    standbyStream.close();
   };
 
   return {
@@ -613,8 +587,7 @@ if (isDirectRun) {
   }
 
   if (standby) {
-    const sharedWs = createWsServer(parseInt(process.env.PK_WS_PORT ?? "3201", 10));
-    startStandby({ mode: cliMode, ws: sharedWs }).then((s) => {
+    startStandby({ mode: cliMode }).then((s) => {
       process.on("SIGINT", async () => { await s.shutdown(); process.exit(0); });
       process.on("SIGTERM", async () => { await s.shutdown(); process.exit(0); });
     }).catch((err) => {

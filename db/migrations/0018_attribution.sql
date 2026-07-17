@@ -1,0 +1,9 @@
+-- Add created_by column to tables that support server-side attribution
+ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE targets ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE discoveries ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS created_by TEXT;

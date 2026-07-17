@@ -8,12 +8,14 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.14",
     "@promptkiddie/core": "workspace:*",
+    "dotenv": "^16",
     "hono": "^4",
-    "@hono/node-server": "^1",
-    "dotenv": "^16"
+    "ws": "^8.21.0"
   }
 }

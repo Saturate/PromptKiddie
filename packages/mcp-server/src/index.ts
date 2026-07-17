@@ -3,7 +3,7 @@ import "dotenv/config";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { closeDb, getRepo } from "@promptkiddie/core";
+import { getRepo } from "@promptkiddie/core";
 
 const repo = getRepo();
 
@@ -618,8 +618,8 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
-  closeDb().then(() => process.exit(1));
+  process.exit(1);
 });
 
-process.on("SIGINT", () => closeDb().then(() => process.exit(0)));
-process.on("SIGTERM", () => closeDb().then(() => process.exit(0)));
+process.on("SIGINT", () => process.exit(0));
+process.on("SIGTERM", () => process.exit(0));

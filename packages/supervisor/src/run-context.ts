@@ -1,18 +1,12 @@
 /**
  * Real RunContext implementation for the supervisor.
- * Executes commands via pk exec, emits events to DB, searches knowledge base.
+ * Executes commands via pk exec, emits events to DB via repo, searches knowledge base.
  */
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import {
-  emitEvent,
-  addDiscovery,
-  addEvidence,
-  recordExecOutcome,
-  isExecBlocked,
   searchKnowledge as searchKB,
-  logActivity,
-  addAgentLog,
+  type Repo,
   type RunContext,
   type EngagementEvent,
   type EngagementState,
@@ -28,6 +22,7 @@ interface RunContextOpts {
   target: string;
   event: EngagementEvent;
   engagement: EngagementState;
+  repo: Repo;
   actionName?: string;
   onReprioritize?: (actionName: string, priority: number) => void;
   onOutput?: (line: string) => void;
@@ -35,7 +30,7 @@ interface RunContextOpts {
 }
 
 export function createRunContext(opts: RunContextOpts): RunContext {
-  const { engagementId, target, event, engagement, actionName, onReprioritize, onOutput, signal } = opts;
+  const { engagementId, target, event, engagement, repo, actionName, onReprioritize, onOutput, signal } = opts;
   const actorLabel = actionName ?? "supervisor";
 
   return {
@@ -47,7 +42,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
       const start = Date.now();
       const cmdStr = `${tool} ${args.join(" ")}`;
 
-      const blocked = await isExecBlocked(engagementId, cmdStr, target);
+      const blocked = await repo.isExecBlocked(engagementId, cmdStr, target);
       if (blocked) {
         onOutput?.(`[blocked] ${cmdStr} (failed 2+ times, skipping)`);
         return { stdout: "", stderr: "blocked by exec dedup", code: -1, durationMs: 0 };
@@ -62,9 +57,9 @@ export function createRunContext(opts: RunContextOpts): RunContext {
             const code = err && "code" in err && typeof err.code === "number" ? err.code : err ? 1 : 0;
             const durationMs = Date.now() - start;
 
-            recordExecOutcome(engagementId, cmdStr, target, code).catch(() => {});
+            repo.recordExecOutcome(engagementId, cmdStr, target, code).catch(() => {});
 
-            logActivity({
+            repo.logActivity({
               engagementId,
               phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
               action: `[${actorLabel}] ${tool} (${durationMs}ms, exit ${code})`,
@@ -78,16 +73,14 @@ export function createRunContext(opts: RunContextOpts): RunContext {
 
         if (execOpts?.stream && proc.stdout) {
           proc.stdout.on("data", (chunk: Buffer) => {
-            const lines = chunk.toString().split("\n");
-            for (const line of lines) {
+            for (const line of chunk.toString().split("\n")) {
               if (line.trim()) onOutput?.(line);
             }
           });
         }
         if (execOpts?.stream && proc.stderr) {
           proc.stderr.on("data", (chunk: Buffer) => {
-            const lines = chunk.toString().split("\n");
-            for (const line of lines) {
+            for (const line of chunk.toString().split("\n")) {
               if (line.trim()) onOutput?.(line);
             }
           });
@@ -100,14 +93,14 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     },
 
     async emit(type: string, payload: Record<string, unknown>): Promise<void> {
-      await emitEvent(engagementId, type, payload, "supervisor");
+      await repo.emitEvent(engagementId, type, payload, "supervisor");
     },
 
     async searchExploitIndex(_product: string, _version: string): Promise<ExploitHit[]> {
       const results = await searchKB(`${_product} ${_version} CVE exploit`, { limit: 5 });
       return results
         .filter((r) => {
-          const meta = r as unknown as { source: string; category?: string };
+          const meta = r as unknown as { source: string };
           return meta.source === "pk-exploits";
         })
         .map((r) => ({
@@ -129,15 +122,14 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     },
 
     async spawnLlm(task: string, _llmOpts?: LlmOpts): Promise<string> {
-      const { sendMessage } = await import("@promptkiddie/core");
       console.log(`[supervisor] LLM task: ${task.slice(0, 100)}...`);
-      await sendMessage({
+      await repo.sendMessage({
         engagementId,
         direction: "outbound",
         author: "supervisor",
         body: `[LLM task] ${_llmOpts?.agentType ?? "general-purpose"}: ${task}`,
       });
-      await addAgentLog({
+      await repo.addAgentLog({
         engagementId,
         agent: "supervisor",
         phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
@@ -148,14 +140,13 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     },
 
     async discover(type: "positive" | "negative" | "attempted", category: string, summary: string, detail?: Record<string, unknown>): Promise<void> {
-      await addDiscovery({ engagementId, type, category, summary, detail });
+      await repo.addDiscovery({ engagementId, type, category, summary, detail });
     },
 
     async evidence(path: string, type: "screenshot" | "scan" | "output" | "file" | "flag"): Promise<void> {
-      // Ensure path is relative to the engagement directory
       const slug = engagement.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       const fullPath = path.startsWith("engagements/") ? path : `engagements/${slug}/${path}`;
-      await addEvidence({ engagementId, path: fullPath, type }).catch(() => {});
+      await repo.addEvidence({ engagementId, path: fullPath, type }).catch(() => {});
     },
 
     async readFile(path: string): Promise<string> {
@@ -177,7 +168,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     log(message: string): void {
       console.log(`[action] ${message}`);
       onOutput?.(message);
-      addAgentLog({
+      repo.addAgentLog({
         engagementId,
         agent: "supervisor",
         phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
