@@ -349,11 +349,26 @@ export interface Action {
   emits?: string[];
 }
 
-/** A playbook is a named collection of actions. */
+/** Playbook metadata controlling how the supervisor runs it. */
+export interface PlaybookMeta {
+  /** Docker image for script actions (ctx.exec). Default: "pk-agent-recon". */
+  toolingImage?: string;
+  /** Docker image for agent/prompt actions. Default: resolved per phase. */
+  agentImage?: string;
+  /** Engagement types this playbook is designed for. */
+  engagementTypes?: Array<"ctf" | "whitebox" | "blackbox" | "bugbounty">;
+  /** Execution mode hint. */
+  mode?: "race" | "standard" | "methodical" | "learning";
+  /** Docker network to attach containers to. Default: "pk-network". */
+  network?: string;
+}
+
+/** A playbook is a named collection of actions with optional runtime metadata. */
 export interface Playbook {
   name: string;
   description: string;
   actions: Action[];
+  meta?: PlaybookMeta;
 }
 
 /** A mock exec result with optional delay and failure behavior. */

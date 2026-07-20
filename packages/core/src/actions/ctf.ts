@@ -663,6 +663,12 @@ const stallDetection: Action = {
 export const CTF_PLAYBOOK: Playbook = {
   name: "CTF Default",
   description: "Reactive CTF playbook: scan, enumerate per service, exploit, escalate, capture flags.",
+  meta: {
+    toolingImage: "pk-agent-attack",
+    agentImage: "pk-agent-attack",
+    engagementTypes: ["ctf"],
+    mode: "standard",
+  },
   actions: [
     // Recon
     portScan, udpScan, webRecon, sslHostnames, resolveHostname, dirBrute, dirBruteVhost, vhostBrute,

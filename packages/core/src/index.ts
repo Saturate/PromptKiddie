@@ -35,6 +35,7 @@ export {
   type Action,
   type RunContext,
   type Playbook,
+  type PlaybookMeta,
   type EngagementEvent,
   type EngagementState,
   type ExecResult,
