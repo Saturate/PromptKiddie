@@ -34,9 +34,12 @@ RUN mkdir -p /etc/pk /workspace/.tool-log
 # Activate shell logger as SHELL for runtime
 ENV SHELL=/usr/local/bin/pk-shell-logger
 
-# Agent instructions (CLAUDE.md is what the harness reads)
+# Agent instructions: both roles included, symlink set at runtime by PK_ROLE
 COPY packages/containers/agent/AGENT.md /workspace/AGENT.md
-RUN ln -s AGENT.md /workspace/CLAUDE.md
+COPY packages/containers/agent/ORCHESTRATOR.md /workspace/ORCHESTRATOR.md
+COPY packages/containers/agent/role-init.sh /usr/local/bin/pk-role-init
+RUN chmod +x /usr/local/bin/pk-role-init && \
+    ln -sf AGENT.md /workspace/CLAUDE.md
 
 # ── All tools in one image ─────────────────────────────────────────
 
