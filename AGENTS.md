@@ -39,14 +39,31 @@ The supervisor runs in standby mode embedded in the API process. It auto-starts 
 
 Event propagation: events table -> Postgres NOTIFY trigger -> supervisor event stream -> action dispatch.
 
-### Docker agent containers
+### LLM tiers
 
-Three image tiers built from `packages/containers/agent/Dockerfile`:
-- `pk-agent-recon` - rustscan, nmap, ffuf, gobuster, nuclei, whatweb
-- `pk-agent-attack` - adds sqlmap, searchsploit, john, hydra, chisel
-- `pk-agent-full` - adds metasploit, ligolo, bloodhound
+Three levels of LLM involvement, from none to full autonomy:
 
-Build: `pnpm build && docker build --target attack -t pk-agent-attack -f packages/containers/agent/Dockerfile .`
+| Tier | Container | Scope | Lifecycle | Purpose |
+|------|-----------|-------|-----------|---------|
+| **Supervisor** | (embedded in API) | per-engagement | auto start/stop | Deterministic code. Fires playbook actions on events. No LLM. |
+| **Task Agent** | `pk-agent-<slug>-<id>` | per-action | spawned per prompt action, dies after | Short-lived LLM for one job: exploit this, analyze that. Reads AGENT.md. |
+| **Orchestrator** | `pk-orch-<slug>` | per-engagement | persistent while active | Persistent LLM sidekick. Watches events, intervenes on stalls, redirects stuck agents. Reads ORCHESTRATOR.md. |
+| **Controller** | `pk-controller` | global | always-on (hosted only) | Optional global LLM for hosted mode. Creates engagements, assigns playbooks, manages PK state. Not scoped to any engagement. |
+
+The supervisor handles the deterministic playbook; the orchestrator handles judgment calls; the controller handles platform-level decisions. In host mode, the user's own harness (Claude Code, etc.) fills the controller role via the PK MCP server.
+
+### Docker containers
+
+Single unified image: `pk-agent` (all tools in one). Built from `packages/containers/agent/Dockerfile`.
+
+Build: `pnpm build && docker build -t pk-agent -f packages/containers/agent/Dockerfile .`
+
+Per-engagement containers spawned by the supervisor:
+- `pk-worker-<slug>` - persistent toolbox for `ctx.exec()`, runs `sleep infinity`
+- `pk-orch-<slug>` - persistent orchestrator with Cartridge + LLM
+- `pk-agent-<slug>-<id>` - temporary task agents for prompt actions
+
+Playbooks declare their image via `meta.image` (default: `pk-agent`). Individual actions can override with `action.image`.
 
 ### SPA (packages/spa)
 
@@ -54,7 +71,7 @@ Vite + React SPA at `packages/spa/`. Design system: amber accent (oklch 0.75 0.1
 
 Key pages: Dashboard, Engagements, EngagementDetail (with start/pause/stop controls), Playbooks (catalog + simulator), Status (system health), Knowledge (search).
 
-Collapsible agent terminal panel on the right side connects to running agents via WebSocket PTY.
+Collapsible agent terminal panel on the right side connects to running containers via WebSocket PTY. The orchestrator terminal is the default view on engagement pages.
 
 ## Scopes
 
