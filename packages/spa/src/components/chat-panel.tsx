@@ -127,6 +127,7 @@ interface DockerContainer {
 function ContainerButton({ container, onSelect }: { container: DockerContainer; onSelect: (name: string) => void }) {
   const isUp = container.status.startsWith("Up");
   const label = container.displayName ?? container.name.replace(/^pk-agent-/, "").replace(/-[a-z0-9]{6}$/, "");
+  const shortId = container.name.split("-").pop() ?? "";
   return (
     <button
       onClick={() => onSelect(container.name)}
@@ -137,6 +138,7 @@ function ContainerButton({ container, onSelect }: { container: DockerContainer; 
       <div className="flex items-center gap-1.5">
         <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isUp ? "bg-pk-amber animate-pulse" : "bg-zinc-500"}`} />
         <span className={`font-mono text-xs truncate ${isUp ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
+        <span className="font-mono text-[9px] text-muted-foreground/30 ml-auto shrink-0">{shortId}</span>
       </div>
       <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
         {container.status}
