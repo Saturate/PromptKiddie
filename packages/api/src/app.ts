@@ -18,6 +18,7 @@ import execDedup from "./routes/exec-dedup.js";
 import knowledge from "./routes/knowledge.js";
 import settings from "./routes/settings.js";
 import playbookActions from "./routes/playbook-actions.js";
+import status from "./routes/status.js";
 
 export function createApp() {
   const app = new Hono();
@@ -40,6 +41,7 @@ export function createApp() {
   app.route("/", knowledge);
   app.route("/", settings);
   app.route("/", playbookActions);
+  app.route("/", status);
 
   app.get("/health", (c) => c.json({ ok: true }));
 
