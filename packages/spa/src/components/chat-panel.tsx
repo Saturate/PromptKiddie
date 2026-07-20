@@ -160,13 +160,49 @@ function TerminalView() {
 
 export function ChatPanel({ isOpen, onToggle }: ChatPanelProps) {
   const [tab, setTab] = useState<"messages" | "terminal">("messages");
+  const [width, setWidth] = useState(() => {
+    const stored = localStorage.getItem("pk-chat-width");
+    return stored ? parseInt(stored, 10) : 320;
+  });
+  const isDragging = useRef(false);
   const isHostMode = typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    const startX = e.clientX;
+    const startWidth = width;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDragging.current) return;
+      const newWidth = Math.max(280, Math.min(600, startWidth + (startX - moveEvent.clientX)));
+      setWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      isDragging.current = false;
+      localStorage.setItem("pk-chat-width", String(width));
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, [width]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="w-80 border-l border-border bg-sidebar flex flex-col h-screen sticky top-0 shrink-0">
+    <div style={{ width }} className="border-l border-border bg-sidebar flex flex-col h-screen sticky top-0 shrink-0 relative">
+      <div
+        onMouseDown={handleMouseDown}
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-pk-amber/30 active:bg-pk-amber/50 transition-colors z-10"
+      />
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
           <button

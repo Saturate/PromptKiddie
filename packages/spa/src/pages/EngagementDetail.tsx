@@ -5,10 +5,13 @@ import {
   useEngagement, useTargets, useFindings, useActivity,
   useEvidence, useObjectives,
 } from "@/hooks/use-api";
-import { setEngagementStatus } from "@/api/client";
+import { setEngagementStatus, updateEngagement } from "@/api/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { FileDown, Play, Pause, Square, RotateCcw } from "lucide-react";
+import { FileDown, Play, Pause, Square, RotateCcw, Pencil } from "lucide-react";
 import { StatusDot, PhaseText, SeverityBadge, PageState, SectionLabel } from "@/components/pk";
 
 const DEFAULT_PHASES = ["scoping", "recon", "enum", "exploit", "postexploit", "report"];
@@ -110,6 +113,74 @@ function EngagementControls({ id, status }: { id: string; status: string }) {
   );
 }
 
+function EditEngagementDialog({ eng, id, onSaved }: { eng: Any; id: string; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    name: eng.name ?? "",
+    scope: eng.scope ?? "",
+    brief: eng.brief ?? "",
+    sourceUrl: eng.sourceUrl ?? "",
+    group: eng.group ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateEngagement(id, form);
+      onSaved();
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} className="text-muted-foreground hover:text-foreground">
+        <Pencil className="size-3" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-sm">Edit Engagement</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="font-mono text-xs">Name</Label>
+              <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} className="font-mono text-sm" />
+            </div>
+            <div>
+              <Label className="font-mono text-xs">Group</Label>
+              <Input value={form.group} onChange={(e) => setForm(f => ({ ...f, group: e.target.value }))} className="font-mono text-sm" placeholder="e.g. HTB, THM, Internal" />
+            </div>
+            <div>
+              <Label className="font-mono text-xs">Scope</Label>
+              <Input value={form.scope} onChange={(e) => setForm(f => ({ ...f, scope: e.target.value }))} className="font-mono text-sm" placeholder="IP, domain, or range" />
+            </div>
+            <div>
+              <Label className="font-mono text-xs">Source URL</Label>
+              <Input value={form.sourceUrl} onChange={(e) => setForm(f => ({ ...f, sourceUrl: e.target.value }))} className="font-mono text-sm" placeholder="https://..." />
+            </div>
+            <div>
+              <Label className="font-mono text-xs">Brief</Label>
+              <textarea value={form.brief} onChange={(e) => setForm(f => ({ ...f, brief: e.target.value }))}
+                className="w-full min-h-[80px] bg-background border border-border rounded-md px-3 py-2 font-mono text-sm resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+                placeholder="Engagement brief..." />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setOpen(false)} className="font-mono text-xs">Cancel</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving} className="bg-pk-amber text-black hover:bg-pk-amber/90 font-mono text-xs">
+                {saving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export default function EngagementDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: engagement, isLoading, isError, refetch } = useEngagement(id);
@@ -130,6 +201,7 @@ export default function EngagementDetail() {
 function EngagementContent({ eng, targets, findings, activity, objectives, id }: {
   eng: Any; targets: Any[]; findings: Any[]; activity: Any[]; objectives: Any[]; id: string;
 }) {
+  const queryClient = useQueryClient();
   const currentPhase = eng.phase ?? "scoping";
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
   for (const f of findings) {
@@ -146,6 +218,7 @@ function EngagementContent({ eng, targets, findings, activity, objectives, id }:
           <span className="font-mono text-xs text-muted-foreground">{eng.type}</span>
           <StatusDot status={eng.status} />
           <EngagementControls id={id} status={eng.status} />
+          <EditEngagementDialog eng={eng} id={id} onSaved={() => queryClient.invalidateQueries({ queryKey: ["engagement", id] })} />
           <span className="flex-1" />
           <a href={`/api/report/${id}`} download>
             <Button variant="outline" size="sm" className="font-mono text-xs"><FileDown className="size-3.5 mr-1.5" />Report</Button>
