@@ -1,7 +1,68 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "node:http";
+import { execFile } from "node:child_process";
 import pg from "pg";
 import { resolveKey, hasKeys } from "./middleware/auth.js";
+
+/**
+ * Bridge Cartridge terminal output into a WebSocket.
+ * Runs server-side: reads from `docker exec <container> curl .../output?offset=N`
+ * and pushes chunks to the connected WS client.
+ */
+function bridgeCartridgeOutput(containerName: string, ws: WebSocket) {
+  let offset = 0;
+  let stopped = false;
+  let agentId: string | null = null;
+
+  ws.on("close", () => { stopped = true; });
+
+  async function fetchOnce(): Promise<boolean> {
+    if (stopped || ws.readyState !== WebSocket.OPEN) return false;
+    try {
+      if (!agentId) {
+        const agentsJson = await execAsync("docker", [
+          "exec", containerName, "curl", "-sf", "http://localhost:4500/api/agents",
+        ]);
+        const agents = JSON.parse(agentsJson) as { agents: Array<{ id: string; status: string }> };
+        const agent = agents.agents[0];
+        if (!agent) return true; // no agent yet, retry
+        agentId = agent.id;
+      }
+
+      const outputJson = await execAsync("docker", [
+        "exec", containerName, "curl", "-sf",
+        `http://localhost:4500/api/agents/${agentId}/output?offset=${offset}`,
+      ]);
+      const output = JSON.parse(outputJson) as { data: string; next_offset: number; total_bytes: number };
+      if (output.data && output.data.length > 0) {
+        ws.send(output.data);
+        offset = output.next_offset;
+      }
+      return true;
+    } catch {
+      return true; // container might still be starting
+    }
+  }
+
+  function execAsync(cmd: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      execFile(cmd, args, { timeout: 5000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+        if (err) reject(err); else resolve(stdout ?? "");
+      });
+    });
+  }
+
+  // Stream loop: fetch every 500ms
+  (async () => {
+    // Wait briefly for Cartridge to start
+    await new Promise(r => setTimeout(r, 2000));
+    while (!stopped && ws.readyState === WebSocket.OPEN) {
+      const ok = await fetchOnce();
+      if (!ok) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+  })();
+}
 
 interface WsClient {
   ws: WebSocket;
@@ -18,7 +79,7 @@ export function getContainerMeta(name: string) { return _containerMeta?.get(name
 export function getAllContainerMeta() { return _containerMeta ? Object.fromEntries(_containerMeta) : {}; }
 
 export function setupWebSocket(server: Server, databaseUrl: string) {
-  const wss = new WebSocketServer({ server, path: "/ws/events", perMessageDeflate: false });
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -109,7 +170,7 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
   const ptyMeta = new Map<string, { action: string; image: string; engagementId: string }>(); // container name -> metadata
   _containerMeta = ptyMeta;
 
-  const ptyWss = new WebSocketServer({ server, path: "/ws/pty" });
+  const ptyWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   ptyWss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -119,6 +180,12 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
     const agentId = rawId;
     const resolvedId = ptyAliases.get(rawId) ?? rawId;
     const subscribeIds = new Set([agentId, resolvedId]);
+
+    // If this is a container name, bridge Cartridge output into the WS
+    const isContainer = rawId.startsWith("pk-orch-") || rawId.startsWith("pk-agent-");
+    if (isContainer) {
+      bridgeCartridgeOutput(rawId, ws);
+    }
 
     if (!hasKeys()) {
       for (const id of subscribeIds) {
@@ -141,6 +208,18 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
       ws.on("close", () => { ptyClients.get(agentId)?.delete(ws); if (ptyClients.get(agentId)?.size === 0) ptyClients.delete(agentId); });
       ws.send(JSON.stringify({ type: "authenticated" }));
     });
+  });
+
+  // Manual upgrade handler: route WS connections to the right server by path
+  server.on("upgrade", (request, socket, head) => {
+    const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+    if (pathname === "/ws/events") {
+      wss.handleUpgrade(request, socket, head, (ws) => wss.emit("connection", ws, request));
+    } else if (pathname === "/ws/pty") {
+      ptyWss.handleUpgrade(request, socket, head, (ws) => ptyWss.emit("connection", ws, request));
+    } else {
+      socket.destroy();
+    }
   });
 
   return {

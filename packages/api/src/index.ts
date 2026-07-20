@@ -28,6 +28,35 @@ const root = new Hono();
 const api = createApp();
 api.use("/*", authMiddleware(config.api.secret ?? undefined));
 
+// Proxy Cartridge terminal output for a container
+api.get("/agents/:name/stream", async (c) => {
+  const name = c.req.param("name");
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-orch-")) {
+    return c.json({ error: "invalid container" }, 400);
+  }
+  const offset = c.req.query("offset") ?? "0";
+  try {
+    const { execFile: ef } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execAsync = promisify(ef);
+    // Get the agent ID from Cartridge
+    const { stdout: agentsJson } = await execAsync("docker", [
+      "exec", name, "curl", "-sf", "http://localhost:4500/api/agents",
+    ], { timeout: 5000 });
+    const agents = JSON.parse(agentsJson) as { agents: Array<{ id: string; status: string }> };
+    const agent = agents.agents[0];
+    if (!agent) return c.json({ data: "", offset: 0, done: true });
+    // Get output from the agent
+    const { stdout: outputJson } = await execAsync("docker", [
+      "exec", name, "curl", "-sf", `http://localhost:4500/api/agents/${agent.id}/output?offset=${offset}`,
+    ], { timeout: 5000 });
+    const output = JSON.parse(outputJson);
+    return c.json({ ...output, agentStatus: agent.status });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err), data: "" }, 500);
+  }
+});
+
 api.get("/agents/:name/logs", async (c) => {
   const name = c.req.param("name");
   if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-")) return c.json({ error: "invalid container" }, 400);
@@ -89,7 +118,7 @@ if (existsSync(spaDir)) {
   root.get("*", (c) => {
     const path = c.req.path;
     // Skip API-looking paths
-    if (path.startsWith("/api/")) return c.notFound();
+    if (path.startsWith("/api/") || path.startsWith("/ws/")) return c.notFound();
     return c.html(readFileSync(`${spaDir}/index.html`, "utf-8"));
   });
 }
