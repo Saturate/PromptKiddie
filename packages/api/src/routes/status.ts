@@ -54,14 +54,17 @@ app.get("/status", async (c) => {
         const [name, image, status, created] = line.split("\t");
         const meta = allMeta[name];
         const isWorker = name.startsWith("pk-worker-");
-        const displayName = isWorker
+        const isOrch = name.startsWith("pk-orch-");
+        const displayName = isOrch
+          ? "Orchestrator"
+          : isWorker
           ? `Worker (${name.replace(/^pk-worker-/, "")})`
           : meta?.action
             ? ACTION_LABELS[meta.action] ?? meta.action.replace(/_/g, " ")
             : name.replace(/^pk-agent-/, "").replace(/-[a-z0-9]{6}$/, "");
         return { name, image, status, created, action: meta?.action, engagementId: meta?.engagementId, displayName };
       })
-      .filter(c => c.name.startsWith("pk-agent-") || c.name.startsWith("pk-worker-"));
+      .filter(c => c.name.startsWith("pk-agent-") || c.name.startsWith("pk-worker-") || c.name.startsWith("pk-orch-"));
   } catch (err) {
     docker = { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

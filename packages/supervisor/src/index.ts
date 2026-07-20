@@ -315,12 +315,12 @@ export async function startSupervisor(opts: SupervisorOpts) {
     });
 
     if (existing) {
+      // Remove stale container; orchestrator needs a fresh Cartridge session
       await new Promise<void>((resolve) => {
-        execFile("docker", ["start", orchName], { timeout: 10000 }, () => resolve());
+        execFile("docker", ["rm", "-f", orchName], { timeout: 10000 }, () => resolve());
       });
-      orchContainer = orchName;
-      console.log(`[supervisor] orchestrator reused: ${orchName}`);
-    } else {
+    }
+    {
       const orchImage = playbook.meta?.image ?? DEFAULT_IMAGE;
       const orchDockerArgs = [
         "run", "-d",
