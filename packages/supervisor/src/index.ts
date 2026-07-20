@@ -52,8 +52,8 @@ interface SupervisorOpts {
 
 const DEFAULT_IMAGE = "pk-agent";
 
-function resolveAgentImage(action: Action, _phase: string, playbook?: { meta?: { agentImage?: string } }): string {
-  return playbook?.meta?.agentImage ?? DEFAULT_IMAGE;
+function resolveImage(action: Action, playbook?: { meta?: { image?: string } }): string {
+  return (action as { image?: string }).image ?? playbook?.meta?.image ?? DEFAULT_IMAGE;
 }
 
 async function waitForCartridge(containerName: string, timeoutMs = 30000): Promise<void> {
@@ -224,7 +224,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   // Spawn persistent worker container for script actions (ctx.exec)
   let workerContainer: string | null = null;
-  const workerImage = playbook.meta?.toolingImage ?? DEFAULT_IMAGE;
+  const workerImage = playbook.meta?.image ?? DEFAULT_IMAGE;
   const slug = engagement.slug.replace(/[^a-zA-Z0-9_-]/g, "_");
   const workerName = `pk-worker-${slug}`;
 
@@ -347,7 +347,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
 
       if (action.prompt && !action.run) {
-        const agentImage = resolveAgentImage(action, currentPhase, playbook);
+        const agentImage = resolveImage(action, playbook);
         const failKey = `${action.name}:${agentImage}`;
         const priorFails = spawnFailures.get(failKey) ?? 0;
 

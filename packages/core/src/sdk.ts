@@ -347,14 +347,19 @@ export interface Action {
    * Not enforced at runtime; treat as documentation that stays close to the code.
    */
   emits?: string[];
+  /**
+   * Docker image override for this action. When set, the supervisor uses this
+   * image instead of the playbook default. Useful when a specific action needs
+   * heavier tooling (e.g. metasploit for exploit, or a custom image with
+   * domain-specific tools).
+   */
+  image?: string;
 }
 
 /** Playbook metadata controlling how the supervisor runs it. */
 export interface PlaybookMeta {
-  /** Docker image for script actions (ctx.exec). Default: "pk-agent-recon". */
-  toolingImage?: string;
-  /** Docker image for agent/prompt actions. Default: resolved per phase. */
-  agentImage?: string;
+  /** Default Docker image for all actions. Default: "pk-agent". */
+  image?: string;
   /** Engagement types this playbook is designed for. */
   engagementTypes?: Array<"ctf" | "whitebox" | "blackbox" | "bugbounty">;
   /** Execution mode hint. */
