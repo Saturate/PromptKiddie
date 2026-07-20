@@ -152,8 +152,12 @@ interface DockerContainer {
 function ContainerButton({ container, onSelect, onKill }: { container: DockerContainer; onSelect: (name: string) => void; onKill?: (name: string) => void }) {
   const isUp = container.status.startsWith("Up");
   const isWorker = container.name.startsWith("pk-worker-");
-  const label = container.displayName ?? container.name.replace(/^pk-(agent|worker)-/, "").replace(/-[a-z0-9]{6}$/, "");
+  const isOrch = container.name.startsWith("pk-orch-");
+  const label = isOrch
+    ? "Orchestrator"
+    : container.displayName ?? container.name.replace(/^pk-(agent|worker)-/, "").replace(/-[a-z0-9]{6}$/, "");
   const shortId = container.name.split("-").pop() ?? "";
+  const nonClickable = isWorker;
 
   const handleKill = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -162,17 +166,26 @@ function ContainerButton({ container, onSelect, onKill }: { container: DockerCon
     }
   };
 
+  const dotColor = !isUp ? "bg-zinc-500"
+    : isOrch ? "bg-cyan-400"
+    : isWorker ? "bg-emerald-400"
+    : "bg-pk-amber animate-pulse";
+
+  const roleLabel = isOrch ? "orchestrator" : isWorker ? "toolbox" : "agent";
+
   return (
     <div
-      onClick={isWorker ? undefined : () => onSelect(container.name)}
+      onClick={nonClickable ? undefined : () => onSelect(container.name)}
       className={`w-full text-left px-2.5 py-2 rounded-md transition-colors ${
-        isWorker
+        nonClickable
           ? "border border-border/50"
-          : isUp ? "border border-border hover:border-pk-amber/30 hover:bg-accent/50 cursor-pointer" : "hover:bg-accent/50 cursor-pointer"
+          : isOrch && isUp
+            ? "border border-cyan-500/30 hover:border-cyan-400/50 hover:bg-cyan-500/5 cursor-pointer"
+            : isUp ? "border border-border hover:border-pk-amber/30 hover:bg-accent/50 cursor-pointer" : "hover:bg-accent/50 cursor-pointer"
       }`}
     >
       <div className="flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isUp ? (isWorker ? "bg-emerald-400" : "bg-pk-amber animate-pulse") : "bg-zinc-500"}`} />
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotColor}`} />
         <span className={`font-mono text-xs truncate ${isUp ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
         <span className="font-mono text-[9px] text-muted-foreground/30 ml-auto shrink-0">{shortId}</span>
         {isUp && onKill && (
@@ -186,13 +199,13 @@ function ContainerButton({ container, onSelect, onKill }: { container: DockerCon
         )}
       </div>
       <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
-        {isWorker ? "toolbox" : "agent"} &middot; {container.status}
+        {roleLabel} &middot; {container.status}
       </div>
     </div>
   );
 }
 
-function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
+function AgentList({ onSelect, onAutoConnect }: { onSelect: (id: string) => void; onAutoConnect?: (name: string) => void }) {
   const queryClient = useQueryClient();
   const { data: status } = useQuery({
     queryKey: ["system-status"],
@@ -241,6 +254,23 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
   const currentEngName = (currentEng?.name as string) ?? currentAgents[0]?.engagementName ?? "Current Engagement";
   const hasCurrentContent = currentContainers.length > 0 || currentRunning.length > 0 || currentRecent.length > 0;
 
+  // Sort: orchestrator first, then workers, then task agents
+  const sortedCurrentContainers = [...currentContainers].sort((a, b) => {
+    const order = (c: DockerContainer) => c.name.startsWith("pk-orch-") ? 0 : c.name.startsWith("pk-worker-") ? 1 : 2;
+    return order(a) - order(b);
+  });
+
+  // Auto-connect: notify parent of orchestrator for auto-select
+  const autoConnectFired = useRef(false);
+  useEffect(() => {
+    if (autoConnectFired.current) return;
+    const orch = sortedCurrentContainers.find(c => c.name.startsWith("pk-orch-") && c.status.startsWith("Up"));
+    if (orch) {
+      autoConnectFired.current = true;
+      onAutoConnect?.(orch.name);
+    }
+  }, [sortedCurrentContainers, onAutoConnect]);
+
   return (
     <div className="flex-1 overflow-y-auto">
       {/* Current engagement containers + agents */}
@@ -250,7 +280,7 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
             {currentEngName}
           </div>
           <div className="space-y-1">
-            {currentContainers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} onKill={handleKill} />)}
+            {sortedCurrentContainers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} onKill={handleKill} />)}
             {currentRunning.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
             {currentRecent.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
           </div>
@@ -386,7 +416,7 @@ export function ChatPanel({ isOpen, onToggle }: ChatPanelProps) {
         {selectedAgent ? (
           <AgentTerminal agentId={selectedAgent} onBack={() => setSelectedAgent(null)} />
         ) : (
-          <AgentList onSelect={setSelectedAgent} />
+          <AgentList onSelect={setSelectedAgent} onAutoConnect={setSelectedAgent} />
         )}
       </div>
     </div>
