@@ -17,7 +17,6 @@ import {
   evidence,
   execDedup,
   findings,
-  messages,
   objectives,
   ports,
   services,
@@ -940,75 +939,7 @@ export async function finishAgentRun(input: {
   return row;
 }
 
-// --- Inbox -----------------------------------------------------------------
-
-export async function subscribeMessages(
-  callback: (payload: Record<string, unknown>) => void,
-): Promise<() => void> {
-  const pg = await import("pg");
-  const { databaseUrl } = await import("./db.js");
-  const client = new pg.default.Client({ connectionString: databaseUrl() });
-  await client.connect();
-  await client.query("LISTEN new_message");
-  client.on("notification", (msg) => {
-    if (msg.channel === "new_message" && msg.payload) {
-      try {
-        callback(JSON.parse(msg.payload));
-      } catch {
-        // ignore parse errors
-      }
-    }
-  });
-  return () => { client.end().catch(() => {}); };
-}
-
-export async function listMessages(engagementId: string) {
-  const db = getDb();
-  return db
-    .select()
-    .from(messages)
-    .where(eq(messages.engagementId, engagementId))
-    .orderBy(messages.createdAt);
-}
-
-/** Fetch new inbound messages and mark them read. The orchestrator's poll loop. */
-export async function pollInbox(engagementId?: string) {
-  const db = getDb();
-  const where = engagementId
-    ? and(eq(messages.direction, "inbound"), eq(messages.status, "new"), eq(messages.engagementId, engagementId))
-    : and(eq(messages.direction, "inbound"), eq(messages.status, "new"));
-
-  const inbound = await db.select().from(messages).where(where).orderBy(messages.createdAt);
-
-  if (inbound.length > 0) {
-    const ids = inbound.map((m) => m.id);
-    for (const id of ids) {
-      await db.update(messages).set({ status: "read" }).where(eq(messages.id, id));
-    }
-  }
-  return inbound;
-}
-
-/** Send a message into the inbox (default outbound from the orchestrator). */
-export async function sendMessage(input: {
-  body: string;
-  engagementId?: string;
-  direction?: "inbound" | "outbound";
-  author?: string;
-}) {
-  const db = getDb();
-  const direction = input.direction ?? "outbound";
-  const [row] = await db
-    .insert(messages)
-    .values({
-      engagementId: input.engagementId,
-      direction,
-      author: input.author ?? (direction === "outbound" ? "orchestrator" : "human"),
-      body: input.body,
-    })
-    .returning();
-  return row;
-}
+// --- Inbox (removed: orchestrator terminal replaces inbox) -----------------
 
 // --- Events ------------------------------------------------------------------
 
