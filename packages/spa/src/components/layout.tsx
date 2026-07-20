@@ -1,5 +1,6 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { useTheme } from "@/hooks/use-theme";
+import { ConnectionBanner } from "@/components/connection-banner";
 import { Sun, Moon, Monitor } from "lucide-react";
 
 const NAV = [
@@ -62,6 +63,7 @@ export function Layout() {
         </div>
       </nav>
       <main className="flex-1 p-6 overflow-auto">
+        <ConnectionBanner />
         <Outlet />
       </main>
     </div>

@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { fetchEngagements, fetchFindings, fetchActivity, fetchTargets } from "@/api/client";
 import {
   Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ShieldAlertIcon, TargetIcon, AlertTriangleIcon, TerminalIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ShieldAlertIcon, TargetIcon, AlertTriangleIcon, TerminalIcon, RefreshCw } from "lucide-react";
 import { SeverityPieChart, PhaseBarChart } from "@/components/dashboard-charts";
 import { CreateEngagementDialog } from "@/components/create-engagement-dialog";
 
@@ -29,17 +30,13 @@ const phaseColors: Record<string, string> = {
 
 interface Engagement { id: string; name: string; type: string; status: string; phase?: string; createdAt?: string }
 interface Finding { id: string; severity: string; status: string }
-interface Activity { id: string; phase: string; action: string; command?: string; actor?: string; createdAt?: string }
+interface Activity { id: string; phase: string; action: string; command?: string; actor?: string; createdAt?: string; engagementName?: string; engagementId?: string }
 interface Target { id: string }
 
 export default function Dashboard() {
-  const [data, setData] = useState<{
-    engagements: Engagement[];
-    perEngagement: { engagement: Engagement; findings: Finding[]; activity: Activity[]; targets: Target[] }[];
-  } | null>(null);
-
-  useEffect(() => {
-    (async () => {
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: async () => {
       const engagements = await fetchEngagements() as Engagement[];
       const perEngagement = await Promise.all(
         engagements.map(async (e) => {
@@ -51,11 +48,22 @@ export default function Dashboard() {
           return { engagement: e, findings, activity, targets };
         }),
       );
-      setData({ engagements, perEngagement });
-    })();
-  }, []);
+      return { engagements, perEngagement };
+    },
+  });
 
-  if (!data) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
+  if (isLoading) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
+  if (isError) {
+    return (
+      <div className="p-6 space-y-3">
+        <p className="text-sm text-destructive font-mono">Failed to load dashboard data.</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
+          <RefreshCw className="size-3 mr-1.5" /> Retry
+        </Button>
+      </div>
+    );
+  }
+  if (!data) return null;
 
   const { engagements, perEngagement } = data;
   const allFindings = perEngagement.flatMap((p) => p.findings);

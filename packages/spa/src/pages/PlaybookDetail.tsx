@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { ReactFlowProvider } from "@xyflow/react";
 import { ActionGraphView } from "@/components/graph/action-graph";
 import { ActionDetail, type ActionDetailData } from "@/components/graph/action-detail";
@@ -7,7 +8,7 @@ import type { ActionNodeData } from "@/components/graph/action-node";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, X, Play, Zap, ListOrdered, ChevronRight } from "lucide-react";
+import { ArrowLeft, X, Play, Zap, ListOrdered, ChevronRight, RefreshCw } from "lucide-react";
 
 interface ActionInfo {
   name: string;
@@ -78,17 +79,13 @@ const KIND_COLORS: Record<string, string> = {
 
 export default function PlaybookDetail() {
   const { key } = useParams<{ key: string }>();
-  const [data, setData] = useState<PlaybookData | null>(null);
+  const { data, isLoading, isError, refetch } = useQuery<PlaybookData>({
+    queryKey: ["playbook", key],
+    queryFn: () => fetch(`/api/playbooks/catalog/${key}`).then((r) => r.json()),
+    enabled: !!key,
+  });
   const [tab, setTab] = useState<Tab>("graph");
   const [selectedAction, setSelectedAction] = useState<ActionDetailData | null>(null);
-
-  useEffect(() => {
-    if (!key) return;
-    fetch(`/api/playbooks/catalog/${key}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {});
-  }, [key]);
 
   const handleNodeClick = useCallback((_nodeId: string, nodeData: ActionNodeData) => {
     if (!data) return;
@@ -106,9 +103,18 @@ export default function PlaybookDetail() {
     });
   }, [data]);
 
-  if (!data) {
-    return <p className="text-sm text-muted-foreground font-mono p-6">Loading...</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground font-mono p-6">Loading...</p>;
+  if (isError) {
+    return (
+      <div className="p-6 space-y-3">
+        <p className="text-sm text-destructive font-mono">Failed to load playbook.</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
+          <RefreshCw className="size-3 mr-1.5" /> Retry
+        </Button>
+      </div>
+    );
   }
+  if (!data) return null;
 
   const graphWithState = {
     ...data.graph,

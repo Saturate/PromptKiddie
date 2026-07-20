@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { fetchEngagements, fetchFindings, fetchTargets } from "@/api/client";
 import { CreateEngagementDialog } from "@/components/create-engagement-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLinkIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ExternalLinkIcon, RefreshCw } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   active: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
@@ -34,10 +35,9 @@ const typeColors: Record<string, string> = {
 interface Engagement { id: string; name: string; type: string; status: string; phase?: string; group?: string; sourceUrl?: string; createdAt?: string }
 
 export default function Engagements() {
-  const [data, setData] = useState<{ engagement: Engagement; findingsCount: number; targetsCount: number }[] | null>(null);
-
-  useEffect(() => {
-    (async () => {
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["engagements-page"],
+    queryFn: async () => {
       const engagements = await fetchEngagements() as Engagement[];
       const perEngagement = await Promise.all(
         engagements.map(async (e) => {
@@ -48,11 +48,22 @@ export default function Engagements() {
           return { engagement: e, findingsCount: findings.length, targetsCount: targets.length };
         }),
       );
-      setData(perEngagement);
-    })();
-  }, []);
+      return perEngagement;
+    },
+  });
 
-  if (!data) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
+  if (isLoading) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
+  if (isError) {
+    return (
+      <div className="p-6 space-y-3">
+        <p className="text-sm text-destructive font-mono">Failed to load engagements.</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
+          <RefreshCw className="size-3 mr-1.5" /> Retry
+        </Button>
+      </div>
+    );
+  }
+  if (!data) return null;
 
   const engagements = data.map((d) => d.engagement);
   const activeCount = engagements.filter((e) => e.status === "active").length;

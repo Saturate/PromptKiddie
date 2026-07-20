@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
 interface PlaybookSummary {
   key: string;
@@ -11,16 +13,10 @@ interface PlaybookSummary {
 }
 
 export default function Playbooks() {
-  const [playbooks, setPlaybooks] = useState<PlaybookSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/playbooks/catalog")
-      .then((r) => r.json())
-      .then((data) => setPlaybooks(data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: playbooks = [], isLoading, isError, refetch } = useQuery<PlaybookSummary[]>({
+    queryKey: ["playbooks-catalog"],
+    queryFn: () => fetch("/api/playbooks/catalog").then((r) => r.json()),
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -31,8 +27,15 @@ export default function Playbooks() {
         </p>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <p className="text-sm text-muted-foreground font-mono">Loading...</p>
+      ) : isError ? (
+        <div className="space-y-3">
+          <p className="text-sm text-destructive font-mono">Failed to load playbooks.</p>
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
+            <RefreshCw className="size-3 mr-1.5" /> Retry
+          </Button>
+        </div>
       ) : playbooks.length === 0 ? (
         <p className="text-sm text-muted-foreground font-mono">No playbooks found.</p>
       ) : (

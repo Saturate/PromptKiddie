@@ -41,6 +41,8 @@ export function createApp() {
   app.route("/", settings);
   app.route("/", playbookActions);
 
+  app.get("/health", (c) => c.json({ ok: true }));
+
   app.onError((err, c) => {
     console.error("[api]", err);
     return c.json({ error: err.message }, 500);

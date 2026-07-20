@@ -1,14 +1,13 @@
-import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
-  fetchEngagement, fetchTargets, fetchFindings, fetchActivity,
-  fetchEvidence, fetchObjectives,
-} from "@/api/client";
+  useEngagement, useTargets, useFindings, useActivity,
+  useEvidence, useObjectives,
+} from "@/hooks/use-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileDown } from "lucide-react";
+import { FileDown, RefreshCw } from "lucide-react";
 
 const DEFAULT_PHASES = ["scoping", "recon", "enum", "exploit", "postexploit", "report"];
 
@@ -55,28 +54,27 @@ type Any = any;
 
 export default function EngagementDetail() {
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState<{
-    engagement: Any; targets: Any[]; findings: Any[]; activity: Any[];
-    evidence: Any[]; objectives: Any[];
-  } | null>(null);
+  const { data: engagement, isLoading, isError, refetch } = useEngagement(id);
+  const { data: targets = [] } = useTargets(id) as { data: Any[] };
+  const { data: findings = [] } = useFindings(id) as { data: Any[] };
+  const { data: activity = [] } = useActivity(id) as { data: Any[] };
+  const { data: objectives = [] } = useObjectives(id) as { data: Any[] };
 
-  useEffect(() => {
-    if (!id) return;
-    (async () => {
-      const [engagement, targets, findings, activity, evidence, objectives] = await Promise.all([
-        fetchEngagement(id), fetchTargets(id), fetchFindings(id),
-        fetchActivity(id), fetchEvidence(id), fetchObjectives(id),
-      ]);
-      setData({ engagement, targets, findings, activity, evidence, objectives });
-    })();
-  }, [id]);
-
-  if (!data) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
-
-  const { engagement, targets, findings, activity, objectives } = data;
+  if (isLoading) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
+  if (isError) {
+    return (
+      <div className="p-6 space-y-3">
+        <p className="text-sm text-destructive font-mono">Failed to load engagement.</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
+          <RefreshCw className="size-3 mr-1.5" /> Retry
+        </Button>
+      </div>
+    );
+  }
   if (!engagement) return <div className="p-6 text-muted-foreground font-mono">Engagement not found.</div>;
 
-  const currentPhase = engagement.phase ?? "scoping";
+  const eng = engagement as Any;
+  const currentPhase = eng.phase ?? "scoping";
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
   for (const f of findings) {
     if (f.severity in severityCounts) severityCounts[f.severity as keyof typeof severityCounts]++;
@@ -87,26 +85,26 @@ export default function EngagementDetail() {
     <div className="flex flex-col gap-4 py-4 px-4 md:gap-6 md:py-6 lg:px-6">
       <div className="space-y-2">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold font-mono">{engagement.name}</h1>
-          <Badge variant="outline" className="font-mono text-[10px] uppercase">{engagement.type}</Badge>
-          <Badge variant="secondary" className="font-mono text-[10px] uppercase">{engagement.status}</Badge>
+          <h1 className="text-xl font-bold font-mono">{eng.name}</h1>
+          <Badge variant="outline" className="font-mono text-[10px] uppercase">{eng.type}</Badge>
+          <Badge variant="secondary" className="font-mono text-[10px] uppercase">{eng.status}</Badge>
           <span className="flex-1" />
           <a href={`/api/report/${id}`} download>
             <Button variant="outline" size="sm"><FileDown className="size-3.5" />Download Report</Button>
           </a>
         </div>
         <PhaseIndicator currentPhase={currentPhase} />
-        {engagement.scope && <p className="text-sm text-muted-foreground font-mono">{engagement.scope}</p>}
+        {eng.scope && <p className="text-sm text-muted-foreground font-mono">{eng.scope}</p>}
       </div>
 
-      {engagement.brief && (
+      {eng.brief && (
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-sm font-mono">Brief</CardTitle></CardHeader>
-          <CardContent><p className="font-mono text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{engagement.brief}</p></CardContent>
+          <CardContent><p className="font-mono text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{eng.brief}</p></CardContent>
         </Card>
       )}
 
-      {engagement.type === "ctf" && objectives.length > 0 && (
+      {eng.type === "ctf" && objectives.length > 0 && (
         <div className="flex items-center gap-3">
           <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
             <div className="h-full bg-pk-amber transition-all" style={{ width: `${(objectives.filter((o: Any) => o.completed).length / objectives.length) * 100}%` }} />
