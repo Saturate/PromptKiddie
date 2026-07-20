@@ -664,8 +664,8 @@ export const CTF_PLAYBOOK: Playbook = {
   name: "CTF Default",
   description: "Reactive CTF playbook: scan, enumerate per service, exploit, escalate, capture flags.",
   meta: {
-    toolingImage: "pk-agent-attack",
-    agentImage: "pk-agent-attack",
+    toolingImage: "pk-agent",
+    agentImage: "pk-agent",
     engagementTypes: ["ctf"],
     mode: "standard",
   },

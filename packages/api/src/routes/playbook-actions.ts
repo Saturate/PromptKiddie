@@ -21,6 +21,7 @@ app.get("/playbooks/catalog", (c) => {
     name: pb.name,
     description: pb.description,
     actionCount: pb.actions.length,
+    meta: pb.meta,
   }));
   return c.json(list);
 });
@@ -53,6 +54,7 @@ app.get("/playbooks/catalog/:key", (c) => {
     key,
     name: pb.name,
     description: pb.description,
+    meta: pb.meta,
     actions,
     graph,
     mermaid,

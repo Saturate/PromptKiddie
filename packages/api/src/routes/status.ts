@@ -45,19 +45,23 @@ app.get("/status", async (c) => {
   try {
     const { stdout } = await execFileAsync("docker", [
       "ps", "-a",
-      "--filter", "name=pk-agent-",
       "--format", '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.CreatedAt}}',
     ], { timeout: 5000 });
     docker = { ok: true };
     const allMeta = getAllContainerMeta();
-    containers = stdout.trim().split("\n").filter(Boolean).map((line) => {
-      const [name, image, status, created] = line.split("\t");
-      const meta = allMeta[name];
-      const displayName = meta?.action
-        ? ACTION_LABELS[meta.action] ?? meta.action.replace(/_/g, " ")
-        : name.replace(/^pk-agent-/, "").replace(/-[a-z0-9]{6}$/, "");
-      return { name, image, status, created, action: meta?.action, engagementId: meta?.engagementId, displayName };
-    });
+    containers = stdout.trim().split("\n").filter(Boolean)
+      .map((line) => {
+        const [name, image, status, created] = line.split("\t");
+        const meta = allMeta[name];
+        const isWorker = name.startsWith("pk-worker-");
+        const displayName = isWorker
+          ? `Worker (${name.replace(/^pk-worker-/, "")})`
+          : meta?.action
+            ? ACTION_LABELS[meta.action] ?? meta.action.replace(/_/g, " ")
+            : name.replace(/^pk-agent-/, "").replace(/-[a-z0-9]{6}$/, "");
+        return { name, image, status, created, action: meta?.action, engagementId: meta?.engagementId, displayName };
+      })
+      .filter(c => c.name.startsWith("pk-agent-") || c.name.startsWith("pk-worker-"));
   } catch (err) {
     docker = { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

@@ -151,7 +151,7 @@ interface DockerContainer {
 
 function ContainerButton({ container, onSelect }: { container: DockerContainer; onSelect: (name: string) => void }) {
   const isUp = container.status.startsWith("Up");
-  const label = container.displayName ?? container.name.replace(/^pk-agent-/, "").replace(/-[a-z0-9]{6}$/, "");
+  const label = container.displayName ?? container.name.replace(/^pk-(agent|worker)-/, "").replace(/-[a-z0-9]{6}$/, "");
   const shortId = container.name.split("-").pop() ?? "";
   return (
     <button
@@ -166,7 +166,7 @@ function ContainerButton({ container, onSelect }: { container: DockerContainer; 
         <span className="font-mono text-[9px] text-muted-foreground/30 ml-auto shrink-0">{shortId}</span>
       </div>
       <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
-        {container.status}
+        {container.name.startsWith("pk-worker-") ? "worker" : "agent"} &middot; {container.status}
       </div>
     </button>
   );

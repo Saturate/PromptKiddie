@@ -1,11 +1,9 @@
-# pk-agent: Cartridge + pk + attack tools. Models run commands directly.
-# Multi-stage: recon, attack, full. Build with --target <stage>.
+# pk-agent: Cartridge + pk CLI + attack tools.
 # Build context must be the repo root. Run `pnpm build` before building.
 #
-#   pnpm build && docker build --target recon -t pk-agent-recon -f packages/containers/agent/Dockerfile .
+#   pnpm build && docker build -t pk-agent -f packages/containers/agent/Dockerfile .
 
-# ── Stage 0: pk bundle (shared across all variants) ─────────────────
-FROM cartridge:latest AS base
+FROM cartridge:latest
 
 # Shell logger (activated as SHELL via ENV after build)
 COPY packages/scripts/shell-logger.sh /usr/local/bin/pk-shell-logger
@@ -40,9 +38,9 @@ ENV SHELL=/usr/local/bin/pk-shell-logger
 COPY packages/containers/agent/AGENT.md /workspace/AGENT.md
 RUN ln -s AGENT.md /workspace/CLAUDE.md
 
-# ── Stage 1: Recon tools ────────────────────────────────────────────
-FROM base AS recon
+# ── All tools in one image ─────────────────────────────────────────
 
+# Recon
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap ncat netcat-traditional \
     ffuf gobuster whatweb wafw00f \
@@ -53,12 +51,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git jq xmlstarlet \
     && rm -rf /var/lib/apt/lists/*
 
-# rustscan (not in apt, install from GitHub release)
-RUN ARCH=$(dpkg --print-architecture) && \
-    curl -fsSL "https://github.com/RustScan/RustScan/releases/latest/download/rustscan_${ARCH}.deb" \
-      -o /tmp/rustscan.deb && dpkg -i /tmp/rustscan.deb && rm /tmp/rustscan.deb || true
+# rustscan: try cargo first (reliable), then .deb fallback
+RUN if command -v cargo >/dev/null 2>&1; then \
+      cargo install rustscan 2>/dev/null && \
+      cp "$(find /root/.cargo/bin -name rustscan 2>/dev/null | head -1)" /usr/local/bin/rustscan 2>/dev/null; \
+    fi; \
+    if ! command -v rustscan >/dev/null 2>&1; then \
+      ARCH=$(dpkg --print-architecture) && \
+      (curl -fsSL "https://github.com/RustScan/RustScan/releases/download/2.3.0/rustscan_2.3.0-1_${ARCH}.deb" -o /tmp/rustscan.deb || \
+       curl -fsSL "https://github.com/RustScan/RustScan/releases/download/2.3.0/rustscan_2.3.0_${ARCH}.deb" -o /tmp/rustscan.deb) && \
+      dpkg -i /tmp/rustscan.deb && rm -f /tmp/rustscan.deb; \
+    fi; \
+    rustscan --version 2>/dev/null || echo "WARNING: rustscan not available, using nmap as fallback"
 
-# httpx-toolkit (only if Go is in the base image)
+# httpx-toolkit
 RUN command -v go >/dev/null 2>&1 && \
     go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest || true
 
@@ -68,34 +74,22 @@ RUN mkdir -p /usr/share/wordlists && \
       git clone --depth 1 https://github.com/danielmiessler/SecLists.git /usr/share/seclists; \
     fi
 
-WORKDIR /workspace
-
-# ── Stage 2: Attack tools (extends recon) ───────────────────────────
-FROM recon AS attack
-
+# Attack tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     smbclient ldap-utils \
     john hashcat \
     proxychains4 \
     sqlmap \
     tcpdump tshark \
+    mingw-w64 \
+    build-essential python3-dev \
+    binutils \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install --break-system-packages --no-cache-dir \
     impacket certipy-ad bloodyAD pysocks enum4linux-ng responder 2>/dev/null || true
 
 RUN gem install evil-winrm 2>/dev/null || true
-
-WORKDIR /workspace
-
-# ── Stage 3: Full (extends attack) ─────────────────────────────────
-FROM attack AS full
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    mingw-w64 \
-    build-essential python3-dev \
-    binutils \
-    && rm -rf /var/lib/apt/lists/*
 
 # Gleipnir agent binaries (optional, only if built)
 ARG GLEIPNIR_AGENTS=/opt/gleipnir/agents

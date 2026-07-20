@@ -50,18 +50,10 @@ interface SupervisorOpts {
   onOutput?: (actionName: string, line: string) => void;
 }
 
-const PHASE_IMAGES: Record<string, string> = {
-  recon: "pk-agent-recon",
-  enum: "pk-agent-recon",
-  exploit: "pk-agent-attack",
-  postexploit: "pk-agent-full",
-  report: "pk-agent-recon",
-};
+const DEFAULT_IMAGE = "pk-agent";
 
-function resolveAgentImage(action: Action, phase: string): string {
-  if (action.llm?.agent === "exploit-agent") return "pk-agent-full";
-  if (action.llm?.agent === "recon-agent") return "pk-agent-recon";
-  return PHASE_IMAGES[phase] ?? "pk-agent-attack";
+function resolveAgentImage(action: Action, _phase: string, playbook?: { meta?: { agentImage?: string } }): string {
+  return playbook?.meta?.agentImage ?? DEFAULT_IMAGE;
 }
 
 async function waitForCartridge(containerName: string, timeoutMs = 30000): Promise<void> {
@@ -232,7 +224,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
   // Spawn persistent worker container for script actions (ctx.exec)
   let workerContainer: string | null = null;
-  const workerImage = playbook.meta?.toolingImage ?? "pk-agent-recon";
+  const workerImage = playbook.meta?.toolingImage ?? DEFAULT_IMAGE;
   const slug = engagement.slug.replace(/[^a-zA-Z0-9_-]/g, "_");
   const workerName = `pk-worker-${slug}`;
 
@@ -355,7 +347,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
 
       if (action.prompt && !action.run) {
-        const agentImage = resolveAgentImage(action, currentPhase);
+        const agentImage = resolveAgentImage(action, currentPhase, playbook);
         const failKey = `${action.name}:${agentImage}`;
         const priorFails = spawnFailures.get(failKey) ?? 0;
 

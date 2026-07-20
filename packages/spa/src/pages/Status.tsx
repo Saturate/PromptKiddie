@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -77,6 +78,10 @@ export default function Status() {
 }
 
 function StatusContent({ data, lastCheck }: { data: SystemStatus; lastCheck: string | null }) {
+  const [showExited, setShowExited] = useState(false);
+  const activeContainers = data.containers.filter(c => c.status.startsWith("Up"));
+  const exitedContainers = data.containers.filter(c => !c.status.startsWith("Up"));
+  const visibleContainers = showExited ? data.containers : activeContainers;
   const visibleRuns = data.agents.runs.slice(0, MAX_AGENT_ROWS);
   const hasMore = data.agents.runs.length > MAX_AGENT_ROWS;
 
@@ -136,8 +141,15 @@ function StatusContent({ data, lastCheck }: { data: SystemStatus; lastCheck: str
 
       {/* Containers */}
       <section>
-        <SectionLabel>Containers ({data.containers.length})</SectionLabel>
-        {data.containers.length === 0 ? (
+        <div className="flex items-baseline gap-2">
+          <SectionLabel>Containers ({activeContainers.length})</SectionLabel>
+          {exitedContainers.length > 0 && (
+            <button onClick={() => setShowExited(s => !s)} className="text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors">
+              {showExited ? "hide" : "show"} {exitedContainers.length} exited
+            </button>
+          )}
+        </div>
+        {visibleContainers.length === 0 ? (
           <div className="border border-border rounded-lg p-8 text-center">
             <p className="text-sm text-muted-foreground font-mono">No containers running</p>
           </div>
@@ -153,7 +165,7 @@ function StatusContent({ data, lastCheck }: { data: SystemStatus; lastCheck: str
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.containers.map((c) => (
+                {visibleContainers.map((c) => (
                   <TableRow key={c.name} className="hover:bg-accent/50 transition-colors">
                     <TableCell className="font-mono text-sm text-pk-amber font-semibold">{c.name}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{c.image}</TableCell>
