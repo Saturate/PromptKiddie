@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileDown } from "lucide-react";
 
-const PHASES = ["scoping", "recon", "enum", "exploit", "postexploit", "report"] as const;
+const DEFAULT_PHASES = ["scoping", "recon", "enum", "exploit", "postexploit", "report"];
 
 const severityColors: Record<string, string> = {
   critical: "bg-severity-critical text-white",
@@ -20,11 +20,21 @@ const severityColors: Record<string, string> = {
   info: "bg-severity-info text-white",
 };
 
-function PhaseIndicator({ currentPhase }: { currentPhase: string }) {
-  const activeIdx = PHASES.indexOf(currentPhase as (typeof PHASES)[number]);
+function PhaseIndicator({ currentPhase, phases }: { currentPhase: string; phases?: string[] }) {
+  const list = phases ?? DEFAULT_PHASES;
+  const activeIdx = list.indexOf(currentPhase);
+
+  if (activeIdx === -1) {
+    return (
+      <Badge className="bg-pk-amber text-black font-mono text-[11px] uppercase tracking-wide">
+        {currentPhase}
+      </Badge>
+    );
+  }
+
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {PHASES.map((p, i) => {
+      {list.map((p, i) => {
         const done = i < activeIdx;
         const active = i === activeIdx;
         return (
@@ -32,7 +42,7 @@ function PhaseIndicator({ currentPhase }: { currentPhase: string }) {
             <span className={`inline-block px-2.5 py-0.5 rounded text-[11px] font-mono font-medium uppercase tracking-wide ${active ? "bg-pk-amber text-black" : ""} ${done ? "bg-muted text-muted-foreground" : ""} ${!done && !active ? "text-muted-foreground/40 border border-border/40" : ""}`}>
               {p}
             </span>
-            {i < PHASES.length - 1 && <span className="text-muted-foreground/30 text-xs">&rarr;</span>}
+            {i < list.length - 1 && <span className="text-muted-foreground/30 text-xs">&rarr;</span>}
           </div>
         );
       })}
