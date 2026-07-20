@@ -361,6 +361,23 @@ function AgentList({ onSelect, onAutoConnect }: { onSelect: (id: string) => void
 
 export function ChatPanel({ isOpen, onToggle }: ChatPanelProps) {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const userWentBack = useRef(false);
+
+  const handleBack = useCallback(() => {
+    userWentBack.current = true;
+    setSelectedAgent(null);
+  }, []);
+
+  const handleAutoConnect = useCallback((name: string) => {
+    if (userWentBack.current) return;
+    setSelectedAgent(name);
+  }, []);
+
+  const handleSelect = useCallback((name: string) => {
+    userWentBack.current = false;
+    setSelectedAgent(name);
+  }, []);
+
   const [width, setWidth] = useState(() => {
     const stored = localStorage.getItem("pk-chat-width");
     return stored ? parseInt(stored, 10) : 320;
@@ -414,9 +431,9 @@ export function ChatPanel({ isOpen, onToggle }: ChatPanelProps) {
 
       <div className="flex-1 overflow-hidden flex flex-col">
         {selectedAgent ? (
-          <AgentTerminal agentId={selectedAgent} onBack={() => setSelectedAgent(null)} />
+          <AgentTerminal agentId={selectedAgent} onBack={handleBack} />
         ) : (
-          <AgentList onSelect={setSelectedAgent} onAutoConnect={setSelectedAgent} />
+          <AgentList onSelect={handleSelect} onAutoConnect={handleAutoConnect} />
         )}
       </div>
     </div>

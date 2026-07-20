@@ -63,8 +63,8 @@ export function Layout() {
   }, []);
 
   return (
-    <div className="flex min-h-screen">
-      <nav className="w-52 border-r border-border bg-sidebar px-3 py-4 flex flex-col h-screen sticky top-0">
+    <div className="flex min-h-screen overflow-x-clip">
+      <nav className="w-52 shrink-0 border-r border-border bg-sidebar px-3 py-4 flex flex-col h-screen sticky top-0">
         <div className="flex items-center gap-2 px-3 mb-5">
           <img src="/favicon.png" alt="" className="size-6" style={{ imageRendering: "pixelated" }} />
           <span className="text-base font-bold text-primary tracking-tight">PK</span>
@@ -129,7 +129,7 @@ export function Layout() {
           </div>
         </div>
       </nav>
-      <main className="flex-1 p-6 overflow-auto">
+      <main className="flex-1 min-w-0 p-6 overflow-auto">
         <ConnectionBanner />
         <Outlet />
       </main>
