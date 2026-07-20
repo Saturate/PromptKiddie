@@ -3,7 +3,7 @@ import { Outlet, NavLink } from "react-router-dom";
 import { useTheme } from "@/hooks/use-theme";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { ChatPanel } from "@/components/chat-panel";
-import { Sun, Moon, Monitor, MessageSquare } from "lucide-react";
+import { Sun, Moon, Monitor, Terminal } from "lucide-react";
 
 const NAV_PRIMARY = [
   { to: "/", label: "Dashboard" },
@@ -95,7 +95,7 @@ export function Layout() {
             }`}
             title="Toggle chat panel"
           >
-            <MessageSquare className="size-3.5" />
+            <Terminal className="size-3.5" />
           </button>
           <div className="flex items-center gap-0.5 bg-sidebar-accent/50 rounded-lg p-0.5">
             {THEMES.map(({ value, icon: Icon, label }) => (

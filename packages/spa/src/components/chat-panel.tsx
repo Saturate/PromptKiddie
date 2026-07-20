@@ -1,121 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
-import { MessageSquare, Terminal as TerminalIcon, X, Send } from "lucide-react";
-import { fetchEngagements, fetchMessages, sendMessage } from "@/api/client";
-
-interface Message {
-  id: string;
-  direction: "inbound" | "outbound";
-  author: string;
-  body: string;
-  createdAt: string;
-}
+import { useQuery } from "@tanstack/react-query";
+import { Terminal as TerminalIcon, X } from "lucide-react";
 
 interface ChatPanelProps {
   isOpen: boolean;
   onToggle: () => void;
 }
 
-function useActiveEngagementId(): string | null {
-  const location = useLocation();
-  const match = location.pathname.match(/^\/engagements\/([^/]+)/);
-  return match ? match[1] : null;
+interface AgentRun {
+  id: string;
+  agent: string;
+  phase: string;
+  status: string;
+  engagementId: string;
+  engagementName?: string;
+  startedAt: string;
 }
 
-function MessagesView() {
-  const routeEngId = useActiveEngagementId();
-  const [input, setInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const qc = useQueryClient();
-
-  const { data: engagements } = useQuery({
-    queryKey: ["chat-engagements"],
-    queryFn: () => fetchEngagements() as Promise<Array<{ id: string; name: string; status: string }>>,
-    staleTime: 30_000,
-  });
-
-  const activeEng = routeEngId
-    ?? engagements?.find((e) => e.status === "active")?.id
-    ?? null;
-
-  const { data: messages = [] } = useQuery({
-    queryKey: ["messages", activeEng],
-    queryFn: () => fetchMessages(activeEng!) as Promise<Message[]>,
-    enabled: !!activeEng,
-    refetchInterval: 5_000,
-  });
-
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
-
-  const handleSend = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !activeEng) return;
-    await sendMessage({
-      body: input.trim(),
-      engagementId: activeEng,
-      direction: "inbound",
-      author: "human",
-    });
-    setInput("");
-    qc.invalidateQueries({ queryKey: ["messages", activeEng] });
-  }, [input, activeEng, qc]);
-
-  if (!activeEng) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-4">
-        <p className="font-mono text-xs text-muted-foreground text-center">
-          Navigate to an engagement to chat with the orchestrator.
-        </p>
-      </div>
-    );
-  }
-
-  const engName = engagements?.find((e) => e.id === activeEng)?.name;
-
-  return (
-    <div className="flex flex-col h-full">
-      {engName && (
-        <div className="px-3 py-1.5 border-b border-border/50">
-          <span className="font-mono text-[10px] text-pk-amber">{engName}</span>
-        </div>
-      )}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
-        {messages.length === 0 ? (
-          <p className="font-mono text-xs text-muted-foreground/50 text-center py-8">No messages yet.</p>
-        ) : (
-          messages.map((msg: Message) => (
-            <div key={msg.id} className={`flex ${msg.direction === "inbound" ? "justify-start" : "justify-end"}`}>
-              <div className={`px-3 py-2 rounded-lg max-w-[85%] font-mono text-xs ${
-                msg.direction === "inbound"
-                  ? "bg-muted text-foreground"
-                  : "bg-pk-amber/10 text-foreground border border-pk-amber/20"
-              }`}>
-                <div className="text-[9px] text-muted-foreground mb-0.5">{msg.author}</div>
-                <div className="whitespace-pre-wrap">{msg.body}</div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-      <form onSubmit={handleSend} className="flex gap-2 p-3 border-t border-border">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Send to orchestrator..."
-          className="flex-1 bg-background border border-border rounded px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-        />
-        <button type="submit" disabled={!input.trim()} className="text-pk-amber hover:text-pk-amber/80 disabled:text-muted-foreground/30 p-1.5">
-          <Send className="size-3.5" />
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function TerminalView() {
+function AgentTerminal({ agentId, onBack }: { agentId: string; onBack: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
 
@@ -143,30 +45,131 @@ function TerminalView() {
       term.open(containerRef.current);
       fit.fit();
 
-      term.writeln("\x1b[33m[pk]\x1b[0m Waiting for agent session...");
-      term.writeln("\x1b[90mConnect to a running agent from the Status page.\x1b[0m");
+      term.writeln(`\x1b[33m[pk]\x1b[0m Connecting to agent ${agentId.slice(0, 8)}...`);
+
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${proto}//${window.location.host}/ws/pty?agentId=${agentId}`;
+      let ws: WebSocket | null = null;
+
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => term.writeln("\x1b[32m[pk]\x1b[0m Connected.");
+        ws.onmessage = (e) => term.write(e.data);
+        ws.onclose = () => term.writeln("\n\x1b[33m[pk]\x1b[0m Session ended.");
+        ws.onerror = () => term.writeln("\x1b[31m[pk]\x1b[0m Connection failed.");
+      } catch {
+        term.writeln("\x1b[31m[pk]\x1b[0m WebSocket connection failed.");
+      }
 
       const obs = new ResizeObserver(() => fit.fit());
       obs.observe(containerRef.current);
 
-      cleanupRef.current = () => { obs.disconnect(); term.dispose(); };
+      cleanupRef.current = () => {
+        obs.disconnect();
+        ws?.close();
+        term.dispose();
+      };
     })();
 
     return () => { cancelled = true; cleanupRef.current?.(); cleanupRef.current = null; };
-  }, []);
+  }, [agentId]);
 
-  return <div ref={containerRef} className="h-full w-full" />;
+  return (
+    <div className="flex flex-col h-full">
+      <button onClick={onBack} className="px-3 py-1.5 text-left border-b border-border/50 font-mono text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+        &larr; Back to agents
+      </button>
+      <div ref={containerRef} className="flex-1" />
+    </div>
+  );
+}
+
+function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
+  const { data: status } = useQuery({
+    queryKey: ["system-status"],
+    queryFn: () => fetch("/api/status").then(r => r.json()),
+    refetchInterval: 10_000,
+  });
+
+  const agents: AgentRun[] = status?.agents?.runs ?? [];
+  const running = agents.filter(a => a.status === "running");
+  const recent = agents.filter(a => a.status !== "running").slice(0, 5);
+  const isHostMode = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      {running.length > 0 && (
+        <div className="p-3">
+          <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">Running</div>
+          <div className="space-y-1">
+            {running.map(a => (
+              <button
+                key={a.id}
+                onClick={() => onSelect(a.id)}
+                className="w-full text-left px-2.5 py-2 rounded-md border border-border hover:border-pk-amber/30 hover:bg-accent/50 transition-colors"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-pk-amber animate-pulse shrink-0" />
+                  <span className="font-mono text-xs text-foreground truncate">{a.agent}</span>
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground mt-0.5 pl-3">
+                  {a.engagementName ?? a.engagementId.slice(0, 8)} &middot; {a.phase}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recent.length > 0 && (
+        <div className="p-3">
+          <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">Recent</div>
+          <div className="space-y-1">
+            {recent.map(a => (
+              <button
+                key={a.id}
+                onClick={() => onSelect(a.id)}
+                className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent/50 transition-colors"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${a.status === "ok" ? "bg-emerald-400" : "bg-red-400"}`} />
+                  <span className="font-mono text-xs text-muted-foreground truncate">{a.agent}</span>
+                </div>
+                <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
+                  {a.engagementName ?? a.engagementId.slice(0, 8)} &middot; {a.phase}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {agents.length === 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <TerminalIcon className="size-6 text-muted-foreground/20 mb-3" />
+          <p className="font-mono text-xs text-muted-foreground">No agent sessions.</p>
+          <p className="font-mono text-[10px] text-muted-foreground/50 mt-1">Start an engagement to spawn agents.</p>
+        </div>
+      )}
+
+      {isHostMode && (
+        <div className="px-3 py-2 border-t border-border mt-auto">
+          <p className="text-[9px] font-mono text-muted-foreground/50">
+            host mode: agents also stream to your terminal harness
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ChatPanel({ isOpen, onToggle }: ChatPanelProps) {
-  const [tab, setTab] = useState<"messages" | "terminal">("messages");
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [width, setWidth] = useState(() => {
     const stored = localStorage.getItem("pk-chat-width");
     return stored ? parseInt(stored, 10) : 320;
   });
   const isDragging = useRef(false);
-  const isHostMode = typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -204,40 +207,22 @@ export function ChatPanel({ isOpen, onToggle }: ChatPanelProps) {
         className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-pk-amber/30 active:bg-pk-amber/50 transition-colors z-10"
       />
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
-          <button
-            onClick={() => setTab("messages")}
-            className={`px-2 py-1 rounded text-[10px] font-mono flex items-center gap-1 transition-colors ${
-              tab === "messages" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
-            }`}
-          >
-            <MessageSquare className="size-3" /> Messages
-          </button>
-          <button
-            onClick={() => setTab("terminal")}
-            className={`px-2 py-1 rounded text-[10px] font-mono flex items-center gap-1 transition-colors ${
-              tab === "terminal" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
-            }`}
-          >
-            <TerminalIcon className="size-3" /> Terminal
-          </button>
+        <div className="flex items-center gap-1.5">
+          <TerminalIcon className="size-3.5 text-muted-foreground" />
+          <span className="font-mono text-[11px] font-medium">Agents</span>
         </div>
         <button onClick={onToggle} className="text-muted-foreground hover:text-foreground p-1">
           <X className="size-3.5" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        {tab === "messages" ? <MessagesView /> : <TerminalView />}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {selectedAgent ? (
+          <AgentTerminal agentId={selectedAgent} onBack={() => setSelectedAgent(null)} />
+        ) : (
+          <AgentList onSelect={setSelectedAgent} />
+        )}
       </div>
-
-      {isHostMode && (
-        <div className="px-3 py-2 border-t border-border">
-          <p className="text-[9px] font-mono text-muted-foreground/50">
-            host mode: use your terminal harness for direct agent control
-          </p>
-        </div>
-      )}
     </div>
   );
 }
