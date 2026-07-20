@@ -217,6 +217,9 @@ export async function startSupervisor(opts: SupervisorOpts) {
   const targets = await repo.listTargets(opts.engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
   const primaryTarget = targets.find((t) => t.inScope)?.identifier ?? targets[0]?.identifier ?? "unknown";
 
+  // Track completed actions to avoid re-running the same work
+  const completedActions = new Set<string>();
+
   console.log(`[supervisor] starting for "${engagement.name}" (${opts.engagementId})`);
   console.log(`[supervisor] mode: ${mode} (maxConcurrent: ${maxConcurrent})`);
   console.log(`[supervisor] target: ${primaryTarget}`);
@@ -426,6 +429,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     } finally {
       const key = [...activeActions.entries()].find(([k]) => k.startsWith(action.name))?.[0];
       if (key) activeActions.delete(key);
+      completedActions.add(`${action.name}:${event.type}`);
       opts.onActionEnd?.(action.name);
       bus.emit("slot_free", {});
     }
@@ -491,7 +495,17 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
     matched.sort((a, b) => getActionPriority(a) - getActionPriority(b));
 
-    for (const action of matched) {
+    // Filter out actions that already completed for this event type
+    const fresh = matched.filter((action) => {
+      const key = `${action.name}:${event.type}`;
+      if (completedActions.has(key)) {
+        console.log(`[supervisor] skipping "${action.name}" (already completed for ${event.type})`);
+        return false;
+      }
+      return true;
+    });
+
+    for (const action of fresh) {
       // In methodical/learning modes, prompt-only actions are queued
       if ((mode === "methodical" || mode === "learning") && isPromptOnly(action)) {
         pendingLlmTasks.push({ action, event });
