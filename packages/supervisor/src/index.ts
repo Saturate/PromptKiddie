@@ -328,6 +328,17 @@ export async function startSupervisor(opts: SupervisorOpts) {
           const agentId = await startCartridgeAgent(containerName, interpolated, provider, model);
           console.log(`[supervisor] agent started: ${containerName} (${agentId})`);
 
+          // Register PTY alias so the web panel can connect by container name
+          try {
+            await new Promise<void>((res, rej) => {
+              execFile("curl", ["-sf", "-X", "POST",
+                `${API_URL}/api/agents/${agentId}/alias`,
+                "-H", "Content-Type: application/json",
+                "-d", JSON.stringify({ container: containerName }),
+              ], { timeout: 5000 }, (err) => err ? rej(err) : res());
+            });
+          } catch {}
+
           await repo.addDiscovery({
             engagementId: opts.engagementId,
             type: "attempted",

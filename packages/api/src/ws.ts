@@ -101,18 +101,25 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
 
   // PTY output relay: agents POST output, we broadcast to subscribed frontends
   const ptyClients = new Map<string, Set<WebSocket>>();
+  const ptyAliases = new Map<string, string>(); // container name -> agent ID
 
   const ptyWss = new WebSocketServer({ server, path: "/ws/pty" });
 
   ptyWss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const agentId = url.searchParams.get("agentId");
-    if (!agentId) { ws.close(4000, "agentId required"); return; }
+    const rawId = url.searchParams.get("agentId");
+    if (!rawId) { ws.close(4000, "agentId required"); return; }
+    // Resolve alias: if this is a container name, also subscribe under the real agent ID
+    const agentId = rawId;
+    const resolvedId = ptyAliases.get(rawId) ?? rawId;
+    const subscribeIds = new Set([agentId, resolvedId]);
 
     if (!hasKeys()) {
-      if (!ptyClients.has(agentId)) ptyClients.set(agentId, new Set());
-      ptyClients.get(agentId)!.add(ws);
-      ws.on("close", () => { ptyClients.get(agentId)?.delete(ws); if (ptyClients.get(agentId)?.size === 0) ptyClients.delete(agentId); });
+      for (const id of subscribeIds) {
+        if (!ptyClients.has(id)) ptyClients.set(id, new Set());
+        ptyClients.get(id)!.add(ws);
+      }
+      ws.on("close", () => { for (const id of subscribeIds) { ptyClients.get(id)?.delete(ws); if (ptyClients.get(id)?.size === 0) ptyClients.delete(id); } });
       return;
     }
 
@@ -131,6 +138,10 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
   });
 
   return {
+    registerPtyAlias(containerName: string, agentId: string) {
+      ptyAliases.set(containerName, agentId);
+      ptyAliases.set(agentId, containerName);
+    },
     broadcastPty(agentId: string, data: string) {
       const subs = ptyClients.get(agentId);
       if (!subs) return;

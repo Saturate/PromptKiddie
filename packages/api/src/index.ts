@@ -28,9 +28,18 @@ const root = new Hono();
 const api = createApp();
 api.use("/*", authMiddleware(config.api.secret ?? undefined));
 
+api.post("/agents/:id/alias", async (c) => {
+  const { container } = await c.req.json();
+  if (container) wsBroadcast?.registerPtyAlias(container, c.req.param("id"));
+  return c.json({ ok: true });
+});
+
 api.post("/agents/:id/output", async (c) => {
   const body = await c.req.json();
-  wsBroadcast?.broadcastPty(c.req.param("id"), body.data ?? "");
+  const agentId = c.req.param("id");
+  const containerName = body.container ?? "";
+  wsBroadcast?.broadcastPty(agentId, body.data ?? "");
+  if (containerName) wsBroadcast?.broadcastPty(containerName, body.data ?? "");
   return c.json({ ok: true });
 });
 
