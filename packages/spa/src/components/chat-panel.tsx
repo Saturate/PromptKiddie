@@ -115,6 +115,32 @@ function AgentButton({ agent, onSelect }: { agent: AgentRun; onSelect: (id: stri
   );
 }
 
+interface DockerContainer {
+  name: string;
+  image: string;
+  status: string;
+}
+
+function ContainerButton({ container, onSelect }: { container: DockerContainer; onSelect: (name: string) => void }) {
+  const isUp = container.status.startsWith("Up");
+  return (
+    <button
+      onClick={() => onSelect(container.name)}
+      className={`w-full text-left px-2.5 py-2 rounded-md transition-colors ${
+        isUp ? "border border-border hover:border-pk-amber/30 hover:bg-accent/50" : "hover:bg-accent/50"
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isUp ? "bg-pk-amber animate-pulse" : "bg-zinc-500"}`} />
+        <span className={`font-mono text-xs truncate ${isUp ? "text-foreground" : "text-muted-foreground"}`}>{container.name}</span>
+      </div>
+      <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
+        {container.image} &middot; {container.status}
+      </div>
+    </button>
+  );
+}
+
 function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
   const { data: status } = useQuery({
     queryKey: ["system-status"],
@@ -124,6 +150,7 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
   const [showOthers, setShowOthers] = useState(false);
   const currentEngId = useActiveEngagementId();
 
+  const containers: DockerContainer[] = (status?.containers ?? []).filter((c: DockerContainer) => c.status.startsWith("Up"));
   const agents: AgentRun[] = status?.agents?.runs ?? [];
   const isHostMode = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
@@ -194,7 +221,19 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
         </div>
       )}
 
-      {agents.length === 0 && (
+      {/* Running containers */}
+      {containers.length > 0 && (
+        <div className="p-3">
+          <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">
+            Containers ({containers.length})
+          </div>
+          <div className="space-y-1">
+            {containers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} />)}
+          </div>
+        </div>
+      )}
+
+      {agents.length === 0 && containers.length === 0 && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
           <TerminalIcon className="size-6 text-muted-foreground/20 mb-3" />
           <p className="font-mono text-xs text-muted-foreground">No agent sessions.</p>

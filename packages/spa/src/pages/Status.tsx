@@ -39,7 +39,19 @@ function formatUptime(seconds: number): string {
 }
 
 function timeAgo(dateStr: string): string {
-  const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
+  const parsed = new Date(dateStr).getTime();
+  if (Number.isNaN(parsed)) {
+    // Docker format: "2026-07-20 10:50:40 +0200 CEST" - strip timezone name
+    const cleaned = dateStr.replace(/\s+[A-Z]{2,5}$/, "");
+    const retry = new Date(cleaned).getTime();
+    if (Number.isNaN(retry)) return dateStr;
+    const diff = (Date.now() - retry) / 1000;
+    if (diff < 60) return `${Math.floor(diff)}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  }
+  const diff = (Date.now() - parsed) / 1000;
   if (diff < 60) return `${Math.floor(diff)}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
