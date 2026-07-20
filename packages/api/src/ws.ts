@@ -73,20 +73,24 @@ function bridgeCartridgeWs(containerName: string, clientWs: WebSocket) {
               }
             });
 
+            let fallbackStarted = false;
+            function startFallback() {
+              if (fallbackStarted) return;
+              fallbackStarted = true;
+              pollFallback(containerName, agent.id, clientWs);
+            }
+
             cartridgeWs.on("error", () => {
               cartridgeWs = null;
-              if (!connected) {
-                // Native WS unreachable (macOS), use docker exec poll
-                pollFallback(containerName, agent.id, clientWs);
-              }
+              if (!connected) startFallback();
             });
 
-            // Timeout: if no data in 3s, assume native WS is broken
+            // Timeout: if no connection in 3s, assume native WS is broken
             setTimeout(() => {
               if (!connected && cartridgeWs) {
                 cartridgeWs.close();
                 cartridgeWs = null;
-                pollFallback(containerName, agent.id, clientWs);
+                startFallback();
               }
             }, 3000);
           } catch {

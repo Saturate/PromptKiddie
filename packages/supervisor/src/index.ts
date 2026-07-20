@@ -53,7 +53,7 @@ interface SupervisorOpts {
 const DEFAULT_IMAGE = "pk-agent";
 
 function resolveImage(action: Action, playbook?: { meta?: { image?: string } }): string {
-  return (action as { image?: string }).image ?? playbook?.meta?.image ?? DEFAULT_IMAGE;
+  return action.image ?? playbook?.meta?.image ?? DEFAULT_IMAGE;
 }
 
 async function waitForCartridge(containerName: string, timeoutMs = 30000): Promise<void> {
@@ -99,7 +99,6 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
   const dockerArgs = [
     "run", "-d",
     "--name", containerName,
-    "--network", "pk-network",
     "-e", `TARGET=${target}`,
     "-e", `TARGETS=${targets.filter(t => t.inScope).map(t => t.identifier).join(",")}`,
     "-e", `ENGAGEMENT_ID=${engagementId}`,
@@ -110,7 +109,7 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
   ];
 
   // Write cartridge.toml so the harness inside the container can authenticate
-  const { writeFileSync, mkdirSync } = await import("node:fs");
+  const { writeFileSync, mkdirSync, unlinkSync } = await import("node:fs");
   const { join } = await import("node:path");
   const configDir = "/tmp/pk-agent-configs";
   mkdirSync(configDir, { recursive: true, mode: 0o700 });
@@ -120,8 +119,7 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
   if (process.env.OPENAI_API_KEY) tomlLines.push(`openai_api_key = "${process.env.OPENAI_API_KEY}"`);
   writeFileSync(tomlPath, tomlLines.join("\n") + "\n", { mode: 0o600 });
   dockerArgs.push("-v", `${tomlPath}:/etc/cartridge/config.toml:ro`);
-  // Clean up the TOML after Docker reads it (delay to ensure mount is established)
-  setTimeout(() => { try { const { unlinkSync } = require("node:fs"); unlinkSync(tomlPath); } catch {} }, 10000);
+  setTimeout(() => { try { unlinkSync(tomlPath); } catch {} }, 10000);
 
   // Forward auth tokens
   for (const key of ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) {
@@ -136,6 +134,15 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
     if (exists(claudeDir)) {
       dockerArgs.push("-v", `${claudeDir}:/root/.claude:ro`);
     }
+  } catch {}
+
+  // Docker network (skip if not available)
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile("docker", ["network", "inspect", "pk-network"], { timeout: 3000 },
+        (err) => err ? reject(err) : resolve());
+    });
+    dockerArgs.push("--network", "pk-network");
   } catch {}
 
   // Harness selection
@@ -404,7 +411,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
       try {
         await waitForCartridge(orchName);
         const orchProvider = process.env.PK_HARNESS ?? "claude";
-        const orchModel = (playbook.meta as Record<string, unknown>)?.orchestratorModel as string | undefined
+        const orchModel = playbook.meta?.orchestratorModel
           ?? process.env.PK_MODEL
           ?? undefined;
 
