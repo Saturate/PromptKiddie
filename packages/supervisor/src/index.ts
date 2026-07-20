@@ -373,6 +373,11 @@ export async function startSupervisor(opts: SupervisorOpts) {
       orchContainer = orchName;
       console.log(`[supervisor] orchestrator started: ${orchName}`);
 
+      // Switch CLAUDE.md -> ORCHESTRATOR.md inside the container
+      await new Promise<void>((resolve) => {
+        execFile("docker", ["exec", orchName, "ln", "-sf", "ORCHESTRATOR.md", "/workspace/CLAUDE.md"], { timeout: 5000 }, () => resolve());
+      });
+
       // Wait for Cartridge API, then start the orchestrator agent
       try {
         await waitForCartridge(orchName);
