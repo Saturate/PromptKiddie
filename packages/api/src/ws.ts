@@ -53,27 +53,45 @@ function bridgeCartridgeWs(containerName: string, clientWs: WebSocket) {
             if (ip) cartridgeHost = ip;
           } catch {}
 
-          // Connect to Cartridge's native WS
+          // Try native WS to Cartridge (works on Linux, fails on macOS Docker Desktop)
           const wsUrl = `ws://${cartridgeHost}:4500/api/agents/${agent.id}/ws`;
-          cartridgeWs = new WebSocket(wsUrl);
+          try {
+            cartridgeWs = new WebSocket(wsUrl);
+            let connected = false;
 
-          cartridgeWs.on("message", (data) => {
-            if (clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(data);
-            }
-          });
+            cartridgeWs.on("open", () => { connected = true; });
 
-          cartridgeWs.on("close", () => {
-            if (clientWs.readyState === WebSocket.OPEN) {
-              clientWs.close();
-            }
-          });
+            cartridgeWs.on("message", (data) => {
+              if (clientWs.readyState === WebSocket.OPEN) {
+                clientWs.send(data);
+              }
+            });
 
-          cartridgeWs.on("error", () => {
-            // Fallback: if WS fails, try the polling approach
-            cartridgeWs = null;
+            cartridgeWs.on("close", () => {
+              if (clientWs.readyState === WebSocket.OPEN && connected) {
+                clientWs.close();
+              }
+            });
+
+            cartridgeWs.on("error", () => {
+              cartridgeWs = null;
+              if (!connected) {
+                // Native WS unreachable (macOS), use docker exec poll
+                pollFallback(containerName, agent.id, clientWs);
+              }
+            });
+
+            // Timeout: if no data in 3s, assume native WS is broken
+            setTimeout(() => {
+              if (!connected && cartridgeWs) {
+                cartridgeWs.close();
+                cartridgeWs = null;
+                pollFallback(containerName, agent.id, clientWs);
+              }
+            }, 3000);
+          } catch {
             pollFallback(containerName, agent.id, clientWs);
-          });
+          }
 
           return;
         }
