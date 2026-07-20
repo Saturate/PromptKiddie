@@ -36,8 +36,9 @@ RUN mkdir -p /etc/pk /workspace/.tool-log
 # Activate shell logger as SHELL for runtime
 ENV SHELL=/usr/local/bin/pk-shell-logger
 
-# Agent instructions
+# Agent instructions (CLAUDE.md is what the harness reads)
 COPY packages/containers/agent/AGENT.md /workspace/AGENT.md
+RUN ln -s AGENT.md /workspace/CLAUDE.md
 
 # ── Stage 1: Recon tools ────────────────────────────────────────────
 FROM base AS recon
