@@ -757,35 +757,6 @@ agent
     out(await repo.finishAgentRun({ runId, status: o.status, summary: o.summary })),
   );
 
-// --- inbox (msg) -----------------------------------------------------------
-const msg = program.command("msg").description("Human<->orchestrator message inbox");
-
-msg
-  .command("list")
-  .description("List all messages for an engagement")
-  .option("--engagement <id>")
-  .action(async (o) => out(await repo.listMessages(await resolveEngagementId(o.engagement))));
-
-msg
-  .command("poll")
-  .description("Fetch new inbound messages and mark them read")
-  .option("--engagement <id>")
-  .action(async (o) => {
-    // Inbox messages may be engagement-scoped or global; only filter if asked.
-    out(await repo.pollInbox(o.engagement));
-  });
-
-msg
-  .command("send")
-  .requiredOption("--body <body>")
-  .option("--direction <direction>", "inbound | outbound", "outbound")
-  .option("--author <author>")
-  .option("--engagement <id>")
-  .action(async (o) => {
-    const engagementId = await resolveEngagementId(o.engagement);
-    out(await repo.sendMessage({ body: o.body, direction: o.direction, author: o.author, engagementId }));
-  });
-
 // --- think (agent reasoning log) -------------------------------------------
 program
   .command("think")

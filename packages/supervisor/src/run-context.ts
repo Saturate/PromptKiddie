@@ -125,17 +125,11 @@ export function createRunContext(opts: RunContextOpts): RunContext {
 
     async spawnLlm(task: string, _llmOpts?: LlmOpts): Promise<string> {
       console.log(`[supervisor] LLM task: ${task.slice(0, 100)}...`);
-      await repo.sendMessage({
-        engagementId,
-        direction: "outbound",
-        author: "supervisor",
-        body: `[LLM task] ${_llmOpts?.agentType ?? "general-purpose"}: ${task}`,
-      });
       await repo.addAgentLog({
         engagementId,
         agent: "supervisor",
         phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
-        message: `LLM task sent to inbox: ${task.slice(0, 200)}`,
+        message: `LLM task: ${task.slice(0, 200)}`,
         category: "llm-task",
       });
       return "Task sent to orchestrator inbox";

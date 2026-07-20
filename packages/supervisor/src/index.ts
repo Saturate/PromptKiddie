@@ -160,16 +160,12 @@ export async function startSupervisor(opts: SupervisorOpts) {
   const maxConcurrent = opts.maxConcurrent ?? MODE_CONCURRENCY[mode];
   const activeActions = new Map<string, AbortController>();
   const bus = new EventBus();
-  let stallTimer: ReturnType<typeof setTimeout> | null = null;
-  const STALL_TIMEOUT = 5 * 60 * 1000;
   const priorityOverrides = new Map<string, number>();
 
   // Pending LLM task queue for methodical/learning modes
   const pendingLlmTasks: PendingLlmTask[] = [];
   const spawnFailures = new Map<string, number>();
   const MAX_SPAWN_RETRIES = 2;
-  const MAX_STALL_AGENTS = 2;
-  let stallAgentCount = 0;
 
   // Track current phase for advancement logic
   let currentPhase = "scoping";
@@ -414,21 +410,6 @@ export async function startSupervisor(opts: SupervisorOpts) {
     console.error(`[supervisor] orchestrator spawn failed: ${err instanceof Error ? err.message : err}`);
   }
 
-  function resetStallTimer() {
-    if (stallTimer) clearTimeout(stallTimer);
-    stallTimer = setTimeout(() => {
-      if (stallAgentCount >= MAX_STALL_AGENTS) {
-        console.log(`[supervisor] stall detected but ${stallAgentCount}/${MAX_STALL_AGENTS} stall agents already spawned, skipping`);
-        return;
-      }
-      stallAgentCount++;
-      console.log(`[supervisor] stall detected (${stallAgentCount}/${MAX_STALL_AGENTS}), emitting StallDetected`);
-      repo.emitEvent(opts.engagementId, "StallDetected", { minutes: 5 }, "supervisor").catch(
-        (err) => console.error("[supervisor] stall event emit failed:", err),
-      );
-    }, STALL_TIMEOUT);
-  }
-
   async function dispatchAction(action: Action, event: { type: string; payload: Record<string, unknown>; id?: string }) {
     if (activeActions.size >= maxConcurrent) {
       console.log(`[supervisor] queued: ${action.name} (${activeActions.size}/${maxConcurrent} running)`);
@@ -489,12 +470,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         console.log(`[supervisor] agent action "${action.name}" -> spawning ${agentImage}`);
 
         if (mode === "learning") {
-          await repo.sendMessage({
-            engagementId: opts.engagementId,
-            direction: "outbound",
-            author: "supervisor",
-            body: `[learning] Action "${action.name}" wants to spawn ${agentImage}:\n${action.prompt.slice(0, 500)}\n\nReply to approve or redirect.`,
-          });
+          console.log(`[supervisor] learning mode: action "${action.name}" wants to spawn ${agentImage}`);
         }
 
         // Interpolate template variables in the prompt
@@ -597,7 +573,6 @@ export async function startSupervisor(opts: SupervisorOpts) {
   }
 
   function evaluateAndDispatch(event: { type: string; payload: Record<string, unknown>; id?: string }) {
-    resetStallTimer();
     opts.onEvent?.(event);
 
     const matched: Action[] = [];
@@ -688,11 +663,8 @@ export async function startSupervisor(opts: SupervisorOpts) {
     console.log("[supervisor] resuming (EngagementStarted already emitted, skipping)");
   }
 
-  resetStallTimer();
-
   const cleanup = async () => {
     closing = true;
-    if (stallTimer) clearTimeout(stallTimer);
     for (const [, ac] of activeActions) ac.abort();
     if (ownsWs) await ws.close();
     eventStream.close();

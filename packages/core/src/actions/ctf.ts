@@ -649,15 +649,6 @@ const exploitAvailable: Action = {
   },
 };
 
-/** @module Fallback */
-
-const stallDetection: Action = {
-  name: "stall_detection",
-  description: "Invoke LLM when no progress has been made",
-  on: (e) => e.type === "StallDetected",
-  prompt: "No new discoveries in {minutes} minutes. Review engagement state and suggest what to try next. Consider: services not enumerated, attack paths not attempted, lateral movement opportunities.",
-};
-
 /** @module Playbook */
 
 export const CTF_PLAYBOOK: Playbook = {
@@ -683,6 +674,5 @@ export const CTF_PLAYBOOK: Playbook = {
     postExploitEnum, privesc, credCrack, flagCapture,
     // Fallback
     lateralMovement,
-    stallDetection,
   ],
 };
