@@ -126,6 +126,16 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
     if (process.env[key]) dockerArgs.push("-e", `${key}=${process.env[key]}`);
   }
 
+  // Mount host ~/.claude for dev mode (shares auth session)
+  try {
+    const { existsSync: exists } = await import("node:fs");
+    const { homedir } = await import("node:os");
+    const claudeDir = `${homedir()}/.claude`;
+    if (exists(claudeDir)) {
+      dockerArgs.push("-v", `${claudeDir}:/root/.claude:ro`);
+    }
+  } catch {}
+
   // Harness selection
   const harness = process.env.PK_HARNESS ?? "claude";
   dockerArgs.push("-e", `PK_HARNESS=${harness}`);
@@ -348,6 +358,16 @@ export async function startSupervisor(opts: SupervisorOpts) {
       for (const key of ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) {
         if (process.env[key]) orchDockerArgs.push("-e", `${key}=${process.env[key]}`);
       }
+
+      // Mount host ~/.claude for dev mode (shares auth session)
+      try {
+        const { existsSync: exists } = await import("node:fs");
+        const { homedir } = await import("node:os");
+        const claudeDir = `${homedir()}/.claude`;
+        if (exists(claudeDir)) {
+          orchDockerArgs.push("-v", `${claudeDir}:/root/.claude:ro`);
+        }
+      } catch {}
 
       // Harness selection
       const harness = process.env.PK_HARNESS ?? "claude";
