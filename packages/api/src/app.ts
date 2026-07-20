@@ -17,6 +17,7 @@ import discoveries from "./routes/discoveries.js";
 import execDedup from "./routes/exec-dedup.js";
 import knowledge from "./routes/knowledge.js";
 import settings from "./routes/settings.js";
+import playbookActions from "./routes/playbook-actions.js";
 
 export function createApp() {
   const app = new Hono();
@@ -38,6 +39,7 @@ export function createApp() {
   app.route("/", execDedup);
   app.route("/", knowledge);
   app.route("/", settings);
+  app.route("/", playbookActions);
 
   app.onError((err, c) => {
     console.error("[api]", err);

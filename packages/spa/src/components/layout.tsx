@@ -5,7 +5,7 @@ import { Sun, Moon, Monitor } from "lucide-react";
 const NAV = [
   { to: "/", label: "Dashboard" },
   { to: "/engagements", label: "Engagements" },
-  { to: "/playbook", label: "Playbook" },
+  { to: "/playbooks", label: "Playbooks" },
   { to: "/chat", label: "Chat" },
   { to: "/knowledge", label: "Knowledge" },
   { to: "/tools", label: "Tools" },
