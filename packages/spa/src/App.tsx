@@ -10,6 +10,7 @@ import Settings from "./pages/Settings";
 import Stats from "./pages/Stats";
 import Status from "./pages/Status";
 import Tools from "./pages/Tools";
+import NotFound from "./pages/NotFound";
 
 export function App() {
   return (
@@ -25,6 +26,7 @@ export function App() {
         <Route path="stats" element={<Stats />} />
         <Route path="status" element={<Status />} />
         <Route path="tools" element={<Tools />} />
+        <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   );
