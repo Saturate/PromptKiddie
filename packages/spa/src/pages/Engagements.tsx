@@ -1,12 +1,47 @@
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { fetchEngagements, fetchFindings, fetchTargets } from "@/api/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchEngagements, fetchFindings, fetchTargets, setEngagementStatus } from "@/api/client";
 import { CreateEngagementDialog } from "@/components/create-engagement-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ExternalLinkIcon } from "lucide-react";
+import { ExternalLinkIcon, Play, Pause, RotateCcw } from "lucide-react";
 import { StatusDot, PhaseText, PageState, SectionLabel } from "@/components/pk";
 
 interface Engagement { id: string; name: string; type: string; status: string; phase?: string; group?: string; sourceUrl?: string; createdAt?: string }
+
+function QuickAction({ id, status }: { id: string; status: string }) {
+  const queryClient = useQueryClient();
+  const toggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = status === "active" ? "paused" : "active";
+    await setEngagementStatus(id, next);
+    queryClient.invalidateQueries({ queryKey: ["engagements-page"] });
+  };
+  const reopen = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await setEngagementStatus(id, "active");
+    queryClient.invalidateQueries({ queryKey: ["engagements-page"] });
+  };
+
+  if (status === "done" || status === "reporting") {
+    return (
+      <button onClick={reopen} className="text-muted-foreground hover:text-foreground p-1 rounded transition-colors" title="Reopen">
+        <RotateCcw className="size-3" />
+      </button>
+    );
+  }
+  if (status === "active") {
+    return (
+      <button onClick={toggle} className="text-muted-foreground hover:text-yellow-400 p-1 rounded transition-colors" title="Pause">
+        <Pause className="size-3" />
+      </button>
+    );
+  }
+  return (
+    <button onClick={toggle} className="text-muted-foreground hover:text-emerald-400 p-1 rounded transition-colors" title="Start">
+      <Play className="size-3" />
+    </button>
+  );
+}
 
 export default function Engagements() {
   const { data, isLoading, isError, refetch } = useQuery({
@@ -85,6 +120,7 @@ export default function Engagements() {
                   <TableHead className="font-mono text-[10px] uppercase text-right">Targets</TableHead>
                   <TableHead className="font-mono text-[10px] uppercase w-10">Src</TableHead>
                   <TableHead className="font-mono text-[10px] uppercase text-right">Created</TableHead>
+                  <TableHead className="font-mono text-[10px] uppercase w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -108,6 +144,9 @@ export default function Engagements() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground font-mono text-xs tabular-nums text-right">{new Date(e.createdAt!).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <QuickAction id={e.id} status={e.status} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

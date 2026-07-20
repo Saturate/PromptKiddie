@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useEngagement, useTargets, useFindings, useActivity,
   useEvidence, useObjectives,
 } from "@/hooks/use-api";
+import { setEngagementStatus } from "@/api/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { FileDown } from "lucide-react";
+import { FileDown, Play, Pause, Square, RotateCcw } from "lucide-react";
 import { StatusDot, PhaseText, SeverityBadge, PageState, SectionLabel } from "@/components/pk";
 
 const DEFAULT_PHASES = ["scoping", "recon", "enum", "exploit", "postexploit", "report"];
@@ -51,6 +54,62 @@ const SEV_BORDER: Record<string, string> = {
   info: "border-l-severity-info",
 };
 
+function EngagementControls({ id, status }: { id: string; status: string }) {
+  const queryClient = useQueryClient();
+  const [loading, setLoading] = useState(false);
+
+  const changeStatus = async (newStatus: string) => {
+    setLoading(true);
+    try {
+      await setEngagementStatus(id, newStatus);
+      queryClient.invalidateQueries({ queryKey: ["engagement", id] });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {(status === "created" || status === "scoping") && (
+        <Button size="sm" onClick={() => changeStatus("active")} disabled={loading}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs">
+          <Play className="size-3 mr-1" /> Start
+        </Button>
+      )}
+      {status === "active" && (
+        <>
+          <Button size="sm" variant="outline" onClick={() => changeStatus("paused")} disabled={loading}
+            className="font-mono text-xs">
+            <Pause className="size-3 mr-1" /> Pause
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => changeStatus("done")} disabled={loading}
+            className="font-mono text-xs text-destructive border-destructive/30 hover:bg-destructive/10">
+            <Square className="size-3 mr-1" /> Stop
+          </Button>
+        </>
+      )}
+      {status === "paused" && (
+        <>
+          <Button size="sm" onClick={() => changeStatus("active")} disabled={loading}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs">
+            <Play className="size-3 mr-1" /> Resume
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => changeStatus("done")} disabled={loading}
+            className="font-mono text-xs text-destructive border-destructive/30 hover:bg-destructive/10">
+            <Square className="size-3 mr-1" /> Stop
+          </Button>
+        </>
+      )}
+      {(status === "done" || status === "reporting") && (
+        <Button size="sm" variant="outline" onClick={() => changeStatus("active")} disabled={loading}
+          className="font-mono text-xs">
+          <RotateCcw className="size-3 mr-1" /> Reopen
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export default function EngagementDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: engagement, isLoading, isError, refetch } = useEngagement(id);
@@ -86,6 +145,7 @@ function EngagementContent({ eng, targets, findings, activity, objectives, id }:
           <h1 className="text-xl font-bold font-mono">{eng.name}</h1>
           <span className="font-mono text-xs text-muted-foreground">{eng.type}</span>
           <StatusDot status={eng.status} />
+          <EngagementControls id={id} status={eng.status} />
           <span className="flex-1" />
           <a href={`/api/report/${id}`} download>
             <Button variant="outline" size="sm" className="font-mono text-xs"><FileDown className="size-3.5 mr-1.5" />Report</Button>
