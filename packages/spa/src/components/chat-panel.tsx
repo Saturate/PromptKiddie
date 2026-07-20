@@ -150,9 +150,26 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
   const [showOthers, setShowOthers] = useState(false);
   const currentEngId = useActiveEngagementId();
 
-  const containers: DockerContainer[] = (status?.containers ?? []).filter((c: DockerContainer) => c.status.startsWith("Up"));
+  // Fetch current engagement to get its slug for container name matching
+  const { data: currentEng } = useQuery({
+    queryKey: ["engagement", currentEngId],
+    queryFn: () => fetch(`/api/engagements/${currentEngId}`).then(r => r.json()),
+    enabled: !!currentEngId,
+    staleTime: 60_000,
+  });
+
+  const allContainers: DockerContainer[] = (status?.containers ?? []).filter((c: DockerContainer) => c.status.startsWith("Up"));
   const agents: AgentRun[] = status?.agents?.runs ?? [];
   const isHostMode = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+  // Match containers to current engagement by slug in name
+  const engSlug = currentEng?.slug as string | undefined;
+  const currentContainers = engSlug
+    ? allContainers.filter(c => c.name.includes(engSlug.replace(/[^a-z0-9-]/g, "")))
+    : [];
+  const otherContainers = engSlug
+    ? allContainers.filter(c => !c.name.includes(engSlug.replace(/[^a-z0-9-]/g, "")))
+    : allContainers;
 
   const currentAgents = currentEngId ? agents.filter(a => a.engagementId === currentEngId) : [];
   const otherAgents = currentEngId ? agents.filter(a => a.engagementId !== currentEngId) : agents;
@@ -162,18 +179,19 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
   const otherRunning = otherAgents.filter(a => a.status === "running");
   const otherRecent = otherAgents.filter(a => a.status !== "running").slice(0, 5);
 
-  const currentEngName = currentAgents[0]?.engagementName
-    ?? agents.find(a => a.engagementId === currentEngId)?.engagementName;
+  const currentEngName = (currentEng?.name as string) ?? currentAgents[0]?.engagementName ?? "Current Engagement";
+  const hasCurrentContent = currentContainers.length > 0 || currentRunning.length > 0 || currentRecent.length > 0;
 
   return (
     <div className="flex-1 overflow-y-auto">
-      {/* Current engagement agents (when on an engagement page) */}
-      {currentEngId && (currentRunning.length > 0 || currentRecent.length > 0) && (
+      {/* Current engagement containers + agents */}
+      {currentEngId && hasCurrentContent && (
         <div className="p-3">
           <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">
-            {currentEngName ?? "Current Engagement"}
+            {currentEngName}
           </div>
           <div className="space-y-1">
+            {currentContainers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} />)}
             {currentRunning.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
             {currentRecent.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
           </div>
@@ -221,19 +239,19 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
         </div>
       )}
 
-      {/* Running containers */}
-      {containers.length > 0 && (
+      {/* Other containers (not matching current engagement) */}
+      {otherContainers.length > 0 && (
         <div className="p-3">
           <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">
-            Containers ({containers.length})
+            {hasCurrentContent ? "Other containers" : "Containers"} ({otherContainers.length})
           </div>
           <div className="space-y-1">
-            {containers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} />)}
+            {otherContainers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} />)}
           </div>
         </div>
       )}
 
-      {agents.length === 0 && containers.length === 0 && (
+      {agents.length === 0 && allContainers.length === 0 && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
           <TerminalIcon className="size-6 text-muted-foreground/20 mb-3" />
           <p className="font-mono text-xs text-muted-foreground">No agent sessions.</p>
