@@ -1,7 +1,9 @@
+import { useState, useCallback } from "react";
 import { Outlet, NavLink } from "react-router-dom";
 import { useTheme } from "@/hooks/use-theme";
 import { ConnectionBanner } from "@/components/connection-banner";
-import { Sun, Moon, Monitor } from "lucide-react";
+import { ChatPanel } from "@/components/chat-panel";
+import { Sun, Moon, Monitor, MessageSquare } from "lucide-react";
 
 const NAV_PRIMARY = [
   { to: "/", label: "Dashboard" },
@@ -10,10 +12,10 @@ const NAV_PRIMARY = [
 
 const NAV_SECONDARY = [
   { to: "/playbooks", label: "Playbooks" },
-  { to: "/chat", label: "Chat" },
   { to: "/knowledge", label: "Knowledge" },
   { to: "/tools", label: "Tools" },
   { to: "/stats", label: "Stats" },
+  { to: "/status", label: "Status" },
   { to: "/settings", label: "Settings" },
 ];
 
@@ -43,6 +45,19 @@ function NavItem({ to, label }: { to: string; label: string }) {
 
 export function Layout() {
   const { theme, setTheme } = useTheme();
+  const [chatOpen, setChatOpen] = useState(() => {
+    const stored = localStorage.getItem("pk-chat-open");
+    if (stored !== null) return stored === "true";
+    const isHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    return !isHost;
+  });
+
+  const toggleChat = useCallback(() => {
+    setChatOpen(prev => {
+      localStorage.setItem("pk-chat-open", String(!prev));
+      return !prev;
+    });
+  }, []);
 
   return (
     <div className="flex min-h-screen">
@@ -72,7 +87,16 @@ export function Layout() {
           ))}
         </div>
 
-        <div className="mt-auto pt-4">
+        <div className="mt-auto pt-4 space-y-2">
+          <button
+            onClick={toggleChat}
+            className={`flex items-center justify-center w-full gap-1.5 p-1.5 rounded-md text-[10px] font-mono transition-colors ${
+              chatOpen ? "bg-pk-amber/10 text-pk-amber" : "text-muted-foreground hover:text-foreground"
+            }`}
+            title="Toggle chat panel"
+          >
+            <MessageSquare className="size-3.5" />
+          </button>
           <div className="flex items-center gap-0.5 bg-sidebar-accent/50 rounded-lg p-0.5">
             {THEMES.map(({ value, icon: Icon, label }) => (
               <button
@@ -95,6 +119,7 @@ export function Layout() {
         <ConnectionBanner />
         <Outlet />
       </main>
+      <ChatPanel isOpen={chatOpen} onToggle={toggleChat} />
     </div>
   );
 }
