@@ -151,6 +151,7 @@ interface DockerContainer {
 
 function ContainerButton({ container, onSelect, onKill }: { container: DockerContainer; onSelect: (name: string) => void; onKill?: (name: string) => void }) {
   const isUp = container.status.startsWith("Up");
+  const isWorker = container.name.startsWith("pk-worker-");
   const label = container.displayName ?? container.name.replace(/^pk-(agent|worker)-/, "").replace(/-[a-z0-9]{6}$/, "");
   const shortId = container.name.split("-").pop() ?? "";
 
@@ -162,20 +163,22 @@ function ContainerButton({ container, onSelect, onKill }: { container: DockerCon
   };
 
   return (
-    <button
-      onClick={() => onSelect(container.name)}
+    <div
+      onClick={isWorker ? undefined : () => onSelect(container.name)}
       className={`w-full text-left px-2.5 py-2 rounded-md transition-colors ${
-        isUp ? "border border-border hover:border-pk-amber/30 hover:bg-accent/50" : "hover:bg-accent/50"
+        isWorker
+          ? "border border-border/50"
+          : isUp ? "border border-border hover:border-pk-amber/30 hover:bg-accent/50 cursor-pointer" : "hover:bg-accent/50 cursor-pointer"
       }`}
     >
       <div className="flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isUp ? "bg-pk-amber animate-pulse" : "bg-zinc-500"}`} />
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isUp ? (isWorker ? "bg-emerald-400" : "bg-pk-amber animate-pulse") : "bg-zinc-500"}`} />
         <span className={`font-mono text-xs truncate ${isUp ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
         <span className="font-mono text-[9px] text-muted-foreground/30 ml-auto shrink-0">{shortId}</span>
         {isUp && onKill && (
           <span
             onClick={handleKill}
-            className="text-muted-foreground/30 hover:text-destructive transition-colors p-0.5 shrink-0"
+            className="text-muted-foreground/30 hover:text-destructive transition-colors p-0.5 shrink-0 cursor-pointer"
             title="Stop container"
           >
             <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -183,9 +186,9 @@ function ContainerButton({ container, onSelect, onKill }: { container: DockerCon
         )}
       </div>
       <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
-        {container.name.startsWith("pk-worker-") ? "worker" : "agent"} &middot; {container.status}
+        {isWorker ? "toolbox" : "agent"} &middot; {container.status}
       </div>
-    </button>
+    </div>
   );
 }
 
