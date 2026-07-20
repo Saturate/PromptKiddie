@@ -217,8 +217,29 @@ export async function startSupervisor(opts: SupervisorOpts) {
   const targets = await repo.listTargets(opts.engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
   const primaryTarget = targets.find((t) => t.inScope)?.identifier ?? targets[0]?.identifier ?? "unknown";
 
-  // Track completed actions to avoid re-running the same work
+  // Track completed actions to avoid re-running the same work on resume.
+  // Seeded from activity log so restarting the supervisor doesn't re-run
+  // actions that already completed in a previous session.
   const completedActions = new Set<string>();
+
+  // Seed from existing activity: "[action_name] tool (...)" entries
+  try {
+    const activity = await repo.listActivity(opts.engagementId) as Array<{ action: string }>;
+    const events = await repo.listEvents(opts.engagementId) as Array<{ type: string }>;
+    const eventTypes = new Set(events.map(e => e.type));
+    for (const a of activity) {
+      const match = a.action.match(/^\[(\w+)\]/);
+      if (match) {
+        const actionName = match[1];
+        for (const et of eventTypes) {
+          completedActions.add(`${actionName}:${et}`);
+        }
+      }
+    }
+    if (completedActions.size > 0) {
+      console.log(`[supervisor] resumed with ${completedActions.size} completed action:event pairs`);
+    }
+  } catch {}
 
   console.log(`[supervisor] starting for "${engagement.name}" (${opts.engagementId})`);
   console.log(`[supervisor] mode: ${mode} (maxConcurrent: ${maxConcurrent})`);
@@ -495,8 +516,10 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
     matched.sort((a, b) => getActionPriority(a) - getActionPriority(b));
 
-    // Filter out actions that already completed for this event type
-    const fresh = matched.filter((action) => {
+    // Filter out actions that already completed for this event type.
+    // Events with payload.force=true bypass this check.
+    const force = event.payload?.force === true;
+    const fresh = force ? matched : matched.filter((action) => {
       const key = `${action.name}:${event.type}`;
       if (completedActions.has(key)) {
         console.log(`[supervisor] skipping "${action.name}" (already completed for ${event.type})`);
@@ -504,6 +527,9 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
       return true;
     });
+    if (force && matched.length > 0) {
+      console.log(`[supervisor] force flag: re-running ${matched.length} action(s) for ${event.type}`);
+    }
 
     for (const action of fresh) {
       // In methodical/learning modes, prompt-only actions are queued
