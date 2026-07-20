@@ -24,6 +24,7 @@ interface RunContextOpts {
   engagement: EngagementState;
   repo: Repo;
   actionName?: string;
+  containerName?: string;
   onReprioritize?: (actionName: string, priority: number) => void;
   onOutput?: (line: string) => void;
   signal?: AbortSignal;
@@ -32,6 +33,7 @@ interface RunContextOpts {
 export function createRunContext(opts: RunContextOpts): RunContext {
   const { engagementId, target, event, engagement, repo, actionName, onReprioritize, onOutput, signal } = opts;
   const actorLabel = actionName ?? "supervisor";
+  const execContainer = opts.containerName ?? process.env.PK_ATTACKBOX ?? "promptkiddie-attackbox";
 
   return {
     target,
@@ -51,7 +53,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
       return new Promise<ExecResult>((resolve) => {
         const proc = execFile(
           "docker",
-          ["exec", "-e", "PK_EXEC=1", process.env.PK_ATTACKBOX ?? "promptkiddie-attackbox", tool, ...args],
+          ["exec", "-e", "PK_EXEC=1", execContainer, tool, ...args],
           { maxBuffer: 10 * 1024 * 1024, timeout: execOpts?.timeout ?? 300000, signal },
           (err, stdout, stderr) => {
             const code = err && "code" in err && typeof err.code === "number" ? err.code : err ? 1 : 0;
@@ -156,7 +158,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
         const result = await new Promise<string>((resolve) => {
           execFile(
             "docker",
-            ["exec", process.env.PK_ATTACKBOX ?? "promptkiddie-attackbox", "cat", path],
+            ["exec", execContainer, "cat", path],
             { maxBuffer: 5 * 1024 * 1024 },
             (err, stdout) => resolve(stdout ?? ""),
           );

@@ -230,6 +230,68 @@ export async function startSupervisor(opts: SupervisorOpts) {
   console.log(`[supervisor] target: ${primaryTarget}`);
   console.log(`[supervisor] playbook: ${playbook.name} (${playbook.actions.length} actions)`);
 
+  // Spawn persistent worker container for script actions (ctx.exec)
+  let workerContainer: string | null = null;
+  const workerImage = playbook.meta?.toolingImage ?? "pk-agent-recon";
+  const slug = engagement.slug.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const workerName = `pk-worker-${slug}`;
+
+  try {
+    // Check if a worker already exists
+    const existing = await new Promise<string>((resolve, reject) => {
+      execFile("docker", ["ps", "-aq", "--filter", `name=^/${workerName}$`], { timeout: 5000 },
+        (err, stdout) => err ? reject(err) : resolve((stdout ?? "").trim()));
+    });
+
+    if (existing) {
+      await new Promise<void>((resolve) => {
+        execFile("docker", ["start", workerName], { timeout: 10000 }, () => resolve());
+      });
+      workerContainer = workerName;
+      console.log(`[supervisor] worker container reused: ${workerName}`);
+    } else {
+      const dockerArgs = [
+        "run", "-d",
+        "--name", workerName,
+      ];
+      // Try Docker network; ignore if it doesn't exist
+      const networkName = playbook.meta?.network ?? "pk-network";
+      try {
+        await new Promise<void>((resolve, reject) => {
+          execFile("docker", ["network", "inspect", networkName], { timeout: 3000 },
+            (err) => err ? reject(err) : resolve());
+        });
+        dockerArgs.push("--network", networkName);
+      } catch { /* network doesn't exist, skip */ }
+
+      dockerArgs.push(
+        "-e", `TARGET=${primaryTarget}`,
+        "-e", `ENGAGEMENT_ID=${opts.engagementId}`,
+        "-e", `PK_API_URL=${API_URL}`,
+      );
+
+      const SAFE_HOST = /^[a-zA-Z0-9.-]+$/;
+      for (const t of targets.filter(t => t.inScope)) {
+        if (t.notes && SAFE_HOST.test(t.notes)) {
+          dockerArgs.push("--add-host", `${t.notes}:${t.identifier}`);
+        }
+      }
+
+      dockerArgs.push(workerImage, "sleep", "infinity");
+
+      await new Promise<void>((resolve, reject) => {
+        execFile("docker", dockerArgs, { timeout: 30000 }, (err, _stdout, stderr) => {
+          if (err) { reject(new Error(stderr || err.message)); return; }
+          resolve();
+        });
+      });
+      workerContainer = workerName;
+      console.log(`[supervisor] worker container started: ${workerName}`);
+    }
+  } catch (err) {
+    console.error(`[supervisor] worker spawn failed: ${err instanceof Error ? err.message : err}`);
+  }
+
   function resetStallTimer() {
     if (stallTimer) clearTimeout(stallTimer);
     stallTimer = setTimeout(() => {
@@ -264,6 +326,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
           target: primaryTarget,
           repo,
           actionName: action.name,
+          containerName: workerContainer ?? undefined,
           event: {
             id: event.id ?? `evt-${Date.now()}`,
             type: event.type,
@@ -495,6 +558,9 @@ export async function startSupervisor(opts: SupervisorOpts) {
     for (const [, ac] of activeActions) ac.abort();
     if (ownsWs) await ws.close();
     eventStream.close();
+    if (workerContainer) {
+      execFile("docker", ["stop", workerContainer], { timeout: 10000 }, () => {});
+    }
   };
 
   const shutdown = async () => {
