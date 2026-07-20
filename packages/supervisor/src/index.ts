@@ -113,13 +113,15 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
   const { writeFileSync, mkdirSync } = await import("node:fs");
   const { join } = await import("node:path");
   const configDir = "/tmp/pk-agent-configs";
-  mkdirSync(configDir, { recursive: true });
+  mkdirSync(configDir, { recursive: true, mode: 0o700 });
   const tomlPath = join(configDir, `${containerName}.toml`);
   const tomlLines = ["[providers]"];
   if (process.env.ANTHROPIC_API_KEY) tomlLines.push(`anthropic_api_key = "${process.env.ANTHROPIC_API_KEY}"`);
   if (process.env.OPENAI_API_KEY) tomlLines.push(`openai_api_key = "${process.env.OPENAI_API_KEY}"`);
   writeFileSync(tomlPath, tomlLines.join("\n") + "\n", { mode: 0o600 });
   dockerArgs.push("-v", `${tomlPath}:/etc/cartridge/config.toml:ro`);
+  // Clean up the TOML after Docker reads it (delay to ensure mount is established)
+  setTimeout(() => { try { const { unlinkSync } = require("node:fs"); unlinkSync(tomlPath); } catch {} }, 10000);
 
   // Forward auth tokens
   for (const key of ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) {
@@ -443,7 +445,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     }
 
     const ac = new AbortController();
-    activeActions.set(`${action.name}-${Date.now()}`, ac);
+    activeActions.set(`${action.name}-${Math.random().toString(36).slice(2, 10)}`, ac);
     opts.onActionStart?.(action.name);
     console.log(`[supervisor] running: ${action.name} (triggered by ${event.type})`);
 

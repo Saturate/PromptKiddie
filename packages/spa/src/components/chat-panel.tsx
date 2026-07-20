@@ -390,15 +390,16 @@ export function ChatPanel({ isOpen, onToggle }: ChatPanelProps) {
     const startX = e.clientX;
     const startWidth = width;
 
+    let currentWidth = startWidth;
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isDragging.current) return;
-      const newWidth = Math.max(280, Math.min(600, startWidth + (startX - moveEvent.clientX)));
-      setWidth(newWidth);
+      currentWidth = Math.max(280, Math.min(600, startWidth + (startX - moveEvent.clientX)));
+      setWidth(currentWidth);
     };
 
     const handleMouseUp = () => {
       isDragging.current = false;
-      localStorage.setItem("pk-chat-width", String(width));
+      localStorage.setItem("pk-chat-width", String(currentWidth));
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
       document.body.style.cursor = "";

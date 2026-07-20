@@ -31,10 +31,11 @@ api.use("/*", authMiddleware(config.api.secret ?? undefined));
 // Proxy Cartridge terminal output for a container
 api.get("/agents/:name/stream", async (c) => {
   const name = c.req.param("name");
-  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-orch-")) {
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-orch-") && !name.startsWith("pk-worker-")) {
     return c.json({ error: "invalid container" }, 400);
   }
-  const offset = c.req.query("offset") ?? "0";
+  const rawOffset = c.req.query("offset") ?? "0";
+  const offset = String(parseInt(rawOffset, 10) || 0);
   try {
     const { execFile: ef } = await import("node:child_process");
     const { promisify } = await import("node:util");
@@ -59,7 +60,7 @@ api.get("/agents/:name/stream", async (c) => {
 
 api.get("/agents/:name/logs", async (c) => {
   const name = c.req.param("name");
-  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-")) return c.json({ error: "invalid container" }, 400);
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-") && !name.startsWith("pk-orch-")) return c.json({ error: "invalid container" }, 400);
   try {
     const { execFile: ef } = await import("node:child_process");
     const { promisify } = await import("node:util");
@@ -73,7 +74,7 @@ api.get("/agents/:name/logs", async (c) => {
 
 api.delete("/agents/:name/container", async (c) => {
   const name = c.req.param("name");
-  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-")) {
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-") && !name.startsWith("pk-orch-")) {
     return c.json({ error: "invalid container name" }, 400);
   }
   try {

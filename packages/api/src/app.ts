@@ -45,7 +45,8 @@ export function createApp() {
 
   app.onError((err, c) => {
     console.error("[api]", err);
-    return c.json({ error: err.message }, 500);
+    const isDev = process.env.NODE_ENV !== "production";
+    return c.json({ error: isDev ? err.message : "Internal server error" }, 500);
   });
 
   return app;
