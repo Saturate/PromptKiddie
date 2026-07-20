@@ -5,20 +5,12 @@
  */
 import "dotenv/config";
 import { Command } from "commander";
-import { copyFile, readFile, readdir, writeFile } from "node:fs/promises";
 import { copyFileSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  createPlaybook,
   generateReport,
-  getPlaybook,
   getRepo,
-  listPlaybooks,
   loadConfig,
-  markdownToPlaybook,
-  playbookToMarkdown,
-  playbookToMermaid,
-  updatePlaybook,
 } from "@promptkiddie/core";
 import { execFileSync, type StdioOptions } from "node:child_process";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
@@ -77,21 +69,10 @@ engagement
   .option("--brief <brief>", "engagement brief / description")
   .option("--source-url <url>", "source URL (e.g. THM room, HTB machine)")
   .option("--group <group>", "engagement group (e.g. THM, HTB)")
-  .option("--no-playbook", "skip playbook step initialization")
   .action(async (o) => {
     const row = await repo.createEngagement({ name: o.name, type: o.type, scope: o.scope, brief: o.brief, sourceUrl: o.sourceUrl, group: o.group }) as { id: string };
     await setActiveEngagement(row.id);
-
-    let stepCount = 0;
-    if (o.playbook !== false) {
-      const pb = await repo.getDefaultPlaybook(o.type);
-      if (pb) {
-        const steps = await repo.initEngagementSteps(row.id, (pb as { id: string }).id);
-        stepCount = (steps as unknown[]).length;
-      }
-    }
-
-    console.error(`Created engagement ${row.id} (${stepCount} playbook steps initialized)`);
+    console.error(`Created engagement ${row.id}`);
     out(row);
   });
 
@@ -447,123 +428,6 @@ artifact
   .command("list")
   .option("--engagement <id>")
   .action(async (o) => out(await repo.listArtifacts(await resolveEngagementId(o.engagement))));
-
-// --- playbook (export/import as markdown) ----------------------------------
-const playbook = program.command("playbook").description("Manage playbook templates");
-
-playbook
-  .command("list")
-  .description("List all playbook templates")
-  .action(async () => {
-    const pbs = await listPlaybooks();
-    for (const pb of pbs) {
-      const phaseCount = (pb.phases as unknown[]).length;
-      const def = pb.isDefault ? " (default)" : "";
-      console.log(`${pb.id}  ${pb.name}  [${pb.engagementType}]  ${phaseCount} phases${def}`);
-    }
-  });
-
-playbook
-  .command("export")
-  .description("Export a playbook to markdown or mermaid")
-  .argument("<id>", "Playbook UUID or engagement type (ctf, blackbox, ...)")
-  .option("-o, --out <file>", "Write to file instead of stdout")
-  .option("-f, --format <format>", "Output format: md or mermaid", "md")
-  .action(async (idOrType, o) => {
-    const isUuid = /^[0-9a-f]{8}-/.test(idOrType);
-    let pb = isUuid ? await getPlaybook(idOrType) : null;
-    if (!pb) {
-      const { getDefaultPlaybook } = await import("@promptkiddie/core");
-      pb = await getDefaultPlaybook(idOrType);
-    }
-    if (!pb) { console.error(`No playbook found for "${idOrType}"`); process.exit(1); }
-    const phases = pb.phases as Parameters<typeof playbookToMarkdown>[1];
-    const output = o.format === "mermaid"
-      ? playbookToMermaid(pb.name, phases)
-      : playbookToMarkdown(pb.name, phases);
-    if (o.out) {
-      await writeFile(o.out, output, "utf-8");
-      console.error(`Wrote ${o.out}`);
-    } else {
-      console.log(output);
-    }
-  });
-
-playbook
-  .command("import")
-  .description("Import a playbook from a markdown file")
-  .argument("<file>", "Path to markdown file")
-  .option("--type <type>", "Engagement type (ctf, blackbox, whitebox, bugbounty)", "ctf")
-  .option("--update <id>", "Update existing playbook instead of creating new")
-  .action(async (file, o) => {
-    const md = await readFile(file, "utf-8");
-    const parsed = markdownToPlaybook(md);
-    if (o.update) {
-      const row = await updatePlaybook(o.update, { name: parsed.name, phases: parsed.phases });
-      console.log(`Updated playbook ${row.id}: ${row.name}`);
-    } else {
-      const row = await createPlaybook({
-        name: parsed.name,
-        engagementType: o.type,
-        phases: parsed.phases,
-      });
-      console.log(`Created playbook ${row.id}: ${row.name}`);
-    }
-  });
-
-// --- step (playbook graph execution) ---------------------------------------
-const step = program.command("step").description("Playbook step execution");
-
-step
-  .command("list")
-  .description("List all playbook steps with status")
-  .option("--engagement <id>")
-  .action(async (o) => out(await repo.listEngagementSteps(await resolveEngagementId(o.engagement))));
-
-step
-  .command("next")
-  .description("Get next ready steps from the playbook graph")
-  .option("--max <n>", "Max steps to return", "5")
-  .option("--engagement <id>")
-  .action(async (o) => {
-    const eid = await resolveEngagementId(o.engagement);
-    out(await repo.getNextSteps(eid, parseInt(o.max, 10)));
-  });
-
-step
-  .command("start")
-  .description("Mark a step as running (glows amber in the UI)")
-  .argument("<key>", "Step key, e.g. recon.tcp_scan")
-  .option("--agent <agentId>", "ID of the agent executing this step")
-  .option("--engagement <id>")
-  .action(async (key, o) => {
-    const eid = await resolveEngagementId(o.engagement);
-    out(await repo.startStep(eid, key, o.agent));
-  });
-
-step
-  .command("complete")
-  .description("Mark a step as done")
-  .argument("<key>", "Step key, e.g. recon.tcp_scan")
-  .option("--result-type <type>", "What was produced: port, finding, evidence, activity")
-  .option("--result-id <id>", "UUID of the result row")
-  .option("--engagement <id>")
-  .action(async (key, o) => {
-    const eid = await resolveEngagementId(o.engagement);
-    const result = o.resultType && o.resultId ? { type: o.resultType, id: o.resultId } : undefined;
-    out(await repo.completeStep(eid, key, result));
-  });
-
-step
-  .command("skip")
-  .description("Skip a step with a reason")
-  .argument("<key>", "Step key, e.g. enum.smb_enum")
-  .requiredOption("--reason <reason>", "Why this step is being skipped")
-  .option("--engagement <id>")
-  .action(async (key, o) => {
-    const eid = await resolveEngagementId(o.engagement);
-    out(await repo.skipStep(eid, key, o.reason));
-  });
 
 // --- activity --------------------------------------------------------------
 const act = program.command("activity").description("Append-only audit trail");

@@ -2,9 +2,8 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   fetchEngagement, fetchTargets, fetchFindings, fetchActivity,
-  fetchEvidence, fetchObjectives, fetchSteps,
+  fetchEvidence, fetchObjectives,
 } from "@/api/client";
-import { PlaybookView } from "@/components/graph/playbook-view";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -48,23 +47,23 @@ export default function EngagementDetail() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<{
     engagement: Any; targets: Any[]; findings: Any[]; activity: Any[];
-    evidence: Any[]; objectives: Any[]; steps: Any[];
+    evidence: Any[]; objectives: Any[];
   } | null>(null);
 
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const [engagement, targets, findings, activity, evidence, objectives, steps] = await Promise.all([
+      const [engagement, targets, findings, activity, evidence, objectives] = await Promise.all([
         fetchEngagement(id), fetchTargets(id), fetchFindings(id),
-        fetchActivity(id), fetchEvidence(id), fetchObjectives(id), fetchSteps(id),
+        fetchActivity(id), fetchEvidence(id), fetchObjectives(id),
       ]);
-      setData({ engagement, targets, findings, activity, evidence, objectives, steps });
+      setData({ engagement, targets, findings, activity, evidence, objectives });
     })();
   }, [id]);
 
   if (!data) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
 
-  const { engagement, targets, findings, activity, objectives, steps } = data;
+  const { engagement, targets, findings, activity, objectives } = data;
   if (!engagement) return <div className="p-6 text-muted-foreground font-mono">Engagement not found.</div>;
 
   const currentPhase = engagement.phase ?? "scoping";
@@ -94,17 +93,6 @@ export default function EngagementDetail() {
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-sm font-mono">Brief</CardTitle></CardHeader>
           <CardContent><p className="font-mono text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{engagement.brief}</p></CardContent>
-        </Card>
-      )}
-
-      {steps.length > 0 && (
-        <Card>
-          <CardContent className="pt-4">
-            <PlaybookView
-              defaultCollapsed={engagement.status === "done"}
-              steps={steps.map((s: Any) => ({ ...s, dependsOn: s.dependsOn ?? [], nodeType: s.nodeType ?? "action", priority: s.priority ?? 50, positionX: s.positionX ?? 0, positionY: s.positionY ?? 0 }))}
-            />
-          </CardContent>
         </Card>
       )}
 

@@ -95,17 +95,6 @@ export const logActivity = (input: Record<string, unknown>) => post(`/engagement
 // Agent runs
 export const fetchAgentRuns = (eid: string) => get<unknown[]>(`/engagements/${eid}/agent-runs`);
 
-// Steps
-export const fetchSteps = (eid: string) => get<unknown[]>(`/engagements/${eid}/steps`);
-export const fetchNextSteps = (eid: string, max?: number) => get(`/engagements/${eid}/steps/next${max ? `?max=${max}` : ""}`);
-
-// Playbooks
-export const fetchPlaybooks = () => get<unknown[]>("/playbooks");
-export const fetchPlaybook = (id: string) => get(`/playbooks/${id}`);
-export const fetchDefaultPlaybook = (type: string) => get(`/playbooks/default/${type}`);
-export const createPlaybook = (input: Record<string, unknown>) => post("/playbooks", input);
-export const updatePlaybook = (id: string, input: Record<string, unknown>) => patch(`/playbooks/${id}`, input);
-
 // Events
 export const fetchEvents = (eid: string, type?: string) => get<unknown[]>(`/engagements/${eid}/events${type ? `?type=${type}` : ""}`);
 

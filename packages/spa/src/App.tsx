@@ -7,7 +7,6 @@ import Chat from "./pages/Chat";
 import Playbook from "./pages/Playbook";
 import Knowledge from "./pages/Knowledge";
 import Settings from "./pages/Settings";
-import PlaybookSettings from "./pages/PlaybookSettings";
 import Stats from "./pages/Stats";
 import Tools from "./pages/Tools";
 
@@ -22,7 +21,6 @@ export function App() {
         <Route path="playbook" element={<Playbook />} />
         <Route path="knowledge" element={<Knowledge />} />
         <Route path="settings" element={<Settings />} />
-        <Route path="settings/playbooks" element={<PlaybookSettings />} />
         <Route path="stats" element={<Stats />} />
         <Route path="tools" element={<Tools />} />
       </Route>

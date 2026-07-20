@@ -15,8 +15,6 @@ import webshells from "./routes/webshells.js";
 import events from "./routes/events.js";
 import discoveries from "./routes/discoveries.js";
 import execDedup from "./routes/exec-dedup.js";
-import steps from "./routes/steps.js";
-import playbooks from "./routes/playbooks.js";
 import knowledge from "./routes/knowledge.js";
 import settings from "./routes/settings.js";
 
@@ -38,8 +36,6 @@ export function createApp() {
   app.route("/", events);
   app.route("/", discoveries);
   app.route("/", execDedup);
-  app.route("/", steps);
-  app.route("/", playbooks);
   app.route("/", knowledge);
   app.route("/", settings);
 

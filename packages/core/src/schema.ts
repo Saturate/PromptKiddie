@@ -125,103 +125,10 @@ export const engagements = pgTable("engagements", {
   roe: jsonb("roe").$type<Record<string, unknown>>(),
   /** Registered webshell sessions: [{name, url, param}]. */
   webshells: jsonb("webshells").$type<WebshellEntry[]>().default([]),
-  playbookId: uuid("playbook_id"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   endedAt: timestamp("ended_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-/** Playbook templates defining phases and steps per engagement type. */
-export const playbooks = pgTable("playbooks", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  engagementType: engagementType("engagement_type").notNull(),
-  description: text("description"),
-  isDefault: boolean("is_default").notNull().default(false),
-  phases: jsonb("phases").notNull().$type<PlaybookPhase[]>(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export type NodeType = "action" | "sequence" | "selector" | "parallel" | "gate" | "block_ref";
-
-export interface PlaybookStep {
-  key: string;
-  title: string;
-  description?: string;
-  type: "mechanical" | "judgment";
-  nodeType?: NodeType;
-  command?: string;
-  condition?: string;
-  dependsOn?: string[];
-  priority?: number;
-  optional?: boolean;
-  blockRef?: string;
-  blockInputs?: Record<string, string>;
-  inputSchema?: Record<string, string>;
-  outputSchema?: Record<string, string>;
-}
-
-export interface PlaybookPhase {
-  phase: string;
-  title: string;
-  steps: PlaybookStep[];
-}
-
-/** Reusable sub-graphs (like functions) for composing playbooks. */
-export const playbookBlocks = pgTable("playbook_blocks", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  description: text("description"),
-  inputSchema: jsonb("input_schema").$type<Record<string, string>>(),
-  outputSchema: jsonb("output_schema").$type<Record<string, string>>(),
-  nodes: jsonb("nodes").notNull().$type<PlaybookStep[]>(),
-  isBuiltin: boolean("is_builtin").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const stepStatus = pgEnum("step_status", [
-  "pending",
-  "running",
-  "done",
-  "skipped",
-]);
-
-/** Per-engagement step progress tracking (behavior tree nodes). */
-export const engagementSteps = pgTable(
-  "engagement_steps",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    engagementId: uuid("engagement_id")
-      .notNull()
-      .references(() => engagements.id, { onDelete: "cascade" }),
-    phase: text("phase").notNull(),
-    stepKey: text("step_key").notNull(),
-    title: text("title").notNull(),
-    status: text("status").notNull().default("pending"),
-    nodeType: text("node_type").notNull().default("action"),
-    dependsOn: text("depends_on").array().default([]),
-    priority: integer("priority").notNull().default(50),
-    condition: text("condition"),
-    blockId: uuid("block_id"),
-    inputs: jsonb("inputs").$type<Record<string, unknown>>(),
-    outputs: jsonb("outputs").$type<Record<string, unknown>>(),
-    skipReason: text("skip_reason"),
-    resultType: text("result_type"),
-    resultId: uuid("result_id"),
-    agentId: text("agent_id"),
-    costTokens: integer("cost_tokens").default(0),
-    positionX: doublePrecision("position_x").default(0),
-    positionY: doublePrecision("position_y").default(0),
-    startedAt: timestamp("started_at", { withTimezone: true }),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    index("engagement_steps_eng_idx").on(t.engagementId),
-  ],
-);
 
 /** CTF tasks / room objectives. Each has a description and an expected flag to capture. */
 export const objectives = pgTable(
@@ -291,7 +198,7 @@ export const ports = pgTable(
   },
   (t) => [
     index("ports_target_idx").on(t.targetId),
-    index("ports_unique").on(t.targetId, t.port, t.protocol),
+    uniqueIndex("ports_unique").on(t.targetId, t.port, t.protocol),
   ],
 );
 
