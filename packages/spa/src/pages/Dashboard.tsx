@@ -2,29 +2,9 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchEngagements, fetchFindings, fetchActivity, fetchTargets } from "@/api/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
 import { SeverityPieChart, PhaseBarChart } from "@/components/dashboard-charts";
 import { CreateEngagementDialog } from "@/components/create-engagement-dialog";
-
-const STATUS_DOT: Record<string, string> = {
-  active: "bg-emerald-400",
-  done: "bg-blue-400",
-  scoping: "bg-zinc-400",
-  paused: "bg-yellow-400",
-  reporting: "bg-purple-400",
-  created: "bg-zinc-500",
-};
-
-const PHASE_COLOR: Record<string, string> = {
-  scoping: "text-zinc-400",
-  recon: "text-blue-400",
-  enum: "text-purple-400",
-  exploit: "text-red-400",
-  postexploit: "text-orange-400",
-  report: "text-emerald-400",
-};
+import { StatusDot, PhaseText, PageState } from "@/components/pk";
 
 interface Engagement { id: string; name: string; type: string; status: string; phase?: string; createdAt?: string }
 interface Finding { id: string; severity: string; status: string }
@@ -50,18 +30,9 @@ export default function Dashboard() {
     },
   });
 
-  if (isLoading) return <div className="text-muted-foreground font-mono">Loading...</div>;
-  if (isError) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-destructive font-mono">Failed to load dashboard data.</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
-          <RefreshCw className="size-3 mr-1.5" /> Retry
-        </Button>
-      </div>
-    );
+  if (isLoading || isError || !data) {
+    return <PageState isLoading={isLoading} isError={isError} refetch={refetch} label="dashboard"><></></PageState>;
   }
-  if (!data) return null;
 
   const { engagements, perEngagement } = data;
   const allFindings = perEngagement.flatMap((p) => p.findings);
@@ -163,17 +134,8 @@ export default function Dashboard() {
                       </Link>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{e.type}</TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-1.5 font-mono text-xs">
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[e.status] ?? "bg-zinc-500"}`} />
-                        {e.status}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`font-mono text-xs ${PHASE_COLOR[e.phase ?? "scoping"] ?? "text-muted-foreground"}`}>
-                        {e.phase ?? "scoping"}
-                      </span>
-                    </TableCell>
+                    <TableCell><StatusDot status={e.status} /></TableCell>
+                    <TableCell><PhaseText phase={e.phase ?? "scoping"} /></TableCell>
                     <TableCell className="font-mono text-sm tabular-nums text-right">{f.length}</TableCell>
                     <TableCell className="font-mono text-sm tabular-nums text-right">{t.length}</TableCell>
                     <TableCell className="text-muted-foreground font-mono text-xs text-right">{new Date(e.createdAt!).toLocaleDateString()}</TableCell>
@@ -198,9 +160,7 @@ export default function Dashboard() {
             {recentActivity.map((a) => (
               <div key={a.id} className="px-3 py-2 hover:bg-accent/30 transition-colors">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`font-mono text-[10px] uppercase shrink-0 w-16 ${PHASE_COLOR[a.phase] ?? "text-muted-foreground"}`}>
-                    {a.phase}
-                  </span>
+                  <span className="shrink-0 w-16"><PhaseText phase={a.phase} /></span>
                   <Link to={`/engagements/${a.engagementId}`} className="font-mono text-xs text-pk-amber hover:underline shrink-0">
                     {a.engagementName}
                   </Link>

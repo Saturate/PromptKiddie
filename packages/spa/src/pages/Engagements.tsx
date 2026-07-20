@@ -3,26 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchEngagements, fetchFindings, fetchTargets } from "@/api/client";
 import { CreateEngagementDialog } from "@/components/create-engagement-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { ExternalLinkIcon, RefreshCw } from "lucide-react";
-
-const statusDot: Record<string, string> = {
-  active: "bg-emerald-400",
-  done: "bg-blue-400",
-  scoping: "bg-zinc-400",
-  paused: "bg-yellow-400",
-  reporting: "bg-purple-400",
-  created: "bg-zinc-500",
-};
-
-const phaseText: Record<string, string> = {
-  scoping: "text-zinc-400",
-  recon: "text-blue-400",
-  enum: "text-purple-400",
-  exploit: "text-red-400",
-  postexploit: "text-orange-400",
-  report: "text-emerald-400",
-};
+import { ExternalLinkIcon } from "lucide-react";
+import { StatusDot, PhaseText, PageState, SectionLabel } from "@/components/pk";
 
 interface Engagement { id: string; name: string; type: string; status: string; phase?: string; group?: string; sourceUrl?: string; createdAt?: string }
 
@@ -44,18 +26,9 @@ export default function Engagements() {
     },
   });
 
-  if (isLoading) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
-  if (isError) {
-    return (
-      <div className="p-6 space-y-3">
-        <p className="text-sm text-destructive font-mono">Failed to load engagements.</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
-          <RefreshCw className="size-3 mr-1.5" /> Retry
-        </Button>
-      </div>
-    );
+  if (isLoading || isError || !data) {
+    return <PageState isLoading={isLoading} isError={isError} refetch={refetch} label="engagements"><></></PageState>;
   }
-  if (!data) return null;
 
   const engagements = data.map((d) => d.engagement);
   const activeCount = engagements.filter((e) => e.status === "active").length;
@@ -98,7 +71,7 @@ export default function Engagements() {
       {sortedGroups.map(([groupName, items]) => (
         <section key={groupName}>
           {sortedGroups.length > 1 && (
-            <h2 className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60 mb-2 pl-1">{groupName}</h2>
+            <SectionLabel>{groupName}</SectionLabel>
           )}
           <div className="border border-border rounded-lg overflow-hidden">
             <Table>
@@ -121,17 +94,8 @@ export default function Engagements() {
                       <Link to={`/engagements/${e.id}`} className="text-pk-amber hover:underline font-mono text-sm font-semibold">{e.name}</Link>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{e.type}</TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-1.5 font-mono text-xs">
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[e.status] ?? "bg-zinc-500"}`} />
-                        {e.status}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`font-mono text-xs ${phaseText[e.phase ?? "scoping"] ?? "text-muted-foreground"}`}>
-                        {e.phase ?? "scoping"}
-                      </span>
-                    </TableCell>
+                    <TableCell><StatusDot status={e.status} /></TableCell>
+                    <TableCell><PhaseText phase={e.phase ?? "scoping"} /></TableCell>
                     <TableCell className="font-mono text-sm tabular-nums text-right">{findingsCount}</TableCell>
                     <TableCell className="font-mono text-sm tabular-nums text-right">{targetsCount}</TableCell>
                     <TableCell>

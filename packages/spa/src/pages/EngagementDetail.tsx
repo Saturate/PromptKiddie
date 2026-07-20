@@ -1,23 +1,14 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   useEngagement, useTargets, useFindings, useActivity,
   useEvidence, useObjectives,
 } from "@/hooks/use-api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileDown, RefreshCw } from "lucide-react";
+import { FileDown } from "lucide-react";
+import { StatusDot, PhaseText, SeverityBadge, PageState, SectionLabel } from "@/components/pk";
 
 const DEFAULT_PHASES = ["scoping", "recon", "enum", "exploit", "postexploit", "report"];
-
-const severityColors: Record<string, string> = {
-  critical: "bg-severity-critical text-white",
-  high: "bg-severity-high text-black",
-  medium: "bg-severity-medium text-black",
-  low: "bg-severity-low text-white",
-  info: "bg-severity-info text-white",
-};
 
 function PhaseIndicator({ currentPhase, phases }: { currentPhase: string; phases?: string[] }) {
   const list = phases ?? DEFAULT_PHASES;
@@ -25,9 +16,9 @@ function PhaseIndicator({ currentPhase, phases }: { currentPhase: string; phases
 
   if (activeIdx === -1) {
     return (
-      <Badge className="bg-pk-amber text-black font-mono text-[11px] uppercase tracking-wide">
+      <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-mono font-medium uppercase tracking-wide bg-pk-amber text-black">
         {currentPhase}
-      </Badge>
+      </span>
     );
   }
 
@@ -52,6 +43,14 @@ function PhaseIndicator({ currentPhase, phases }: { currentPhase: string; phases
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 
+const SEV_BORDER: Record<string, string> = {
+  critical: "border-l-severity-critical",
+  high: "border-l-severity-high",
+  medium: "border-l-severity-medium",
+  low: "border-l-severity-low",
+  info: "border-l-severity-info",
+};
+
 export default function EngagementDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: engagement, isLoading, isError, refetch } = useEngagement(id);
@@ -60,20 +59,18 @@ export default function EngagementDetail() {
   const { data: activity = [] } = useActivity(id) as { data: Any[] };
   const { data: objectives = [] } = useObjectives(id) as { data: Any[] };
 
-  if (isLoading) return <div className="p-6 text-muted-foreground font-mono">Loading...</div>;
-  if (isError) {
-    return (
-      <div className="p-6 space-y-3">
-        <p className="text-sm text-destructive font-mono">Failed to load engagement.</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
-          <RefreshCw className="size-3 mr-1.5" /> Retry
-        </Button>
-      </div>
-    );
-  }
-  if (!engagement) return <div className="p-6 text-muted-foreground font-mono">Engagement not found.</div>;
+  return (
+    <PageState isLoading={isLoading} isError={isError} refetch={refetch} label="engagement">
+      {engagement ? <EngagementContent eng={engagement as Any} targets={targets} findings={findings} activity={activity} objectives={objectives} id={id!} /> : (
+        <div className="text-muted-foreground font-mono">Engagement not found.</div>
+      )}
+    </PageState>
+  );
+}
 
-  const eng = engagement as Any;
+function EngagementContent({ eng, targets, findings, activity, objectives, id }: {
+  eng: Any; targets: Any[]; findings: Any[]; activity: Any[]; objectives: Any[]; id: string;
+}) {
   const currentPhase = eng.phase ?? "scoping";
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
   for (const f of findings) {
@@ -82,127 +79,145 @@ export default function EngagementDetail() {
   const inScopeCount = targets.filter((t: Any) => t.inScope).length;
 
   return (
-    <div className="flex flex-col gap-4 py-4 px-4 md:gap-6 md:py-6 lg:px-6">
+    <div className="space-y-6">
+      {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold font-mono">{eng.name}</h1>
-          <Badge variant="outline" className="font-mono text-[10px] uppercase">{eng.type}</Badge>
-          <Badge variant="secondary" className="font-mono text-[10px] uppercase">{eng.status}</Badge>
+          <span className="font-mono text-xs text-muted-foreground">{eng.type}</span>
+          <StatusDot status={eng.status} />
           <span className="flex-1" />
           <a href={`/api/report/${id}`} download>
-            <Button variant="outline" size="sm"><FileDown className="size-3.5" />Download Report</Button>
+            <Button variant="outline" size="sm" className="font-mono text-xs"><FileDown className="size-3.5 mr-1.5" />Report</Button>
           </a>
         </div>
         <PhaseIndicator currentPhase={currentPhase} />
         {eng.scope && <p className="text-sm text-muted-foreground font-mono">{eng.scope}</p>}
       </div>
 
+      {/* Brief */}
       {eng.brief && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-mono">Brief</CardTitle></CardHeader>
-          <CardContent><p className="font-mono text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{eng.brief}</p></CardContent>
-        </Card>
+        <section>
+          <SectionLabel>Brief</SectionLabel>
+          <div className="border border-border rounded-lg p-4">
+            <p className="font-mono text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{eng.brief}</p>
+          </div>
+        </section>
       )}
 
+      {/* CTF flag progress */}
       {eng.type === "ctf" && objectives.length > 0 && (
         <div className="flex items-center gap-3">
           <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
             <div className="h-full bg-pk-amber transition-all" style={{ width: `${(objectives.filter((o: Any) => o.completed).length / objectives.length) * 100}%` }} />
           </div>
-          <span className="font-mono text-sm font-bold text-pk-amber">{objectives.filter((o: Any) => o.completed).length}/{objectives.length} flags</span>
+          <span className="font-mono text-sm font-bold text-pk-amber tabular-nums">{objectives.filter((o: Any) => o.completed).length}/{objectives.length} flags</span>
         </div>
       )}
 
+      {/* Stat tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        <Card><CardContent className="p-4"><p className="text-[10px] font-mono uppercase text-muted-foreground">Targets</p><p className="text-2xl font-bold font-mono">{targets.length}</p><p className="text-[10px] text-muted-foreground font-mono">{inScopeCount} in scope</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-[10px] font-mono uppercase text-muted-foreground">Findings</p><p className="text-2xl font-bold font-mono">{findings.length}</p></CardContent></Card>
+        <div className="bg-card border border-border rounded-lg p-3">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Targets</div>
+          <div className="text-2xl font-bold font-mono tabular-nums">{targets.length}</div>
+          <div className="text-[10px] font-mono text-pk-amber">{inScopeCount} in scope</div>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-3">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Findings</div>
+          <div className="text-2xl font-bold font-mono tabular-nums">{findings.length}</div>
+        </div>
         {(Object.entries(severityCounts) as [string, number][]).map(([sev, count]) => (
-          <Card key={sev}><CardContent className="p-4"><p className="text-[10px] font-mono uppercase text-muted-foreground">{sev}</p><p className="text-2xl font-bold font-mono">{count}</p></CardContent></Card>
+          <div key={sev} className="bg-card border border-border rounded-lg p-3">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{sev}</div>
+            <div className="text-2xl font-bold font-mono tabular-nums">{count}</div>
+          </div>
         ))}
       </div>
 
-      <div id="targets">
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-mono">Targets ({targets.length})</CardTitle></CardHeader>
-          <CardContent>
-            {targets.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono text-center py-6">No targets added</p>
-            ) : (
-              <Table>
-                <TableHeader><TableRow>
-                  <TableHead className="font-mono text-[10px] uppercase">Kind</TableHead>
-                  <TableHead className="font-mono text-[10px] uppercase">Identifier</TableHead>
-                  <TableHead className="font-mono text-[10px] uppercase">Scope</TableHead>
-                  <TableHead className="font-mono text-[10px] uppercase">Notes</TableHead>
-                </TableRow></TableHeader>
-                <TableBody>
-                  {targets.map((t: Any) => (
-                    <TableRow key={t.id}>
-                      <TableCell><Badge variant="outline" className="font-mono text-[10px]">{t.kind}</Badge></TableCell>
-                      <TableCell className="font-mono text-sm text-pk-amber">{t.identifier}</TableCell>
-                      <TableCell>{t.inScope ? <Badge className="bg-pk-amber/20 text-pk-amber border-pk-amber/30 font-mono text-[10px]">in</Badge> : <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">out</Badge>}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground font-mono">{t.notes ?? "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Targets table */}
+      <section>
+        <SectionLabel>Targets ({targets.length})</SectionLabel>
+        {targets.length === 0 ? (
+          <p className="text-sm text-muted-foreground font-mono py-6 text-center">No targets added</p>
+        ) : (
+          <div className="border border-border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead className="font-mono text-[10px] uppercase">Kind</TableHead>
+                <TableHead className="font-mono text-[10px] uppercase">Identifier</TableHead>
+                <TableHead className="font-mono text-[10px] uppercase">Scope</TableHead>
+                <TableHead className="font-mono text-[10px] uppercase">Notes</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {targets.map((t: Any) => (
+                  <TableRow key={t.id} className="hover:bg-accent/50 transition-colors">
+                    <TableCell className="font-mono text-xs text-muted-foreground">{t.kind}</TableCell>
+                    <TableCell className="font-mono text-sm text-pk-amber font-semibold">{t.identifier}</TableCell>
+                    <TableCell>
+                      {t.inScope ? (
+                        <span className="text-[10px] font-mono text-pk-amber">in</span>
+                      ) : (
+                        <span className="text-[10px] font-mono text-muted-foreground/50">out</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground font-mono">{t.notes ?? "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
 
-      <div id="findings">
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-mono">Findings ({findings.length})</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {findings.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono text-center py-6">No findings</p>
-            ) : findings.map((f: Any) => (
-              <div key={f.id} className="border border-border rounded-lg p-4 space-y-2">
+      {/* Findings */}
+      <section>
+        <SectionLabel>Findings ({findings.length})</SectionLabel>
+        {findings.length === 0 ? (
+          <p className="text-sm text-muted-foreground font-mono py-6 text-center">No findings</p>
+        ) : (
+          <div className="space-y-2">
+            {findings.map((f: Any) => (
+              <div key={f.id} className={`border border-border border-l-2 ${SEV_BORDER[f.severity] ?? "border-l-zinc-500"} rounded-lg p-3 hover:bg-accent/30 transition-colors`}>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Badge className={`font-mono text-[10px] ${severityColors[f.severity] ?? ""}`}>{f.severity}</Badge>
-                  <Badge variant="secondary" className="font-mono text-[10px]">{f.status}</Badge>
-                  {f.cvss != null && <span className="font-mono text-xs text-muted-foreground">CVSS {f.cvss}</span>}
+                  <SeverityBadge severity={f.severity} />
+                  <span className="font-mono text-xs text-muted-foreground">{f.status}</span>
+                  {f.cvss != null && <span className="font-mono text-xs text-muted-foreground tabular-nums">CVSS {f.cvss}</span>}
                   <span className="flex-1" />
-                  <span className="font-mono text-[10px] text-muted-foreground">{new Date(f.createdAt).toLocaleString()}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground/60">{new Date(f.createdAt).toLocaleString()}</span>
                 </div>
-                <h4 className="font-mono text-sm font-semibold">{f.title}</h4>
-                {f.description && <p className="font-mono text-xs text-muted-foreground leading-relaxed">{f.description}</p>}
+                <h4 className="font-mono text-sm font-semibold mt-1.5">{f.title}</h4>
+                {f.description && <p className="font-mono text-xs text-muted-foreground leading-relaxed mt-1 line-clamp-2">{f.description}</p>}
               </div>
             ))}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        )}
+      </section>
 
-      <div id="activity">
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-mono">Activity Log ({activity.length})</CardTitle></CardHeader>
-          <CardContent>
-            {activity.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono">No activity</p>
-            ) : (
-              <div className="space-y-2">
-                {activity.map((a: Any) => (
-                  <div key={a.id} className="border border-border rounded-lg p-3 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="font-mono text-[10px] uppercase">{a.phase}</Badge>
-                      <span className="font-mono text-xs">{a.action}</span>
-                      <span className="flex-1" />
-                      <span className="font-mono text-[10px] text-muted-foreground">{a.actor}</span>
-                      <span className="font-mono text-[10px] text-muted-foreground">{new Date(a.createdAt).toLocaleTimeString()}</span>
-                    </div>
-                    {a.command && (
-                      <div className="bg-background rounded px-3 py-2 mt-1 border border-border/50">
-                        <code className="font-mono text-xs text-pk-amber break-all">$ {a.command}</code>
-                      </div>
-                    )}
+      {/* Activity log */}
+      <section>
+        <SectionLabel>Activity ({activity.length})</SectionLabel>
+        {activity.length === 0 ? (
+          <p className="text-sm text-muted-foreground font-mono">No activity</p>
+        ) : (
+          <div className="border border-border rounded-lg overflow-hidden divide-y divide-border">
+            {activity.map((a: Any) => (
+              <div key={a.id} className="px-3 py-2 hover:bg-accent/30 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="w-20 shrink-0"><PhaseText phase={a.phase} /></span>
+                  <span className="font-mono text-xs truncate flex-1">{a.action}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground/60 shrink-0">{a.actor}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground/60 tabular-nums shrink-0">{new Date(a.createdAt).toLocaleTimeString()}</span>
+                </div>
+                {a.command && (
+                  <div className="mt-1 ml-20 pl-3 border-l border-border/50">
+                    <code className="font-mono text-xs text-pk-amber/70">$ {a.command}</code>
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

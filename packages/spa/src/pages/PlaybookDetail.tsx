@@ -5,7 +5,6 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { ActionGraphView } from "@/components/graph/action-graph";
 import { ActionDetail, type ActionDetailData } from "@/components/graph/action-detail";
 import type { ActionNodeData } from "@/components/graph/action-node";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, X, Play, Zap, ListOrdered, ChevronRight, RefreshCw } from "lucide-react";
@@ -103,10 +102,10 @@ export default function PlaybookDetail() {
     });
   }, [data]);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground font-mono p-6">Loading...</p>;
+  if (isLoading) return <div className="text-sm text-muted-foreground font-mono">Loading...</div>;
   if (isError) {
     return (
-      <div className="p-6 space-y-3">
+      <div className="space-y-3">
         <p className="text-sm text-destructive font-mono">Failed to load playbook.</p>
         <Button variant="outline" size="sm" onClick={() => refetch()} className="font-mono text-xs">
           <RefreshCw className="size-3 mr-1.5" /> Retry
@@ -133,10 +132,10 @@ export default function PlaybookDetail() {
         </Link>
         <h1 className="text-xl font-bold font-mono">{data.name}</h1>
         <p className="text-sm text-muted-foreground font-mono mt-1">{data.description}</p>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-xs font-mono text-pk-amber font-semibold">{data.actions.length} actions</span>
-          <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">built-in</Badge>
-          <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">read-only</Badge>
+        <div className="flex items-center gap-3 mt-2 text-[11px] font-mono text-muted-foreground">
+          <span className="text-pk-amber font-semibold">{data.actions.length} actions</span>
+          <span className="px-1.5 py-0.5 rounded bg-muted text-[9px]">built-in</span>
+          <span className="px-1.5 py-0.5 rounded bg-muted text-[9px]">read-only</span>
         </div>
       </div>
 
@@ -195,7 +194,7 @@ function ActionsTable({ actions }: { actions: ActionInfo[] }) {
         </TableHeader>
         <TableBody>
           {sorted.map((a) => (
-            <TableRow key={a.name}>
+            <TableRow key={a.name} className="hover:bg-accent/50 transition-colors">
               <TableCell className="font-mono text-xs font-semibold text-pk-amber whitespace-nowrap">{a.name}</TableCell>
               <TableCell className="font-mono text-xs text-muted-foreground max-w-[300px]">{a.description ?? "-"}</TableCell>
               <TableCell>
