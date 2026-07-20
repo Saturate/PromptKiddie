@@ -13,6 +13,10 @@ const clients = new Set<WsClient>();
 
 export function getWsClientCount(): number { return clients.size; }
 
+let _containerMeta: Map<string, { action: string; image: string; engagementId: string }> | null = null;
+export function getContainerMeta(name: string) { return _containerMeta?.get(name) ?? null; }
+export function getAllContainerMeta() { return _containerMeta ? Object.fromEntries(_containerMeta) : {}; }
+
 export function setupWebSocket(server: Server, databaseUrl: string) {
   const wss = new WebSocketServer({ server, path: "/ws/events", perMessageDeflate: false });
 
@@ -101,7 +105,9 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
 
   // PTY output relay: agents POST output, we broadcast to subscribed frontends
   const ptyClients = new Map<string, Set<WebSocket>>();
-  const ptyAliases = new Map<string, string>(); // container name -> agent ID
+  const ptyAliases = new Map<string, string>(); // container name <-> agent ID
+  const ptyMeta = new Map<string, { action: string; image: string; engagementId: string }>(); // container name -> metadata
+  _containerMeta = ptyMeta;
 
   const ptyWss = new WebSocketServer({ server, path: "/ws/pty" });
 
@@ -138,9 +144,16 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
   });
 
   return {
-    registerPtyAlias(containerName: string, agentId: string) {
+    registerPtyAlias(containerName: string, agentId: string, meta?: { action: string; image: string; engagementId: string }) {
       ptyAliases.set(containerName, agentId);
       ptyAliases.set(agentId, containerName);
+      if (meta) ptyMeta.set(containerName, meta);
+    },
+    getContainerMeta(containerName: string) {
+      return ptyMeta.get(containerName) ?? null;
+    },
+    getAllContainerMeta() {
+      return Object.fromEntries(ptyMeta);
     },
     broadcastPty(agentId: string, data: string) {
       const subs = ptyClients.get(agentId);

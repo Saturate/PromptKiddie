@@ -29,8 +29,12 @@ const api = createApp();
 api.use("/*", authMiddleware(config.api.secret ?? undefined));
 
 api.post("/agents/:id/alias", async (c) => {
-  const { container } = await c.req.json();
-  if (container) wsBroadcast?.registerPtyAlias(container, c.req.param("id"));
+  const body = await c.req.json();
+  const { container, action, image, engagementId } = body;
+  if (container) {
+    const meta = action ? { action, image: image ?? "", engagementId: engagementId ?? "" } : undefined;
+    wsBroadcast?.registerPtyAlias(container, c.req.param("id"), meta);
+  }
   return c.json({ ok: true });
 });
 

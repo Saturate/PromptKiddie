@@ -3,11 +3,30 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { sql } from "drizzle-orm";
 import { getDb, schema } from "@promptkiddie/core";
-import { getWsClientCount } from "../ws.js";
+import { getWsClientCount, getContainerMeta, getAllContainerMeta } from "../ws.js";
 import { getSupervisorState } from "../supervisor-state.js";
 
 const execFileAsync = promisify(execFile);
 const startTime = Date.now();
+
+const ACTION_LABELS: Record<string, string> = {
+  port_scan: "Port Scanner",
+  udp_scan: "UDP Scanner",
+  web_recon: "Web Recon",
+  dir_brute: "Directory Brute",
+  nuclei_scan: "Nuclei Scanner",
+  cve_search: "CVE Search",
+  exploit: "Exploit Agent",
+  web_vuln_tests: "Web Vuln Tester",
+  default_creds: "Credential Tester",
+  stall_detection: "Stall Advisor",
+  post_exploit_enum: "Post-Exploit Enum",
+  privesc: "Privilege Escalation",
+  flag_capture: "Flag Capture",
+  lateral_move: "Lateral Movement",
+  source_code_analysis: "Source Analysis",
+  cred_crack: "Credential Cracker",
+};
 
 const app = new Hono();
 
@@ -22,7 +41,7 @@ app.get("/status", async (c) => {
   }
 
   let docker: { ok: boolean; error?: string } = { ok: false };
-  let containers: Array<{ name: string; image: string; status: string; created: string; engagementId?: string }> = [];
+  let containers: Array<{ name: string; image: string; status: string; created: string; action?: string; engagementId?: string; displayName?: string }> = [];
   try {
     const { stdout } = await execFileAsync("docker", [
       "ps", "-a",
@@ -30,9 +49,14 @@ app.get("/status", async (c) => {
       "--format", '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.CreatedAt}}',
     ], { timeout: 5000 });
     docker = { ok: true };
+    const allMeta = getAllContainerMeta();
     containers = stdout.trim().split("\n").filter(Boolean).map((line) => {
       const [name, image, status, created] = line.split("\t");
-      return { name, image, status, created };
+      const meta = allMeta[name];
+      const displayName = meta?.action
+        ? ACTION_LABELS[meta.action] ?? meta.action.replace(/_/g, " ")
+        : name.replace(/^pk-agent-/, "").replace(/-[a-z0-9]{6}$/, "");
+      return { name, image, status, created, action: meta?.action, engagementId: meta?.engagementId, displayName };
     });
   } catch (err) {
     docker = { ok: false, error: err instanceof Error ? err.message : String(err) };
