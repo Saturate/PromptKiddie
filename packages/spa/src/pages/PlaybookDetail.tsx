@@ -80,7 +80,7 @@ export default function PlaybookDetail() {
   const { key } = useParams<{ key: string }>();
   const { data, isLoading, isError, refetch } = useQuery<PlaybookData>({
     queryKey: ["playbook", key],
-    queryFn: () => fetch(`/api/playbooks/catalog/${key}`).then((r) => r.json()),
+    queryFn: () => fetch(`/api/playbooks/catalog/${key}`).then((r) => { if (!r.ok) throw new Error("Failed to load playbook"); return r.json(); }),
     enabled: !!key,
   });
   const [tab, setTab] = useState<Tab>("graph");
@@ -255,6 +255,7 @@ function SimulatePanel({ playbookKey, actions }: { playbookKey: string; actions:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ events: [{ type: eventType, payload: parsePayload() }] }),
       });
+      if (!res.ok) throw new Error("Simulation failed");
       const data = await res.json();
       setFireResult(data.steps?.[0]?.triggered ?? []);
     } catch {
@@ -280,6 +281,7 @@ function SimulatePanel({ playbookKey, actions }: { playbookKey: string; actions:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ events: queue }),
       });
+      if (!res.ok) throw new Error("Simulation failed");
       const data = await res.json();
       setSeqResults(data.steps ?? []);
     } catch {

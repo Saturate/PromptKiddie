@@ -782,7 +782,9 @@ export async function startStandby(opts: StandbyOpts = {}) {
           await stopSupervisorFor(engId);
         }
       }
-    } catch {}
+    } catch (err) {
+      console.error(`[supervisor] standby event handler failed for ${engId}:`, err instanceof Error ? err.message : err);
+    }
   });
 
   const shutdown = async () => {
