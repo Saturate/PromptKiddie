@@ -5,44 +5,25 @@ import pg from "pg";
 import { resolveKey, hasKeys } from "./middleware/auth.js";
 
 /**
- * Bridge Cartridge terminal output into a WebSocket.
- * Runs server-side: reads from `docker exec <container> curl .../output?offset=N`
- * and pushes chunks to the connected WS client.
+ * Bridge Cartridge's native WS into the PK WS.
+ * Connects to ws://<container-ip>:4500/api/agents/{id}/ws inside
+ * the Docker network and forwards terminal output to the SPA client.
  */
-function bridgeCartridgeOutput(containerName: string, ws: WebSocket) {
-  let offset = 0;
+function bridgeCartridgeWs(containerName: string, clientWs: WebSocket) {
   let stopped = false;
-  let agentId: string | null = null;
+  let cartridgeWs: WebSocket | null = null;
 
-  ws.on("close", () => { stopped = true; });
+  clientWs.on("close", () => {
+    stopped = true;
+    cartridgeWs?.close();
+  });
 
-  async function fetchOnce(): Promise<boolean> {
-    if (stopped || ws.readyState !== WebSocket.OPEN) return false;
-    try {
-      if (!agentId) {
-        const agentsJson = await execAsync("docker", [
-          "exec", containerName, "curl", "-sf", "http://localhost:4500/api/agents",
-        ]);
-        const agents = JSON.parse(agentsJson) as { agents: Array<{ id: string; status: string }> };
-        const agent = agents.agents[0];
-        if (!agent) return true; // no agent yet, retry
-        agentId = agent.id;
-      }
-
-      const outputJson = await execAsync("docker", [
-        "exec", containerName, "curl", "-sf",
-        `http://localhost:4500/api/agents/${agentId}/output?offset=${offset}`,
-      ]);
-      const output = JSON.parse(outputJson) as { data: string; next_offset: number; total_bytes: number };
-      if (output.data && output.data.length > 0) {
-        ws.send(output.data);
-        offset = output.next_offset;
-      }
-      return true;
-    } catch {
-      return true; // container might still be starting
+  // Forward input from SPA to Cartridge (bidirectional)
+  clientWs.on("message", (data) => {
+    if (cartridgeWs?.readyState === WebSocket.OPEN) {
+      cartridgeWs.send(data);
     }
-  }
+  });
 
   function execAsync(cmd: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -52,13 +33,82 @@ function bridgeCartridgeOutput(containerName: string, ws: WebSocket) {
     });
   }
 
-  // Stream loop: fetch every 500ms
   (async () => {
-    // Wait briefly for Cartridge to start
-    await new Promise(r => setTimeout(r, 2000));
+    // Wait for Cartridge to start and find the agent ID
+    for (let attempt = 0; attempt < 30 && !stopped; attempt++) {
+      try {
+        const agentsJson = await execAsync("docker", [
+          "exec", containerName, "curl", "-sf", "http://localhost:4500/api/agents",
+        ]);
+        const agents = JSON.parse(agentsJson) as { agents: Array<{ id: string }> };
+        const agent = agents.agents[0];
+        if (agent) {
+          // Get the container's IP on the Docker network
+          let cartridgeHost = "localhost";
+          try {
+            const ipResult = await execAsync("docker", [
+              "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", containerName,
+            ]);
+            const ip = ipResult.trim();
+            if (ip) cartridgeHost = ip;
+          } catch {}
+
+          // Connect to Cartridge's native WS
+          const wsUrl = `ws://${cartridgeHost}:4500/api/agents/${agent.id}/ws`;
+          cartridgeWs = new WebSocket(wsUrl);
+
+          cartridgeWs.on("message", (data) => {
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(data);
+            }
+          });
+
+          cartridgeWs.on("close", () => {
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.close();
+            }
+          });
+
+          cartridgeWs.on("error", () => {
+            // Fallback: if WS fails, try the polling approach
+            cartridgeWs = null;
+            pollFallback(containerName, agent.id, clientWs);
+          });
+
+          return;
+        }
+      } catch {}
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  })();
+}
+
+function pollFallback(containerName: string, agentId: string, ws: WebSocket) {
+  let offset = 0;
+  let stopped = false;
+  ws.on("close", () => { stopped = true; });
+
+  function execAsync(cmd: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      execFile(cmd, args, { timeout: 5000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+        if (err) reject(err); else resolve(stdout ?? "");
+      });
+    });
+  }
+
+  (async () => {
     while (!stopped && ws.readyState === WebSocket.OPEN) {
-      const ok = await fetchOnce();
-      if (!ok) break;
+      try {
+        const json = await execAsync("docker", [
+          "exec", containerName, "curl", "-sf",
+          `http://localhost:4500/api/agents/${agentId}/output?offset=${offset}`,
+        ]);
+        const output = JSON.parse(json) as { data: string; next_offset: number };
+        if (output.data?.length > 0) {
+          ws.send(output.data);
+          offset = output.next_offset;
+        }
+      } catch {}
       await new Promise(r => setTimeout(r, 500));
     }
   })();
@@ -181,10 +231,10 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
     const resolvedId = ptyAliases.get(rawId) ?? rawId;
     const subscribeIds = new Set([agentId, resolvedId]);
 
-    // If this is a container name, bridge Cartridge output into the WS
+    // If this is a Cartridge container, bridge its native WS
     const isContainer = rawId.startsWith("pk-orch-") || rawId.startsWith("pk-agent-");
     if (isContainer) {
-      bridgeCartridgeOutput(rawId, ws);
+      bridgeCartridgeWs(rawId, ws);
     }
 
     if (!hasKeys()) {
