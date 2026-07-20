@@ -308,6 +308,112 @@ export async function startSupervisor(opts: SupervisorOpts) {
     console.error(`[supervisor] worker spawn failed: ${err instanceof Error ? err.message : err}`);
   }
 
+  // Spawn persistent orchestrator container (LLM sidekick)
+  let orchContainer: string | null = null;
+  const orchName = `pk-orch-${slug}`;
+
+  try {
+    const existing = await new Promise<string>((resolve, reject) => {
+      execFile("docker", ["ps", "-aq", "--filter", `name=^/${orchName}$`], { timeout: 5000 },
+        (err, stdout) => err ? reject(err) : resolve((stdout ?? "").trim()));
+    });
+
+    if (existing) {
+      await new Promise<void>((resolve) => {
+        execFile("docker", ["start", orchName], { timeout: 10000 }, () => resolve());
+      });
+      orchContainer = orchName;
+      console.log(`[supervisor] orchestrator reused: ${orchName}`);
+    } else {
+      const orchImage = playbook.meta?.image ?? DEFAULT_IMAGE;
+      const orchDockerArgs = [
+        "run", "-d",
+        "--name", orchName,
+        "-e", `TARGET=${primaryTarget}`,
+        "-e", `TARGETS=${targets.filter(t => t.inScope).map(t => t.identifier).join(",")}`,
+        "-e", `ENGAGEMENT_ID=${opts.engagementId}`,
+        "-e", `ENGAGEMENT_SLUG=${engagement.slug}`,
+        "-e", `PK_API_URL=${API_URL}`,
+        "-e", `PK_API_KEY=${API_KEY}`,
+        "-e", "PK_ROLE=orchestrator",
+      ];
+
+      // Docker network
+      const networkName = playbook.meta?.network ?? "pk-network";
+      try {
+        await new Promise<void>((resolve, reject) => {
+          execFile("docker", ["network", "inspect", networkName], { timeout: 3000 },
+            (err) => err ? reject(err) : resolve());
+        });
+        orchDockerArgs.push("--network", networkName);
+      } catch {}
+
+      // Forward auth tokens
+      for (const key of ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) {
+        if (process.env[key]) orchDockerArgs.push("-e", `${key}=${process.env[key]}`);
+      }
+
+      // Harness selection
+      const harness = process.env.PK_HARNESS ?? "claude";
+      orchDockerArgs.push("-e", `PK_HARNESS=${harness}`);
+      if (process.env.PK_MODEL) orchDockerArgs.push("-e", `PK_MODEL=${process.env.PK_MODEL}`);
+
+      // /etc/hosts for target hostnames
+      const SAFE_HOST_ORCH = /^[a-zA-Z0-9.-]+$/;
+      for (const t of targets.filter(t => t.inScope)) {
+        if (t.notes && SAFE_HOST_ORCH.test(t.notes)) {
+          orchDockerArgs.push("--add-host", `${t.notes}:${t.identifier}`);
+        }
+      }
+
+      orchDockerArgs.push(orchImage);
+
+      await new Promise<void>((resolve, reject) => {
+        execFile("docker", orchDockerArgs, { timeout: 60000 }, (err, _stdout, stderr) => {
+          if (err) { reject(new Error(stderr || err.message)); return; }
+          resolve();
+        });
+      });
+      orchContainer = orchName;
+      console.log(`[supervisor] orchestrator started: ${orchName}`);
+
+      // Wait for Cartridge API, then start the orchestrator agent
+      try {
+        await waitForCartridge(orchName);
+        const orchProvider = process.env.PK_HARNESS ?? "claude";
+        const orchModel = (playbook.meta as Record<string, unknown>)?.orchestratorModel as string | undefined
+          ?? process.env.PK_MODEL
+          ?? undefined;
+
+        const context = await repo.getDiscoverySummary(opts.engagementId) as Record<string, unknown>;
+        const orchPrompt = [
+          `You are the orchestrator for "${engagement.name}" (${engagement.type}).`,
+          `Target: ${primaryTarget}. Phase: ${currentPhase}.`,
+          context ? `\nEngagement state:\n${JSON.stringify(context, null, 2).slice(0, 2000)}` : "",
+          "\nWatch for events. Intervene when progress stalls. Read CLAUDE.md for full instructions.",
+        ].join("\n");
+
+        const orchAgentId = await startCartridgeAgent(orchName, orchPrompt, orchProvider, orchModel);
+        console.log(`[supervisor] orchestrator agent: ${orchName} (${orchAgentId})`);
+
+        // Register PTY alias
+        try {
+          await new Promise<void>((res, rej) => {
+            execFile("curl", ["-sf", "-X", "POST",
+              `${API_URL}/api/agents/${orchAgentId}/alias`,
+              "-H", "Content-Type: application/json",
+              "-d", JSON.stringify({ container: orchName, action: "orchestrator", image: orchImage, engagementId: opts.engagementId }),
+            ], { timeout: 5000 }, (err) => err ? rej(err) : res());
+          });
+        } catch {}
+      } catch (err) {
+        console.error(`[supervisor] orchestrator agent failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  } catch (err) {
+    console.error(`[supervisor] orchestrator spawn failed: ${err instanceof Error ? err.message : err}`);
+  }
+
   function resetStallTimer() {
     if (stallTimer) clearTimeout(stallTimer);
     stallTimer = setTimeout(() => {
@@ -592,6 +698,9 @@ export async function startSupervisor(opts: SupervisorOpts) {
     eventStream.close();
     if (workerContainer) {
       execFile("docker", ["stop", workerContainer], { timeout: 10000 }, () => {});
+    }
+    if (orchContainer) {
+      execFile("docker", ["stop", orchContainer], { timeout: 10000 }, () => {});
     }
   };
 

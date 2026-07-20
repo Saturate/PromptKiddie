@@ -366,6 +366,8 @@ export interface PlaybookMeta {
   mode?: "race" | "standard" | "methodical" | "learning";
   /** Docker network to attach containers to. Default: "pk-network". */
   network?: string;
+  /** Model for the orchestrator LLM. Default: global PK_MODEL or provider default. */
+  orchestratorModel?: string;
 }
 
 /** A playbook is a named collection of actions with optional runtime metadata. */
