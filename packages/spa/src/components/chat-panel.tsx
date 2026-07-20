@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { Terminal as TerminalIcon, X } from "lucide-react";
 
@@ -149,10 +149,18 @@ interface DockerContainer {
   engagementId?: string;
 }
 
-function ContainerButton({ container, onSelect }: { container: DockerContainer; onSelect: (name: string) => void }) {
+function ContainerButton({ container, onSelect, onKill }: { container: DockerContainer; onSelect: (name: string) => void; onKill?: (name: string) => void }) {
   const isUp = container.status.startsWith("Up");
   const label = container.displayName ?? container.name.replace(/^pk-(agent|worker)-/, "").replace(/-[a-z0-9]{6}$/, "");
   const shortId = container.name.split("-").pop() ?? "";
+
+  const handleKill = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm(`Stop and remove ${container.name}?`)) {
+      onKill?.(container.name);
+    }
+  };
+
   return (
     <button
       onClick={() => onSelect(container.name)}
@@ -164,6 +172,15 @@ function ContainerButton({ container, onSelect }: { container: DockerContainer; 
         <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isUp ? "bg-pk-amber animate-pulse" : "bg-zinc-500"}`} />
         <span className={`font-mono text-xs truncate ${isUp ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
         <span className="font-mono text-[9px] text-muted-foreground/30 ml-auto shrink-0">{shortId}</span>
+        {isUp && onKill && (
+          <span
+            onClick={handleKill}
+            className="text-muted-foreground/30 hover:text-destructive transition-colors p-0.5 shrink-0"
+            title="Stop container"
+          >
+            <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </span>
+        )}
       </div>
       <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
         {container.name.startsWith("pk-worker-") ? "worker" : "agent"} &middot; {container.status}
@@ -173,6 +190,7 @@ function ContainerButton({ container, onSelect }: { container: DockerContainer; 
 }
 
 function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
+  const queryClient = useQueryClient();
   const { data: status } = useQuery({
     queryKey: ["system-status"],
     queryFn: () => fetch("/api/status").then(r => r.json()),
@@ -180,6 +198,13 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
   });
   const [showOthers, setShowOthers] = useState(false);
   const currentEngId = useActiveEngagementId();
+
+  const handleKill = useCallback(async (name: string) => {
+    try {
+      await fetch(`/api/agents/${encodeURIComponent(name)}/container`, { method: "DELETE" });
+      queryClient.invalidateQueries({ queryKey: ["system-status"] });
+    } catch {}
+  }, [queryClient]);
 
   // Fetch current engagement to get its slug for container name matching
   const { data: currentEng } = useQuery({
@@ -222,7 +247,7 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
             {currentEngName}
           </div>
           <div className="space-y-1">
-            {currentContainers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} />)}
+            {currentContainers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} onKill={handleKill} />)}
             {currentRunning.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
             {currentRecent.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
           </div>
@@ -277,7 +302,7 @@ function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
             {hasCurrentContent ? "Other containers" : "Containers"} ({otherContainers.length})
           </div>
           <div className="space-y-1">
-            {otherContainers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} />)}
+            {otherContainers.map(c => <ContainerButton key={c.name} container={c} onSelect={onSelect} onKill={handleKill} />)}
           </div>
         </div>
       )}

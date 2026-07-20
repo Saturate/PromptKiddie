@@ -30,7 +30,7 @@ api.use("/*", authMiddleware(config.api.secret ?? undefined));
 
 api.get("/agents/:name/logs", async (c) => {
   const name = c.req.param("name");
-  if (!name.startsWith("pk-agent-")) return c.json({ error: "invalid container" }, 400);
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-")) return c.json({ error: "invalid container" }, 400);
   try {
     const { execFile: ef } = await import("node:child_process");
     const { promisify } = await import("node:util");
@@ -39,6 +39,22 @@ api.get("/agents/:name/logs", async (c) => {
     return c.text(stdout);
   } catch {
     return c.text("No logs available", 404);
+  }
+});
+
+api.delete("/agents/:name/container", async (c) => {
+  const name = c.req.param("name");
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-")) {
+    return c.json({ error: "invalid container name" }, 400);
+  }
+  try {
+    const { execFile: ef } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execAsync = promisify(ef);
+    await execAsync("docker", ["rm", "-f", name], { timeout: 10000 });
+    return c.json({ ok: true, removed: name });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 
