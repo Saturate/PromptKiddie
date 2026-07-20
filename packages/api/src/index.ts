@@ -28,6 +28,20 @@ const root = new Hono();
 const api = createApp();
 api.use("/*", authMiddleware(config.api.secret ?? undefined));
 
+api.get("/agents/:name/logs", async (c) => {
+  const name = c.req.param("name");
+  if (!name.startsWith("pk-agent-")) return c.json({ error: "invalid container" }, 400);
+  try {
+    const { execFile: ef } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execAsync = promisify(ef);
+    const { stdout } = await execAsync("docker", ["logs", "--tail", "200", name], { timeout: 5000 });
+    return c.text(stdout);
+  } catch {
+    return c.text("No logs available", 404);
+  }
+});
+
 api.post("/agents/:id/alias", async (c) => {
   const body = await c.req.json();
   const { container, action, image, engagementId } = body;

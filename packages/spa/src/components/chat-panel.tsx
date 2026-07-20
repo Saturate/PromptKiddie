@@ -52,20 +52,45 @@ function AgentTerminal({ agentId, onBack }: { agentId: string; onBack: () => voi
       term.open(containerRef.current);
       fit.fit();
 
-      term.writeln(`\x1b[33m[pk]\x1b[0m Connecting to agent ${agentId.slice(0, 8)}...`);
+      const shortId = agentId.split("-").pop() ?? agentId.slice(0, 8);
+      term.writeln(`\x1b[33m[pk]\x1b[0m Connecting to ${shortId}...`);
 
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${proto}//${window.location.host}/ws/pty?agentId=${agentId}`;
       let ws: WebSocket | null = null;
+      let gotData = false;
+
+      async function loadLogs() {
+        term.writeln("\x1b[90m[pk] Loading container logs...\x1b[0m");
+        try {
+          const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/logs`);
+          if (res.ok) {
+            const text = await res.text();
+            if (text && text !== "No logs available") {
+              term.writeln("\x1b[90m--- container logs ---\x1b[0m");
+              for (const line of text.split("\n")) term.writeln(line);
+              term.writeln("\x1b[90m--- end logs ---\x1b[0m");
+            } else {
+              term.writeln("\x1b[90m[pk] No logs available.\x1b[0m");
+            }
+          }
+        } catch {}
+      }
 
       try {
         ws = new WebSocket(wsUrl);
-        ws.onopen = () => term.writeln("\x1b[32m[pk]\x1b[0m Connected.");
-        ws.onmessage = (e) => term.write(e.data);
-        ws.onclose = () => term.writeln("\n\x1b[33m[pk]\x1b[0m Session ended.");
-        ws.onerror = () => term.writeln("\x1b[31m[pk]\x1b[0m Connection failed.");
+        ws.onopen = () => term.writeln("\x1b[32m[pk]\x1b[0m Connected. Waiting for output...");
+        ws.onmessage = (e) => { gotData = true; term.write(e.data); };
+        ws.onclose = () => {
+          if (!gotData) loadLogs();
+          else term.writeln("\n\x1b[33m[pk]\x1b[0m Session ended.");
+        };
+        ws.onerror = () => {
+          term.writeln("\x1b[33m[pk]\x1b[0m Live stream unavailable.");
+          loadLogs();
+        };
       } catch {
-        term.writeln("\x1b[31m[pk]\x1b[0m WebSocket connection failed.");
+        loadLogs();
       }
 
       const obs = new ResizeObserver(() => fit.fit());
