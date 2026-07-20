@@ -61,10 +61,6 @@ export interface Repo {
   addAgentLog(input: { engagementId: string; agent: string; phase: string; message: string; category?: string }): Promise<unknown>;
   listAgentLog(engagementId: string): Promise<unknown[]>;
 
-  sendMessage(input: { body: string; engagementId?: string; direction?: string; author?: string }): Promise<unknown>;
-  listMessages(engagementId: string): Promise<unknown[]>;
-  pollInbox(engagementId?: string): Promise<unknown[]>;
-
   emitEvent(engagementId: string, type: string, payload: Record<string, unknown>, source: string): Promise<unknown>;
   listEvents(engagementId: string, opts?: { type?: string }): Promise<unknown[]>;
   addDiscovery(input: { engagementId: string; type: string; category: string; summary: string; detail?: Record<string, unknown>; sourceEventId?: string; parentId?: string }): Promise<unknown>;
@@ -121,9 +117,6 @@ function createLocalRepo(): Repo {
     finishAgentRun: async (i) => (await r).finishAgentRun(i as Parameters<Awaited<typeof r>["finishAgentRun"]>[0]),
     addAgentLog: async (i) => (await r).addAgentLog(i as Parameters<Awaited<typeof r>["addAgentLog"]>[0]),
     listAgentLog: async (eid) => (await r).listAgentLog(eid),
-    sendMessage: async (i) => (await r).sendMessage(i as Parameters<Awaited<typeof r>["sendMessage"]>[0]),
-    listMessages: async (eid) => (await r).listMessages(eid),
-    pollInbox: async (eid) => (await r).pollInbox(eid),
     emitEvent: async (eid, type, payload, source) => (await r).emitEvent(eid, type, payload, source),
     listEvents: async (eid, opts) => (await r).listEvents(eid, opts),
     addDiscovery: async (i) => (await r).addDiscovery(i as Parameters<Awaited<typeof r>["addDiscovery"]>[0]),
@@ -210,9 +203,6 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     finishAgentRun: (i) => put(`/agent-runs/${i.runId}/finish`, i),
     addAgentLog: (i) => post(`/engagements/${i.engagementId}/agent-log`, i),
     listAgentLog: (eid) => get<unknown[]>(`/engagements/${eid}/agent-log`),
-    sendMessage: (i) => post("/messages", i),
-    listMessages: (eid) => get<unknown[]>(`/messages?engagementId=${eid}`),
-    pollInbox: (eid) => get<unknown[]>(`/messages/poll${eid ? `?engagementId=${eid}` : ""}`),
     emitEvent: (eid, type, payload, source) => post(`/engagements/${eid}/events`, { type, payload, source }),
     listEvents: (eid, opts) => get<unknown[]>(`/engagements/${eid}/events${opts?.type ? `?type=${opts.type}` : ""}`),
     addDiscovery: (i) => post(`/engagements/${i.engagementId}/discoveries`, i),

@@ -8,7 +8,6 @@ import artifacts from "./routes/artifacts.js";
 import evidence from "./routes/evidence.js";
 import activity from "./routes/activity.js";
 import agents from "./routes/agents.js";
-import messages from "./routes/messages.js";
 import services from "./routes/services.js";
 import ports from "./routes/ports.js";
 import webshells from "./routes/webshells.js";
@@ -31,7 +30,6 @@ export function createApp() {
   app.route("/", evidence);
   app.route("/", activity);
   app.route("/", agents);
-  app.route("/", messages);
   app.route("/", services);
   app.route("/", ports);
   app.route("/", webshells);

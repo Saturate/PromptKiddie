@@ -359,34 +359,6 @@ server.tool(
   async (input) => json(await repo.finishAgentRun(input)),
 );
 
-// --- Inbox -----------------------------------------------------------------
-
-server.tool(
-  "list_messages",
-  "List all messages for an engagement (full conversation history)",
-  { engagementId: z.string().uuid() },
-  async ({ engagementId }) => json(await repo.listMessages(engagementId)),
-);
-
-server.tool(
-  "poll_inbox",
-  "Fetch new inbound messages and mark them read",
-  { engagementId: z.string().uuid().optional() },
-  async ({ engagementId }) => json(await repo.pollInbox(engagementId)),
-);
-
-server.tool(
-  "send_message",
-  "Send a message to the inbox",
-  {
-    body: z.string(),
-    engagementId: z.string().uuid().optional(),
-    direction: z.enum(["inbound", "outbound"]).optional(),
-    author: z.string().optional(),
-  },
-  async (input) => json(await repo.sendMessage(input)),
-);
-
 // --- Context payload ---------------------------------------------------------
 
 server.tool(

@@ -122,6 +122,3 @@ export const searchKnowledge = (q: string, opts?: { limit?: number; source?: str
 export const fetchSettings = () => get<Record<string, unknown>>("/settings");
 export const updateSettings = (settings: Record<string, unknown>) => put("/settings", settings);
 
-// Messages
-export const fetchMessages = (eid: string) => get<unknown[]>(`/messages?engagementId=${eid}`);
-export const sendMessage = (input: Record<string, unknown>) => post("/messages", input);
