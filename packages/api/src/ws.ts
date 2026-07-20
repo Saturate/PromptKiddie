@@ -14,7 +14,7 @@ const clients = new Set<WsClient>();
 export function getWsClientCount(): number { return clients.size; }
 
 export function setupWebSocket(server: Server, databaseUrl: string) {
-  const wss = new WebSocketServer({ server, path: "/ws/events" });
+  const wss = new WebSocketServer({ server, path: "/ws/events", perMessageDeflate: false });
 
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url ?? "/", "http://localhost");

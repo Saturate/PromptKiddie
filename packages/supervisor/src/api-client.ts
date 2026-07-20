@@ -68,13 +68,77 @@ export function connectEventStream(
   engagementId: string,
   onEvent: (event: { id?: string; type: string; payload: Record<string, unknown> }) => void,
 ): { close: () => void } {
+  const dbUrl = process.env.DATABASE_URL;
+
+  // In-process mode: listen to Postgres directly (avoids WS self-connection issues)
+  if (dbUrl) {
+    return connectViaPg(dbUrl, engagementId, onEvent);
+  }
+
+  // Remote mode: connect via WebSocket to the API
+  return connectViaWs(engagementId, onEvent);
+}
+
+function connectViaPg(
+  dbUrl: string,
+  engagementId: string,
+  onEvent: (event: { id?: string; type: string; payload: Record<string, unknown> }) => void,
+): { close: () => void } {
+  let closed = false;
+
+  (async () => {
+    const pg = await import("pg");
+    const client = new pg.default.Client(dbUrl);
+    await client.connect();
+    await client.query("LISTEN pk_events");
+    console.log("[event-stream] listening via Postgres NOTIFY");
+
+    client.on("notification", (msg) => {
+      if (msg.channel !== "pk_events" || !msg.payload) return;
+      try {
+        const event = JSON.parse(msg.payload) as { engagementId?: string; type: string; payload: Record<string, unknown> };
+        if (engagementId && event.engagementId !== engagementId) return;
+        onEvent(event);
+      } catch {}
+    });
+
+    client.on("error", (err) => {
+      if (closed) return;
+      console.error("[event-stream] pg error:", err.message);
+    });
+
+    client.on("end", () => {
+      if (closed) return;
+      console.log("[event-stream] pg disconnected, reconnecting...");
+      setTimeout(() => { if (!closed) connectViaPg(dbUrl, engagementId, onEvent); }, 2000);
+    });
+
+    // Store client reference for cleanup
+    (connectViaPg as unknown as { _client?: typeof client })._client = client;
+  })().catch((err) => {
+    console.error("[event-stream] pg connect failed:", (err as Error).message);
+  });
+
+  return {
+    close() {
+      closed = true;
+      const c = (connectViaPg as unknown as { _client?: { end: () => Promise<void> } })._client;
+      c?.end().catch(() => {});
+    },
+  };
+}
+
+function connectViaWs(
+  engagementId: string,
+  onEvent: (event: { id?: string; type: string; payload: Record<string, unknown> }) => void,
+): { close: () => void } {
   const wsUrl = API_URL.replace(/^http/, "ws") + `/ws/events?engagementId=${engagementId}`;
   let ws: WebSocket | null = null;
   let closed = false;
 
   function connect() {
     if (closed) return;
-    ws = new WebSocket(wsUrl);
+    ws = new WebSocket(wsUrl, [], { perMessageDeflate: false });
 
     ws.on("open", () => {
       console.log("[event-stream] connected to API WebSocket");

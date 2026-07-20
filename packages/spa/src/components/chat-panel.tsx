@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
 import { Terminal as TerminalIcon, X } from "lucide-react";
+
+function useActiveEngagementId(): string | null {
+  const location = useLocation();
+  const match = location.pathname.match(/^\/engagements\/([^/]+)/);
+  return match ? match[1] : null;
+}
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -84,63 +91,106 @@ function AgentTerminal({ agentId, onBack }: { agentId: string; onBack: () => voi
   );
 }
 
+function AgentButton({ agent, onSelect }: { agent: AgentRun; onSelect: (id: string) => void }) {
+  const isRunning = agent.status === "running";
+  return (
+    <button
+      onClick={() => onSelect(agent.id)}
+      className={`w-full text-left px-2.5 py-2 rounded-md transition-colors ${
+        isRunning
+          ? "border border-border hover:border-pk-amber/30 hover:bg-accent/50"
+          : "hover:bg-accent/50"
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+          isRunning ? "bg-pk-amber animate-pulse" : agent.status === "ok" ? "bg-emerald-400" : "bg-red-400"
+        }`} />
+        <span className={`font-mono text-xs truncate ${isRunning ? "text-foreground" : "text-muted-foreground"}`}>{agent.agent}</span>
+      </div>
+      <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
+        {agent.engagementName ?? agent.engagementId.slice(0, 8)} &middot; {agent.phase}
+      </div>
+    </button>
+  );
+}
+
 function AgentList({ onSelect }: { onSelect: (id: string) => void }) {
   const { data: status } = useQuery({
     queryKey: ["system-status"],
     queryFn: () => fetch("/api/status").then(r => r.json()),
     refetchInterval: 10_000,
   });
+  const [showOthers, setShowOthers] = useState(false);
+  const currentEngId = useActiveEngagementId();
 
   const agents: AgentRun[] = status?.agents?.runs ?? [];
-  const running = agents.filter(a => a.status === "running");
-  const recent = agents.filter(a => a.status !== "running").slice(0, 5);
   const isHostMode = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+  const currentAgents = currentEngId ? agents.filter(a => a.engagementId === currentEngId) : [];
+  const otherAgents = currentEngId ? agents.filter(a => a.engagementId !== currentEngId) : agents;
+
+  const currentRunning = currentAgents.filter(a => a.status === "running");
+  const currentRecent = currentAgents.filter(a => a.status !== "running").slice(0, 3);
+  const otherRunning = otherAgents.filter(a => a.status === "running");
+  const otherRecent = otherAgents.filter(a => a.status !== "running").slice(0, 5);
+
+  const currentEngName = currentAgents[0]?.engagementName
+    ?? agents.find(a => a.engagementId === currentEngId)?.engagementName;
 
   return (
     <div className="flex-1 overflow-y-auto">
-      {running.length > 0 && (
+      {/* Current engagement agents (when on an engagement page) */}
+      {currentEngId && (currentRunning.length > 0 || currentRecent.length > 0) && (
         <div className="p-3">
-          <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">Running</div>
+          <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">
+            {currentEngName ?? "Current Engagement"}
+          </div>
           <div className="space-y-1">
-            {running.map(a => (
-              <button
-                key={a.id}
-                onClick={() => onSelect(a.id)}
-                className="w-full text-left px-2.5 py-2 rounded-md border border-border hover:border-pk-amber/30 hover:bg-accent/50 transition-colors"
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-pk-amber animate-pulse shrink-0" />
-                  <span className="font-mono text-xs text-foreground truncate">{a.agent}</span>
-                </div>
-                <div className="font-mono text-[10px] text-muted-foreground mt-0.5 pl-3">
-                  {a.engagementName ?? a.engagementId.slice(0, 8)} &middot; {a.phase}
-                </div>
-              </button>
-            ))}
+            {currentRunning.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
+            {currentRecent.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
           </div>
         </div>
       )}
 
-      {recent.length > 0 && (
+      {/* Other agents (collapsible when current engagement has agents) */}
+      {(otherRunning.length > 0 || otherRecent.length > 0) && (
         <div className="p-3">
-          <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">Recent</div>
-          <div className="space-y-1">
-            {recent.map(a => (
+          {currentEngId && currentAgents.length > 0 ? (
+            <>
               <button
-                key={a.id}
-                onClick={() => onSelect(a.id)}
-                className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent/50 transition-colors"
+                onClick={() => setShowOthers(s => !s)}
+                className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 hover:text-muted-foreground transition-colors mb-2"
               >
-                <div className="flex items-center gap-1.5">
-                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${a.status === "ok" ? "bg-emerald-400" : "bg-red-400"}`} />
-                  <span className="font-mono text-xs text-muted-foreground truncate">{a.agent}</span>
-                </div>
-                <div className="font-mono text-[10px] text-muted-foreground/50 mt-0.5 pl-3">
-                  {a.engagementName ?? a.engagementId.slice(0, 8)} &middot; {a.phase}
-                </div>
+                {showOthers ? "Hide" : "Show"} other agents ({otherRunning.length + otherRecent.length})
               </button>
-            ))}
-          </div>
+              {showOthers && (
+                <div className="space-y-1">
+                  {otherRunning.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
+                  {otherRecent.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {otherRunning.length > 0 && (
+                <>
+                  <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">Running</div>
+                  <div className="space-y-1 mb-3">
+                    {otherRunning.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
+                  </div>
+                </>
+              )}
+              {otherRecent.length > 0 && (
+                <>
+                  <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 mb-2">Recent</div>
+                  <div className="space-y-1">
+                    {otherRecent.map(a => <AgentButton key={a.id} agent={a} onSelect={onSelect} />)}
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
 

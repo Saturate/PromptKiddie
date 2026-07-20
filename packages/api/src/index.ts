@@ -5,12 +5,18 @@ import { loadConfig } from "@promptkiddie/core";
 import { createApp } from "./app.js";
 import { initKeys, authMiddleware } from "./middleware/auth.js";
 import { setupWebSocket } from "./ws.js";
+import { setSupervisorState } from "./supervisor-state.js";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Set PK_API_URL before loadConfig() caches it, so the in-process supervisor can reach the API
+const apiPort = process.env.PK_API_PORT ? Number(process.env.PK_API_PORT) : 3200;
+if (!process.env.PK_API_URL) process.env.PK_API_URL = `http://localhost:${apiPort}`;
+
 const config = loadConfig();
 const port = config.api.port;
 const databaseUrl = process.env.DATABASE_URL ?? "";
@@ -52,4 +58,24 @@ const server = serve({ fetch: root.fetch, port }, () => {
 
 if (databaseUrl) {
   wsBroadcast = setupWebSocket(server as unknown as import("node:http").Server, databaseUrl);
+
+  // Start supervisor standby: auto-manages per-engagement supervisors on status change
+  import("@promptkiddie/supervisor").then(({ startStandby }) => {
+    startStandby({})
+      .then((standby) => {
+        console.log(`[supervisor] standby started (${standby.activeCount} active engagement(s))`);
+        const update = () => setSupervisorState({
+          running: true,
+          activeCount: standby.activeCount,
+          activeEngagements: standby.activeEngagements,
+        });
+        update();
+        setInterval(update, 5000);
+      })
+      .catch((err) => {
+        console.error("[supervisor] standby failed:", (err as Error).message ?? err);
+      });
+  }).catch((err) => {
+    console.error("[supervisor] import failed:", (err as Error).message ?? err);
+  });
 }

@@ -5,18 +5,21 @@ import { ConnectionBanner } from "@/components/connection-banner";
 import { ChatPanel } from "@/components/chat-panel";
 import { Sun, Moon, Monitor, Terminal } from "lucide-react";
 
-const NAV_PRIMARY = [
+const NAV_OPERATE = [
   { to: "/", label: "Dashboard" },
   { to: "/engagements", label: "Engagements" },
 ];
 
-const NAV_SECONDARY = [
+const NAV_CONFIGURE = [
   { to: "/playbooks", label: "Playbooks" },
   { to: "/knowledge", label: "Knowledge" },
   { to: "/tools", label: "Tools" },
+  { to: "/settings", label: "Settings" },
+];
+
+const NAV_SYSTEM = [
   { to: "/stats", label: "Stats" },
   { to: "/status", label: "Status" },
-  { to: "/settings", label: "Settings" },
 ];
 
 const THEMES = [
@@ -71,7 +74,7 @@ export function Layout() {
           Operate
         </div>
         <div className="flex flex-col gap-0.5 mb-3">
-          {NAV_PRIMARY.map((item) => (
+          {NAV_OPERATE.map((item) => (
             <NavItem key={item.to} {...item} />
           ))}
         </div>
@@ -81,8 +84,19 @@ export function Layout() {
         <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 px-3 mb-1.5">
           Configure
         </div>
+        <div className="flex flex-col gap-0.5 mb-3">
+          {NAV_CONFIGURE.map((item) => (
+            <NavItem key={item.to} {...item} />
+          ))}
+        </div>
+
+        <div className="border-b border-border/30 mb-3" />
+
+        <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground/50 px-3 mb-1.5">
+          System
+        </div>
         <div className="flex flex-col gap-0.5">
-          {NAV_SECONDARY.map((item) => (
+          {NAV_SYSTEM.map((item) => (
             <NavItem key={item.to} {...item} />
           ))}
         </div>

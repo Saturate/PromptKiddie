@@ -51,6 +51,9 @@ importers:
       '@promptkiddie/core':
         specifier: workspace:*
         version: link:../core
+      '@promptkiddie/supervisor':
+        specifier: workspace:^
+        version: link:../supervisor
       dotenv:
         specifier: ^16
         version: 16.6.1
