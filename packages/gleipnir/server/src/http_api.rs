@@ -149,8 +149,11 @@ async fn exec(
 
 #[derive(Deserialize)]
 struct UploadRequest {
-    src_path: String,
+    #[serde(default)]
+    src_path: Option<String>,
     dst_path: String,
+    #[serde(default)]
+    data_b64: Option<String>,
 }
 
 async fn upload(
@@ -158,7 +161,6 @@ async fn upload(
     Path(name): Path<String>,
     Json(body): Json<UploadRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
-    // Raw sessions don't support file transfer
     if let Some(info) = state.manager.get_session(&name).await {
         if info.mode == "raw" {
             return Err(err(
@@ -168,9 +170,28 @@ async fn upload(
         }
     }
 
-    let data = tokio::fs::read(&body.src_path)
-        .await
-        .map_err(|e| err(StatusCode::BAD_REQUEST, format!("failed to read {}: {e}", body.src_path)))?;
+    let data = if let Some(b64) = &body.data_b64 {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .map_err(|e| err(StatusCode::BAD_REQUEST, format!("invalid base64: {e}")))?
+    } else if let Some(src) = &body.src_path {
+        // Only allow paths under /tmp or /workspace for safety
+        if !src.starts_with("/tmp/") && !src.starts_with("/workspace/") {
+            return Err(err(
+                StatusCode::FORBIDDEN,
+                "src_path restricted to /tmp/ and /workspace/",
+            ));
+        }
+        tokio::fs::read(src)
+            .await
+            .map_err(|e| err(StatusCode::BAD_REQUEST, format!("failed to read {src}: {e}")))?
+    } else {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "provide either data_b64 or src_path",
+        ));
+    };
 
     let size = data.len();
     let start = Instant::now();
@@ -463,6 +484,10 @@ async fn get_agent(
     let Some(ref dir) = state.agent_dir else {
         return Err(err(StatusCode::NOT_FOUND, "no agent directory configured"));
     };
+
+    if platform.contains("..") || arch.contains("..") || platform.contains('/') || arch.contains('/') {
+        return Err(err(StatusCode::BAD_REQUEST, "invalid platform/arch"));
+    }
 
     let candidates = [
         format!("gleipnir-agent-{platform}-{arch}"),

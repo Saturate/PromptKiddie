@@ -369,12 +369,38 @@ async function gleipnirSocketApi(request: Record<string, unknown>): Promise<Reco
 }
 
 async function gleipnirApi(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+  // Try HTTP API first (v2), fall back to Unix socket (v1)
+  const gleipnirUrl = process.env.PK_GLEIPNIR_URL ?? "http://localhost:6666";
+  const actionMap: Record<string, { method: string; path: string }> = {
+    sessions: { method: "GET", path: "/api/sessions" },
+    session: { method: "GET", path: `/api/sessions/${request.name ?? request.session}` },
+    exec: { method: "POST", path: `/api/sessions/${request.session}/exec` },
+    upload: { method: "POST", path: `/api/sessions/${request.session}/upload` },
+    download: { method: "POST", path: `/api/sessions/${request.session}/download` },
+    socks: { method: "POST", path: "/api/tunnels" },
+    tunnels: { method: "GET", path: "/api/tunnels" },
+  };
+  const action = request.action as string;
+  const mapping = actionMap[action];
+  if (mapping) {
+    try {
+      const res = await fetch(`${gleipnirUrl}${mapping.path}`, {
+        method: mapping.method,
+        headers: { "Content-Type": "application/json" },
+        body: mapping.method === "GET" ? undefined : JSON.stringify(request),
+      });
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) throw new Error((data.error as string) ?? `HTTP ${res.status}`);
+      return { ok: true, data };
+    } catch {
+      // HTTP failed, fall through to socket
+    }
+  }
   try {
     return await gleipnirSocketApi(request);
   } catch {
-    // Socket unavailable; this is expected when running the v2 HTTP API
+    throw new Error("gleipnir not reachable via HTTP API or Unix socket");
   }
-  throw new Error("gleipnir not reachable via Unix socket. Use gleipnir HTTP API tools instead.");
 }
 
 server.tool(

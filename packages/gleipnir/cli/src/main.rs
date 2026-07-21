@@ -102,12 +102,8 @@ async fn main() {
             }
         }
         Commands::Catch { port, mode } => {
-            eprintln!("[*] Starting embedded server on port {port} (mode: {mode})...");
-            eprintln!("[*] Embedded catch mode requires a running gleipnir-server.");
-            eprintln!("[*] Use: gleipnir listen {port} --mode {mode}");
-            eprintln!("[*] Then: gleipnir sessions  (to see when a connection arrives)");
-            // Full embedded mode would require linking the server crate.
-            // For now, create a listener via API and poll for sessions.
+            // Requires a running gleipnir-server. Creates a listener and waits for a connection.
+            // Full embedded mode (built-in server) is a future enhancement.
             let body = serde_json::json!({ "port": port, "mode": mode });
             match c.post("/api/listeners", &body).await {
                 Ok(v) => {
