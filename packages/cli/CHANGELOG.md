@@ -1,13 +1,14 @@
----
-core: minor
-api: minor
-supervisor: minor
-cli: patch
-mcp-server: patch
-web: patch
----
+## 0.1.1 (2026-07-21)
 
-SPA redesign with orchestrator agent and end-to-end supervisor.
+### Features
+
+- unified API architecture (all phases) (#8)
+
+### Fixes
+
+- move engagement hooks behind pk init (#7)
+
+#### SPA redesign with orchestrator agent and end-to-end supervisor.
 
 Removed step-based playbook engine (bt-runtime, playbook-md) and related schema tables. Added `image` and `emits` fields to the action SDK.
 

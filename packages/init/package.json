@@ -1,6 +1,6 @@
 {
   "name": "@promptkiddie/init",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scaffold a PromptKiddie workspace with Docker Compose, env config, and orchestrator instructions.",
   "type": "module",
   "bin": {

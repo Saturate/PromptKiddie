@@ -1,3 +1,15 @@
+## 0.1.2 (2026-07-21)
+
+### Features
+
+- unified API architecture (all phases) (#8)
+
+### Fixes
+
+- format truncate functions to pass cargo fmt (#5)
+- enumerate docker images, fix socket bitmask (#6)
+- move engagement hooks behind pk init (#7)
+
 ## 0.1.1 (2026-07-16)
 
 ### Features

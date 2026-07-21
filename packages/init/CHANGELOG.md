@@ -1,4 +1,4 @@
-## 0.1.2 (2026-07-21)
+## 0.1.1 (2026-07-21)
 
 ### Features
 
@@ -7,9 +7,3 @@
 ### Fixes
 
 - move engagement hooks behind pk init (#7)
-
-## 0.1.1 (2026-07-16)
-
-### Fixes
-
-- graceful host route setup when sudo is unavailable
