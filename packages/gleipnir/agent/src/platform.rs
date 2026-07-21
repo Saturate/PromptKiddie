@@ -1,5 +1,4 @@
 use serde::Serialize;
-use std::path::Path;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PlatformInfo {
@@ -66,10 +65,6 @@ fn rand_id() -> u64 {
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
     pid.wrapping_mul(6364136223846793005) ^ time.wrapping_mul(1442695040888963407) ^ ptr
-}
-
-pub fn session_id_path() -> &'static Path {
-    Path::new(SESSION_ID_FILE)
 }
 
 fn hostname() -> String {

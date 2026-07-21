@@ -15,6 +15,7 @@ pub struct SessionEvent {
     pub data: serde_json::Value,
 }
 
+#[allow(dead_code)]
 impl SessionEvent {
     pub fn new_session(name: &str, mode: &str, target: &str) -> Self {
         Self {
@@ -49,6 +50,7 @@ impl EventBus {
         Self { tx }
     }
 
+    #[allow(dead_code)]
     pub fn emit(&self, event: SessionEvent) {
         let _ = self.tx.send(event);
     }

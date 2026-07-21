@@ -5,6 +5,7 @@ pub struct PersistConfig {
     pub install_path: Option<String>,
     pub process_name: Option<String>,
     pub cron: bool,
+    #[allow(dead_code)]
     pub task_name: String,
     pub registry: bool,
 }
@@ -19,10 +20,10 @@ pub fn install(config: &PersistConfig, callback_args: &[String]) {
             info!("installed to {}", installed.display());
             install_persistence(&installed, callback_args, config);
         }
-    } else if config.cron || config.registry {
-        if let Ok(exe) = std::env::current_exe() {
-            install_persistence(&exe, callback_args, config);
-        }
+    } else if (config.cron || config.registry)
+        && let Ok(exe) = std::env::current_exe()
+    {
+        install_persistence(&exe, callback_args, config);
     }
 }
 

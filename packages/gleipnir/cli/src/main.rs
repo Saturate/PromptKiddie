@@ -114,31 +114,27 @@ async fn main() {
                         if let Ok(sessions) = c.get("/api/sessions").await
                             && let Some(arr) = sessions.as_array()
                         {
-                                let connected: Vec<_> = arr
-                                    .iter()
-                                    .filter(|s| {
-                                        s.get("connected")
-                                            .and_then(|v| v.as_bool())
-                                            .unwrap_or(false)
-                                    })
-                                    .collect();
-                                if !connected.is_empty() {
-                                    eprintln!("[+] Session(s) connected!");
-                                    for s in connected {
-                                        let name =
-                                            s.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-                                        let user = s
-                                            .get("username")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("?");
-                                        let host = s
-                                            .get("hostname")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("?");
-                                        eprintln!("    {name}: {user}@{host}");
-                                    }
-                                    break;
+                            let connected: Vec<_> = arr
+                                .iter()
+                                .filter(|s| {
+                                    s.get("connected")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false)
+                                })
+                                .collect();
+                            if !connected.is_empty() {
+                                eprintln!("[+] Session(s) connected!");
+                                for s in connected {
+                                    let name =
+                                        s.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                                    let user =
+                                        s.get("username").and_then(|v| v.as_str()).unwrap_or("?");
+                                    let host =
+                                        s.get("hostname").and_then(|v| v.as_str()).unwrap_or("?");
+                                    eprintln!("    {name}: {user}@{host}");
                                 }
+                                break;
+                            }
                         }
                     }
                 }

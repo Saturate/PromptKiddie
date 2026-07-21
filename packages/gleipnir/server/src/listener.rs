@@ -329,7 +329,7 @@ async fn accept_loop(
                         #[cfg(feature = "tls")]
                         let boxed: BoxedStream = if let Some(ref tls_cfg) = tls {
                             match tls_cfg.acceptor.accept(stream).await {
-                                Ok(tls_stream) => BoxedStream::Tls(tls_stream),
+                                Ok(tls_stream) => BoxedStream::Tls(Box::new(tls_stream)),
                                 Err(e) => {
                                     warn!("TLS handshake failed for {peer}: {e}");
                                     counter.fetch_sub(1, Ordering::Relaxed);

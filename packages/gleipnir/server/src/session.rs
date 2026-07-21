@@ -18,7 +18,7 @@ use crate::socks::SocksConnection;
 pub enum BoxedStream {
     Tcp(TcpStream),
     #[cfg(feature = "tls")]
-    Tls(tokio_rustls::server::TlsStream<TcpStream>),
+    Tls(Box<tokio_rustls::server::TlsStream<TcpStream>>),
 }
 
 impl AsyncRead for BoxedStream {
@@ -453,7 +453,7 @@ impl SessionManager {
                                             .and_then(|c| c.connect_ack.take())
                                     };
                                     if let Some(tx) = ack_tx {
-                                        let ok = frame.payload_as_str().map_or(false, |s| s == "ok");
+                                        let ok = frame.payload_as_str() == Some("ok");
                                         let _ = tx.send(ok);
                                     }
                                     debug!("socks open ack for {}", frame.request_id);
@@ -557,6 +557,7 @@ impl SessionManager {
             .map_err(|_| "session dropped reply".to_string())?
     }
 
+    #[allow(dead_code)]
     pub async fn send_frame(&self, session: &str, frame: Frame) -> Result<(), String> {
         let tx = self.get_tx(session).await?;
         tx.send(SessionCommand::SendFrame(frame))

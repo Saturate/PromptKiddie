@@ -109,11 +109,13 @@ impl Executor {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn cwd(&self) -> String {
         self.cwd.lock().await.to_string_lossy().to_string()
     }
 }
 
+#[allow(dead_code)]
 pub struct ExecutionResult {
     pub output: Vec<u8>,
     pub exit_code: i32,

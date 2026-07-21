@@ -129,7 +129,7 @@ async fn handle_request(
             timeout,
         } => match manager.exec(&session, &command, timeout).await {
             Ok(output) => {
-                if output.iter().any(|&b| b == 0) || std::str::from_utf8(&output).is_err() {
+                if output.contains(&0) || std::str::from_utf8(&output).is_err() {
                     use base64::Engine;
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&output);
                     ApiResponse::success(

@@ -220,10 +220,10 @@ async fn handle_socks_client(
     }
 
     // Wait for agent's connect ack (5s timeout)
-    let connected = match tokio::time::timeout(std::time::Duration::from_secs(5), ack_rx).await {
-        Ok(Ok(true)) => true,
-        _ => false,
-    };
+    let connected = matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(5), ack_rx).await,
+        Ok(Ok(true))
+    );
 
     if !connected {
         // SOCKS5 connection refused

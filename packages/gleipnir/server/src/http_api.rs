@@ -130,7 +130,7 @@ async fn exec(
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
     match state.manager.exec(&name, &body.command, body.timeout).await {
         Ok(output) => {
-            if output.iter().any(|&b| b == 0) || std::str::from_utf8(&output).is_err() {
+            if output.contains(&0) || std::str::from_utf8(&output).is_err() {
                 use base64::Engine;
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&output);
                 Ok(Json(
@@ -159,13 +159,16 @@ async fn upload(
     Path(name): Path<String>,
     Json(body): Json<UploadRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
-    if let Some(info) = state.manager.get_session(&name).await {
-        if info.mode == "raw" {
-            return Err(err(
-                StatusCode::BAD_REQUEST,
-                "file upload not supported for raw sessions",
-            ));
-        }
+    if state
+        .manager
+        .get_session(&name)
+        .await
+        .is_some_and(|info| info.mode == "raw")
+    {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "file upload not supported for raw sessions",
+        ));
     }
 
     let data = if let Some(b64) = &body.data_b64 {
@@ -223,14 +226,16 @@ async fn download(
     Path(name): Path<String>,
     Json(body): Json<DownloadRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
-    // Raw sessions don't support file transfer
-    if let Some(info) = state.manager.get_session(&name).await {
-        if info.mode == "raw" {
-            return Err(err(
-                StatusCode::BAD_REQUEST,
-                "file download not supported for raw sessions",
-            ));
-        }
+    if state
+        .manager
+        .get_session(&name)
+        .await
+        .is_some_and(|info| info.mode == "raw")
+    {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "file download not supported for raw sessions",
+        ));
     }
 
     match state.manager.download(&name, &body.remote_path).await {

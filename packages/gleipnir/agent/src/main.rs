@@ -1,5 +1,3 @@
-#![allow(dead_code, clippy::collapsible_if)]
-
 mod connect;
 mod executor;
 mod persist;

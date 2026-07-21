@@ -44,12 +44,14 @@ impl FrameType {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Frame {
     pub frame_type: FrameType,
     pub request_id: u32,
     pub payload: BytesMut,
 }
 
+#[allow(dead_code)]
 impl Frame {
     pub fn new(frame_type: FrameType, request_id: u32, payload: impl Into<BytesMut>) -> Self {
         Self {
