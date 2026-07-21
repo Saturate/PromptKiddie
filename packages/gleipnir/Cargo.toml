@@ -1,5 +1,5 @@
 [workspace]
-members = ["relay", "agent"]
+members = ["server", "agent", "cli"]
 resolver = "2"
 
 [workspace.package]

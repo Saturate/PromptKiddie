@@ -62,7 +62,7 @@ services:
     networks:
       - pk-network
 
-  # Gleipnir reverse shell relay
+  # Gleipnir C2 server
   # On macOS/Colima: pk-network routes through VM (VPN works via host routes)
   # On Linux with VPN sidecar: use profile linux-vpn-gleipnir to share VPN network
   gleipnir:
@@ -75,8 +75,14 @@ services:
       - ./engagements:/workspace/engagements
     ports:
       - "4444:4444"
+      - "${PK_GLEIPNIR_API_PORT:-6666}:6666"
     networks:
       - pk-network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:6666/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   # Gleipnir variant that shares VPN sidecar network (Linux only)
   gleipnir-vpn:

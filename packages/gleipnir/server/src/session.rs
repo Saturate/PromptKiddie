@@ -65,7 +65,7 @@ impl AsyncWrite for BoxedStream {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub name: String,
     pub os: String,
@@ -75,7 +75,8 @@ pub struct SessionInfo {
     pub pid: u32,
     pub cwd: String,
     pub connected: bool,
-    #[serde(skip)]
+    pub mode: String,
+    #[serde(skip, default = "Instant::now")]
     pub last_seen: Instant,
 }
 
@@ -109,10 +110,10 @@ pub enum SessionCommand {
     SendFrame(Frame),
 }
 
-struct ActiveSession {
-    info: SessionInfo,
-    cmd_tx: mpsc::Sender<SessionCommand>,
-    socks_connections: Arc<Mutex<HashMap<u32, SocksConnection>>>,
+pub(crate) struct ActiveSession {
+    pub(crate) info: SessionInfo,
+    pub(crate) cmd_tx: mpsc::Sender<SessionCommand>,
+    pub(crate) socks_connections: Arc<Mutex<HashMap<u32, SocksConnection>>>,
 }
 
 pub struct SessionManager {
@@ -126,6 +127,70 @@ impl SessionManager {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             next_id: Arc::new(Mutex::new(1)),
         }
+    }
+
+    pub fn sessions_ref(&self) -> &Arc<Mutex<HashMap<String, ActiveSession>>> {
+        &self.sessions
+    }
+
+    pub async fn handle_raw_connection(
+        &self,
+        mut stream: TcpStream,
+        peer: std::net::SocketAddr,
+        name_prefix: String,
+    ) {
+        info!("new raw TCP connection from {peer}");
+
+        let shell_info = crate::session_raw::probe_and_upgrade(&mut stream).await;
+
+        let base = if name_prefix.is_empty() {
+            shell_info.hostname.to_lowercase()
+        } else {
+            format!("{}-{}", name_prefix, shell_info.hostname).to_lowercase()
+        };
+        let name = self.generate_name_base(&base).await;
+
+        info!(
+            "raw session '{name}' registered: {}@{} (uid={})",
+            shell_info.username, shell_info.hostname, shell_info.uid
+        );
+
+        let (cmd_tx, cmd_rx) = mpsc::channel::<SessionCommand>(32);
+
+        let session_info = SessionInfo {
+            name: name.clone(),
+            os: "unknown".to_string(),
+            arch: "unknown".to_string(),
+            hostname: shell_info.hostname,
+            username: shell_info.username,
+            pid: 0,
+            cwd: String::new(),
+            connected: true,
+            mode: "raw".to_string(),
+            last_seen: Instant::now(),
+        };
+
+        {
+            let mut sessions = self.sessions.lock().await;
+            sessions.insert(
+                name.clone(),
+                ActiveSession {
+                    info: session_info,
+                    cmd_tx,
+                    socks_connections: Arc::new(Mutex::new(HashMap::new())),
+                },
+            );
+        }
+
+        crate::session_raw::raw_session_loop(stream, cmd_rx).await;
+
+        {
+            let mut sessions = self.sessions.lock().await;
+            if let Some(s) = sessions.get_mut(&name) {
+                s.info.connected = false;
+            }
+        }
+        info!("raw session '{name}' disconnected");
     }
 
     pub async fn handle_connection(&self, stream: BoxedStream, peer: std::net::SocketAddr) {
@@ -206,6 +271,7 @@ impl SessionManager {
             pid: platform.pid,
             cwd: platform.cwd,
             connected: true,
+            mode: "agent".to_string(),
             last_seen: Instant::now(),
         };
 
@@ -419,8 +485,12 @@ impl SessionManager {
     }
 
     async fn generate_name(&self, platform: &PlatformInfo) -> String {
+        self.generate_name_base(&platform.hostname).await
+    }
+
+    async fn generate_name_base(&self, hostname: &str) -> String {
         let sessions = self.sessions.lock().await;
-        let base = platform.hostname.to_lowercase();
+        let base = hostname.to_lowercase();
         if !sessions.contains_key(&base) {
             return base;
         }
@@ -513,6 +583,14 @@ impl SessionManager {
     pub async fn get_session(&self, name: &str) -> Option<SessionInfo> {
         let sessions = self.sessions.lock().await;
         sessions.get(name).map(|s| s.info.clone())
+    }
+
+    pub async fn kill_session(&self, name: &str) -> Result<(), String> {
+        let mut sessions = self.sessions.lock().await;
+        match sessions.remove(name) {
+            Some(_) => Ok(()),
+            None => Err(format!("session '{name}' not found")),
+        }
     }
 
     pub async fn get_frame_sender(&self, session: &str) -> Result<mpsc::Sender<Frame>, String> {

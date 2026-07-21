@@ -72,7 +72,7 @@ get_session_name() {
 echo "=== Building gleipnir ==="
 cargo build --release 2>&1 | tail -3
 
-RELAY_BIN="target/release/gleipnir-relay"
+RELAY_BIN="target/release/gleipnir-server"
 AGENT_BIN="target/release/gleipnir-agent"
 
 if [[ ! -x "$RELAY_BIN" ]] || [[ ! -x "$AGENT_BIN" ]]; then

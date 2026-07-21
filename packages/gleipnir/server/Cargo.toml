@@ -1,5 +1,5 @@
 [package]
-name = "gleipnir-relay"
+name = "gleipnir-server"
 version.workspace = true
 edition.workspace = true
 
@@ -19,6 +19,10 @@ futures-util = { version = "0.3", features = ["sink"] }
 tokio-rustls = { version = "0.26", optional = true }
 rustls = { version = "0.23", features = ["ring"], optional = true }
 rustls-pemfile = { version = "2", optional = true }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["cors"] }
+hyper = "1"
+tokio-tungstenite = "0.24"
 
 [dev-dependencies]
 rcgen = "0.13"
