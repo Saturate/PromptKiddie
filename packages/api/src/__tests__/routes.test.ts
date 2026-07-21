@@ -4,12 +4,16 @@ const ENG = { id: "aaa-bbb-ccc", name: "Test Engagement", slug: "test-engagement
 const TGT = { id: "tgt-111", engagementId: "aaa-bbb-ccc", kind: "host", identifier: "10.0.0.1", inScope: true };
 const FND = { id: "fnd-222", engagementId: "aaa-bbb-ccc", title: "SQLi in login", severity: "high", status: "triage" };
 
-vi.mock("@promptkiddie/core", () => {
+vi.mock("@promptkiddie/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@promptkiddie/core")>();
+
   const eng = { id: "aaa-bbb-ccc", name: "Test Engagement", slug: "test-engagement", type: "ctf", status: "active", phase: "recon" };
   const tgt = { id: "tgt-111", engagementId: "aaa-bbb-ccc", kind: "host", identifier: "10.0.0.1", inScope: true };
   const fnd = { id: "fnd-222", engagementId: "aaa-bbb-ccc", title: "SQLi in login", severity: "high", status: "triage" };
 
   return {
+    ...actual,
+
     createEngagement: vi.fn().mockResolvedValue(eng),
     listEngagements: vi.fn().mockResolvedValue([eng]),
     getEngagement: vi.fn().mockImplementation(async (id: string) => id === eng.id ? eng : null),
@@ -47,10 +51,6 @@ vi.mock("@promptkiddie/core", () => {
     finishAgentRun: vi.fn().mockImplementation(async (input: { runId: string }) => input.runId === "run-1" ? { id: "run-1", status: "ok" } : null),
     addAgentLog: vi.fn().mockResolvedValue({ id: "log-1" }),
     listAgentLog: vi.fn().mockResolvedValue([]),
-
-    sendMessage: vi.fn().mockResolvedValue({ id: "msg-1" }),
-    listMessages: vi.fn().mockResolvedValue([]),
-    pollInbox: vi.fn().mockResolvedValue([]),
   };
 });
 

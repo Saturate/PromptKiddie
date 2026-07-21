@@ -5,7 +5,9 @@ import { resolve } from "node:path";
 
 config({ path: resolve(import.meta.dirname, "../../../../.env") });
 
-const skipDb = !process.env.DATABASE_URL;
+import { loadConfig } from "@promptkiddie/core";
+const pkConfig = loadConfig();
+const skipDb = !process.env.DATABASE_URL || !pkConfig.api.url;
 
 import {
   CTF_ACTIONS,
@@ -72,7 +74,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (supervisor) await supervisor.cleanup().catch(() => {});
   if (phaseSupervisor) await phaseSupervisor.cleanup().catch(() => {});
-  // Wait for any in-flight async action handlers to settle
   await new Promise((r) => setTimeout(r, 500));
   if (engagementId) await deleteEngagement(engagementId).catch(() => {});
   if (phaseEngagementId) await deleteEngagement(phaseEngagementId).catch(() => {});
