@@ -143,7 +143,11 @@ async fn handle_request(
             Err(e) => ApiResponse::error(e),
         },
 
-        ApiRequest::Upload { session, src, dst } => match tokio::fs::read(&src).await {
+        ApiRequest::Upload { session, src, dst } => {
+            if manager.get_session(&session).await.is_some_and(|i| i.mode == "raw") {
+                return ApiResponse::error("file upload not supported for raw sessions".to_string());
+            }
+            match tokio::fs::read(&src).await {
             Ok(data) => {
                 let size = data.len();
                 let start = std::time::Instant::now();
@@ -160,7 +164,7 @@ async fn handle_request(
                 }
             }
             Err(e) => ApiResponse::error(format!("failed to read {src}: {e}")),
-        },
+        }},
 
         ApiRequest::Download { session, src, dst } => {
             match manager.download(&session, &src).await {
