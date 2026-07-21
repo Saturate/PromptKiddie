@@ -142,11 +142,7 @@ impl HttpSessionManager {
             .collect()
     }
 
-    pub async fn store_exfil(
-        &self,
-        session_name: &str,
-        _data: &[u8],
-    ) -> Result<(), String> {
+    pub async fn store_exfil(&self, session_name: &str, _data: &[u8]) -> Result<(), String> {
         let sessions = self.sessions.lock().await;
         if sessions.contains_key(session_name) {
             // TODO: store to engagement evidence directory

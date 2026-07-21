@@ -58,10 +58,7 @@ impl EventBus {
     }
 }
 
-pub async fn ws_events(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn ws_events(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_events(socket, state.event_bus.clone()))
 }
 

@@ -469,10 +469,7 @@ async fn test_raw_session() {
     // The probe sends id, hostname, and PTY upgrade attempts with various timeouts.
     tokio::time::sleep(Duration::from_secs(8)).await;
 
-    let _harness = RawTestHarness {
-        relay,
-        mock_handle,
-    };
+    let _harness = RawTestHarness { relay, mock_handle };
 
     // Verify session appeared with mode=raw
     let resp = raw_api_request(r#"{"action":"sessions"}"#).await;
@@ -511,7 +508,10 @@ async fn test_raw_session() {
         "dst": "/tmp/nonexistent"
     });
     let resp = raw_api_request(&req.to_string()).await;
-    assert!(!resp["ok"].as_bool().unwrap(), "upload should fail for raw sessions");
+    assert!(
+        !resp["ok"].as_bool().unwrap(),
+        "upload should fail for raw sessions"
+    );
     assert!(
         resp["error"].as_str().unwrap().contains("not supported"),
         "expected 'not supported' error, got: {}",

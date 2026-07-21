@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -160,10 +160,7 @@ impl ListenerManager {
             .map_err(|e| format!("failed to bind {addr}: {e}"))?;
 
         // Resolve the actual port (matters when port == 0)
-        let actual_port = tcp_listener
-            .local_addr()
-            .map(|a| a.port())
-            .unwrap_or(port);
+        let actual_port = tcp_listener.local_addr().map(|a| a.port()).unwrap_or(port);
 
         let id = format!("lst-{}", short_uuid());
         let connections = Arc::new(AtomicUsize::new(0));
@@ -321,9 +318,7 @@ async fn accept_loop(
                         )
                         .await
                         {
-                            Ok(Ok(n)) if n >= 4 => {
-                                u32::from_be_bytes(peek_buf) == PKRL_MAGIC
-                            }
+                            Ok(Ok(n)) if n >= 4 => u32::from_be_bytes(peek_buf) == PKRL_MAGIC,
                             _ => false,
                         }
                     };
@@ -420,7 +415,10 @@ mod tests {
 
     #[test]
     fn test_listener_mode_from_str() {
-        assert_eq!(ListenerMode::from_str("agent").unwrap(), ListenerMode::Agent);
+        assert_eq!(
+            ListenerMode::from_str("agent").unwrap(),
+            ListenerMode::Agent
+        );
         assert_eq!(ListenerMode::from_str("raw").unwrap(), ListenerMode::Raw);
         assert_eq!(ListenerMode::from_str("http").unwrap(), ListenerMode::Http);
         assert!(ListenerMode::from_str("bogus").is_err());
@@ -502,7 +500,12 @@ mod tests {
 
         // Binding the same port again should fail
         let result = lm
-            .create(info.port, ListenerMode::Agent, "127.0.0.1".into(), "".into())
+            .create(
+                info.port,
+                ListenerMode::Agent,
+                "127.0.0.1".into(),
+                "".into(),
+            )
             .await;
         assert!(result.is_err());
 

@@ -30,12 +30,7 @@ struct ErrorBody {
 }
 
 fn err(status: StatusCode, msg: impl Into<String>) -> (StatusCode, Json<ErrorBody>) {
-    (
-        status,
-        Json(ErrorBody {
-            error: msg.into(),
-        }),
-    )
+    (status, Json(ErrorBody { error: msg.into() }))
 }
 
 pub async fn start(port: u16, state: AppState) {
@@ -43,7 +38,10 @@ pub async fn start(port: u16, state: AppState) {
         .route("/api/health", get(health))
         .route("/api/info", get(info_handler))
         .route("/api/sessions", get(list_sessions))
-        .route("/api/sessions/{name}", get(get_session).delete(kill_session))
+        .route(
+            "/api/sessions/{name}",
+            get(get_session).delete(kill_session),
+        )
         .route("/api/sessions/{name}/exec", post(exec))
         .route("/api/sessions/{name}/upload", post(upload))
         .route("/api/sessions/{name}/download", post(download))
@@ -183,9 +181,12 @@ async fn upload(
                 "src_path restricted to /tmp/ and /workspace/",
             ));
         }
-        tokio::fs::read(src)
-            .await
-            .map_err(|e| err(StatusCode::BAD_REQUEST, format!("failed to read {src}: {e}")))?
+        tokio::fs::read(src).await.map_err(|e| {
+            err(
+                StatusCode::BAD_REQUEST,
+                format!("failed to read {src}: {e}"),
+            )
+        })?
     } else {
         return Err(err(
             StatusCode::BAD_REQUEST,
@@ -341,8 +342,7 @@ async fn create_listener(
     State(state): State<AppState>,
     Json(body): Json<CreateListenerRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
-    let mode = ListenerMode::from_str(&body.mode)
-        .map_err(|e| err(StatusCode::BAD_REQUEST, e))?;
+    let mode = ListenerMode::from_str(&body.mode).map_err(|e| err(StatusCode::BAD_REQUEST, e))?;
 
     match state
         .listener_manager
@@ -392,8 +392,14 @@ async fn c2_checkin(
     Path(session): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let hostname = body.get("hostname").and_then(|v| v.as_str()).unwrap_or("unknown");
-    let username = body.get("username").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let hostname = body
+        .get("hostname")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let username = body
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     (
         StatusCode::OK,
         Json(serde_json::json!({
@@ -406,10 +412,7 @@ async fn c2_checkin(
     )
 }
 
-async fn c2_task(
-    State(_state): State<AppState>,
-    Path(session): Path<String>,
-) -> impl IntoResponse {
+async fn c2_task(State(_state): State<AppState>, Path(session): Path<String>) -> impl IntoResponse {
     // Placeholder: no task queuing yet (needs integration with SessionManager)
     Json(serde_json::json!({
         "session": session,
@@ -485,7 +488,11 @@ async fn get_agent(
         return Err(err(StatusCode::NOT_FOUND, "no agent directory configured"));
     };
 
-    if platform.contains("..") || arch.contains("..") || platform.contains('/') || arch.contains('/') {
+    if platform.contains("..")
+        || arch.contains("..")
+        || platform.contains('/')
+        || arch.contains('/')
+    {
         return Err(err(StatusCode::BAD_REQUEST, "invalid platform/arch"));
     }
 

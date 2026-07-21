@@ -107,7 +107,12 @@ async fn main() {
 
     // Create the default listener on --port
     listener_manager
-        .create(cli.port, ListenerMode::Agent, cli.listen.clone(), String::new())
+        .create(
+            cli.port,
+            ListenerMode::Agent,
+            cli.listen.clone(),
+            String::new(),
+        )
         .await
         .unwrap_or_else(|e| panic!("failed to create default listener: {e}"));
 

@@ -85,12 +85,7 @@ pub async fn probe_and_upgrade(stream: &mut TcpStream) -> RawShellInfo {
     .await;
 
     // Fallback: script(1)
-    let _ = send_and_read(
-        stream,
-        "script -qc /bin/bash /dev/null 2>/dev/null\n",
-        500,
-    )
-    .await;
+    let _ = send_and_read(stream, "script -qc /bin/bash /dev/null 2>/dev/null\n", 500).await;
 
     info
 }
@@ -191,11 +186,7 @@ async fn send_and_read(stream: &mut TcpStream, cmd: &str, timeout_ms: u64) -> Op
         return None;
     }
     let data = read_available(stream, timeout_ms).await;
-    if data.is_empty() {
-        None
-    } else {
-        Some(data)
-    }
+    if data.is_empty() { None } else { Some(data) }
 }
 
 /// Read from the stream until `marker` appears in the accumulated output.
