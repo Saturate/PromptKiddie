@@ -1,3 +1,12 @@
+#![allow(
+    dead_code,
+    clippy::collapsible_if,
+    clippy::manual_contains,
+    clippy::unnecessary_map_or,
+    clippy::match_like_matches_macro,
+    clippy::large_enum_variant
+)]
+
 mod api;
 mod http_api;
 mod listener;

@@ -111,8 +111,9 @@ async fn main() {
                     eprintln!("[*] Waiting for connection... (Ctrl+C to stop)");
                     loop {
                         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        if let Ok(sessions) = c.get("/api/sessions").await {
-                            if let Some(arr) = sessions.as_array() {
+                        if let Ok(sessions) = c.get("/api/sessions").await
+                            && let Some(arr) = sessions.as_array()
+                        {
                                 let connected: Vec<_> = arr
                                     .iter()
                                     .filter(|s| {
@@ -138,7 +139,6 @@ async fn main() {
                                     }
                                     break;
                                 }
-                            }
                         }
                     }
                 }
