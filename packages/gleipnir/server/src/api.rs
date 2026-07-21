@@ -144,27 +144,34 @@ async fn handle_request(
         },
 
         ApiRequest::Upload { session, src, dst } => {
-            if manager.get_session(&session).await.is_some_and(|i| i.mode == "raw") {
-                return ApiResponse::error("file upload not supported for raw sessions".to_string());
+            if manager
+                .get_session(&session)
+                .await
+                .is_some_and(|i| i.mode == "raw")
+            {
+                return ApiResponse::error(
+                    "file upload not supported for raw sessions".to_string(),
+                );
             }
             match tokio::fs::read(&src).await {
-            Ok(data) => {
-                let size = data.len();
-                let start = std::time::Instant::now();
-                match manager.upload(&session, data, &dst).await {
-                    Ok(()) => {
-                        let elapsed_ms = start.elapsed().as_millis();
-                        ApiResponse::success(serde_json::json!({
-                            "uploaded": dst,
-                            "size": size,
-                            "elapsed_ms": elapsed_ms,
-                        }))
+                Ok(data) => {
+                    let size = data.len();
+                    let start = std::time::Instant::now();
+                    match manager.upload(&session, data, &dst).await {
+                        Ok(()) => {
+                            let elapsed_ms = start.elapsed().as_millis();
+                            ApiResponse::success(serde_json::json!({
+                                "uploaded": dst,
+                                "size": size,
+                                "elapsed_ms": elapsed_ms,
+                            }))
+                        }
+                        Err(e) => ApiResponse::error(e),
                     }
-                    Err(e) => ApiResponse::error(e),
                 }
+                Err(e) => ApiResponse::error(format!("failed to read {src}: {e}")),
             }
-            Err(e) => ApiResponse::error(format!("failed to read {src}: {e}")),
-        }},
+        }
 
         ApiRequest::Download { session, src, dst } => {
             match manager.download(&session, &src).await {
