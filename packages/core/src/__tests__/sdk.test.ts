@@ -108,10 +108,6 @@ describe("Action triggers", () => {
     expect(action?.on({ id: "t", type: "CredentialFound", payload: { username: "admin", password: "pass" }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
   });
 
-  it("stall_detection triggers on StallDetected", () => {
-    const action = CTF_PLAYBOOK.actions.find(a => a.name === "stall_detection");
-    expect(action?.on({ id: "t", type: "StallDetected", payload: { minutes: 5 }, source: "test", engagementId: "t", createdAt: new Date() })).toBe(true);
-  });
 });
 
 describe("simulateGraph", () => {

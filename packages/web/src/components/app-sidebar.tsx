@@ -68,11 +68,6 @@ const navSecondary = [
     icon: <ListChecksIcon />,
   },
   {
-    title: "Playbook Editor",
-    url: "/settings/playbooks",
-    icon: <ListChecksIcon />,
-  },
-  {
     title: "Settings",
     url: "/settings",
     icon: <Settings2Icon />,

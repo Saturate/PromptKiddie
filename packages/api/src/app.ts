@@ -8,17 +8,16 @@ import artifacts from "./routes/artifacts.js";
 import evidence from "./routes/evidence.js";
 import activity from "./routes/activity.js";
 import agents from "./routes/agents.js";
-import messages from "./routes/messages.js";
 import services from "./routes/services.js";
 import ports from "./routes/ports.js";
 import webshells from "./routes/webshells.js";
 import events from "./routes/events.js";
 import discoveries from "./routes/discoveries.js";
 import execDedup from "./routes/exec-dedup.js";
-import steps from "./routes/steps.js";
-import playbooks from "./routes/playbooks.js";
 import knowledge from "./routes/knowledge.js";
 import settings from "./routes/settings.js";
+import playbookActions from "./routes/playbook-actions.js";
+import status from "./routes/status.js";
 
 export function createApp() {
   const app = new Hono();
@@ -31,21 +30,23 @@ export function createApp() {
   app.route("/", evidence);
   app.route("/", activity);
   app.route("/", agents);
-  app.route("/", messages);
   app.route("/", services);
   app.route("/", ports);
   app.route("/", webshells);
   app.route("/", events);
   app.route("/", discoveries);
   app.route("/", execDedup);
-  app.route("/", steps);
-  app.route("/", playbooks);
   app.route("/", knowledge);
   app.route("/", settings);
+  app.route("/", playbookActions);
+  app.route("/", status);
+
+  app.get("/health", (c) => c.json({ ok: true }));
 
   app.onError((err, c) => {
     console.error("[api]", err);
-    return c.json({ error: err.message }, 500);
+    const isDev = process.env.NODE_ENV !== "production";
+    return c.json({ error: isDev ? err.message : "Internal server error" }, 500);
   });
 
   return app;

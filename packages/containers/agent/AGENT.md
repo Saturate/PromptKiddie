@@ -1,13 +1,19 @@
 # Agent Instructions
 
-You are running inside a PK agent container with attack tools installed.
+You are running inside a PK agent container with attack tools installed. The supervisor spawned you in response to an event.
 
-## Key differences from host execution
+## How you got here
 
-- **Run commands directly.** `nmap`, `ffuf`, `sqlmap`, etc. are installed here. No `pk exec`, no `docker exec`, no routing.
-- **Every command is logged.** The shell logger captures all commands automatically to `/workspace/.tool-log/exec.jsonl`.
+The supervisor runs event-driven playbooks. An event fired (PortDiscovered, FindingAdded, ShellObtained, etc.) and an action's trigger matched. If the action has a `prompt` field, you were spawned to handle it. Your job is the task in the prompt, nothing more.
+
+## Key rules
+
+- **Run commands directly.** `nmap`, `ffuf`, `sqlmap`, etc. are installed. No `pk exec`, no `docker exec`.
+- **Every command is logged.** The shell logger captures all commands to `/workspace/.tool-log/exec.jsonl`.
 - **Use $TARGET.** The target IP is in `$TARGET`. Use it: `nmap -sV $TARGET`, not a hardcoded IP.
-- **Use $LHOST.** Your listener address for reverse shells is `$LHOST:$LPORT`.
+- **Use $LHOST / $LPORT.** Your listener address for reverse shells.
+- **Stay in scope.** Only target IPs in `$TARGET` / `$TARGETS` and hostnames in `/etc/hosts`.
+- **Log everything to the DB.** The supervisor and UI track your work through DB entries.
 
 ## Environment variables
 
@@ -17,9 +23,9 @@ You are running inside a PK agent container with attack tools installed.
 | `$TARGETS` | All in-scope targets (comma-separated) |
 | `$LHOST` | Your VPN IP (for reverse shells) |
 | `$LPORT` | Default listener port |
-| `$ENGAGEMENT_ID` | Engagement UUID (pk CLI uses this) |
+| `$ENGAGEMENT_ID` | Engagement UUID |
 
-## Version logging (mandatory)
+## Mandatory: version logging
 
 Every time you identify a product with a version number, log it immediately:
 
@@ -27,26 +33,38 @@ Every time you identify a product with a version number, log it immediately:
 pk version --product "nginx" --version "1.24.0" --port 80 --service http
 ```
 
-Or via MCP: call the `log_version` tool with the same parameters.
+This emits a `VersionIdentified` event which triggers automatic CVE search downstream. Do NOT skip this.
 
-This emits a VersionIdentified event (triggers automatic CVE search), logs a discovery,
-and searches the exploit index. One call does everything. Do NOT skip this. Do NOT just
-note the version and move on.
+## Mandatory: service-first workflow
 
-## Logging
+Follow this order for every service you find:
+1. **Identify** the service name and product
+2. **Version** it (banner grab, headers, error pages)
+3. **Log the version** via `pk version`
+4. **Search CVEs** (automatic via the event, but also check manually)
+5. **Exploit** if a path exists
 
-Log findings, evidence, and activity to the engagement database:
+## Logging to the engagement DB
 
 ```bash
-pk finding add --title "SQLi in login" --severity high --status confirmed
+pk finding add --title "SQLi in /login" --severity high --status confirmed
 pk evidence add --path /workspace/proof.png --type screenshot
 pk activity log --phase exploit --action "exploited CVE-2025-XXXXX"
 pk artifact add --title "DB creds" --type credential --content "admin:password"
 pk msg send --body "User flag captured"
 ```
 
-## Rules
+Or use the PK MCP tools if available: `add_finding`, `add_evidence`, `log_activity`, `add_artifact`, `send_message`.
 
-- Stay in scope. Only target IPs in `$TARGET` / `$TARGETS` and hostnames in `/etc/hosts`.
-- No destructive actions without orchestrator approval.
-- If stuck after 3 attempts at the same approach, report back via `pk msg send`.
+## When you're stuck
+
+- After 3 failed attempts at the same approach, try a different vector.
+- Report back via `pk msg send --body "stuck on X, tried Y"`.
+- The supervisor will spawn a stall-detection agent if no progress is made for 5 minutes.
+
+## What NOT to do
+
+- Don't run exhaustive scans when surgical ones work. One targeted nmap beats a full-range sweep.
+- Don't wrap tools in scripts when the LLM should just analyze output.
+- Don't pause between phases. Keep moving unless blocked.
+- Don't run the orchestrator's job. You report back; the supervisor decides next steps.

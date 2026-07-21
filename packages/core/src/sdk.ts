@@ -347,13 +347,35 @@ export interface Action {
    * Not enforced at runtime; treat as documentation that stays close to the code.
    */
   emits?: string[];
+  /**
+   * Docker image override for this action. When set, the supervisor uses this
+   * image instead of the playbook default. Useful when a specific action needs
+   * heavier tooling (e.g. metasploit for exploit, or a custom image with
+   * domain-specific tools).
+   */
+  image?: string;
 }
 
-/** A playbook is a named collection of actions. */
+/** Playbook metadata controlling how the supervisor runs it. */
+export interface PlaybookMeta {
+  /** Default Docker image for all actions. Default: "pk-agent". */
+  image?: string;
+  /** Engagement types this playbook is designed for. */
+  engagementTypes?: Array<"ctf" | "whitebox" | "blackbox" | "bugbounty">;
+  /** Execution mode hint. */
+  mode?: "race" | "standard" | "methodical" | "learning";
+  /** Docker network to attach containers to. Default: "pk-network". */
+  network?: string;
+  /** Model for the orchestrator LLM. Default: global PK_MODEL or provider default. */
+  orchestratorModel?: string;
+}
+
+/** A playbook is a named collection of actions with optional runtime metadata. */
 export interface Playbook {
   name: string;
   description: string;
   actions: Action[];
+  meta?: PlaybookMeta;
 }
 
 /** A mock exec result with optional delay and failure behavior. */

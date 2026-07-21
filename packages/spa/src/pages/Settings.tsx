@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { useTheme } from "@/hooks/use-theme";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { PageHeader, SectionLabel } from "@/components/pk";
 
 interface Preferences {
   refreshInterval: number;
@@ -50,12 +50,12 @@ export default function Settings() {
   };
 
   return (
-    <div className="flex flex-col gap-4 py-4 px-4 md:gap-6 md:py-6 lg:px-6 max-w-2xl">
-      <h1 className="text-xl font-bold font-mono">Settings</h1>
+    <div className="space-y-6 max-w-2xl">
+      <PageHeader title="Settings" />
 
-      <Card>
-        <CardHeader><CardTitle className="text-sm font-mono">Appearance</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
+      <section className="space-y-4">
+        <SectionLabel>Appearance</SectionLabel>
+        <div className="border border-border rounded-lg p-4 space-y-4">
           <div className="space-y-1">
             <Label className="font-mono text-xs">Theme</Label>
             <Select value={theme} onValueChange={setTheme}>
@@ -71,15 +71,13 @@ export default function Settings() {
             <Label className="font-mono text-xs">Refresh interval (ms)</Label>
             <Input type="number" value={prefs.refreshInterval} onChange={(e) => updatePref("refreshInterval", Number(e.target.value))} className="font-mono text-xs" />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-mono">AI Provider</CardTitle>
-          <CardDescription className="font-mono text-xs">Model and provider for the web chat</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="space-y-4">
+        <SectionLabel>AI Provider</SectionLabel>
+        <div className="border border-border rounded-lg p-4 space-y-4">
+          <p className="text-xs text-muted-foreground font-mono">Model and provider for the web chat.</p>
           <div className="space-y-1">
             <Label className="font-mono text-xs">Provider</Label>
             <Select value={server.aiProvider ?? "anthropic"} onValueChange={(v) => setServer((s) => ({ ...s, aiProvider: v }))}>
@@ -102,8 +100,8 @@ export default function Settings() {
             </div>
           )}
           <Button onClick={saveServer} disabled={saving} className="font-mono text-xs">{saving ? "Saving..." : "Save"}</Button>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

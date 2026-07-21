@@ -92,12 +92,6 @@ describe("Action trigger predicates", () => {
     expect(action.on(event("CredentialFound", { username: "admin" }))).toBe(false);
   });
 
-  it("stall_detection triggers on StallDetected", () => {
-    const action = findAction("stall_detection")!;
-    expect(action.on(event("StallDetected", { minutes: 5 }))).toBe(true);
-    expect(action.on(event("EngagementStarted"))).toBe(false);
-  });
-
   it("exploit does not trigger on low/info severity", () => {
     const action = findAction("exploit")!;
     expect(action.on(event("FindingAdded", { severity: "low" }))).toBe(false);
@@ -532,13 +526,6 @@ describe("LLM-only actions", () => {
     expect(action.run).toBeUndefined();
     expect(action.prompt).toBeDefined();
     expect(action.prompt).toContain("{url}");
-  });
-
-  it("stall_detection has prompt with minutes placeholder", () => {
-    const action = findAction("stall_detection")!;
-    expect(action.run).toBeUndefined();
-    expect(action.prompt).toBeDefined();
-    expect(action.prompt).toContain("{minutes}");
   });
 
   it("exploit has prompt and LLM agent config", () => {

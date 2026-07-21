@@ -5,8 +5,6 @@ export { generateReport, type GenerateReportResult } from "./report.js";
 export { loadConfig, resetConfig, type PkConfig } from "./config.js";
 export { getRepo, type Repo } from "./client.js";
 export { parseNmapOutput, ingestPorts, looksLikeNmapOutput } from "./port-parser.js";
-export { playbookToMarkdown, blockToMarkdown, markdownToPlaybook, markdownToBlock, playbookToMermaid, blockToMermaid } from "./playbook-md.js";
-export { findReadyNodes, findAutoSkips, getNextNode, getParallelNodes, isPhaseComplete, getProgress, evaluateCondition, type StepNode, type ReadyNode, type GraphState } from "./bt-runtime.js";
 export { startExecWatcher, type ExecWatcherOptions, type ExecLogEntry } from "./exec-watcher.js";
 export {
   getEmbeddingProvider,
@@ -37,6 +35,7 @@ export {
   type Action,
   type RunContext,
   type Playbook,
+  type PlaybookMeta,
   type EngagementEvent,
   type EngagementState,
   type ExecResult,
@@ -53,7 +52,7 @@ export {
 } from "./sdk.js";
 export { CTF_PLAYBOOK as CTF_ACTIONS } from "./actions/index.js";
 export { PENTEST_PLAYBOOK, runPhasedPentest } from "./actions/index.js";
-export { buildActionGraph, actionGraphToMermaid, type ActionGraph, type ActionNode, type ActionEdge } from "./action-graph.js";
+export { buildActionGraph, actionGraphToMermaid, simulateGraph, type ActionGraph, type ActionNode, type ActionEdge, type SimulationStep } from "./action-graph.js";
 export {
   webFingerprint, headerInspect, wafDetect,
   linuxPrivesc, windowsPrivesc,

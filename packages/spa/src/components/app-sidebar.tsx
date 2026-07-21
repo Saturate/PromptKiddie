@@ -26,7 +26,11 @@ import {
   WrenchIcon,
   ListChecksIcon,
   SearchIcon,
+  SunIcon,
+  MoonIcon,
+  MonitorIcon,
 } from "lucide-react"
+import { useTheme } from "@/hooks/use-theme"
 
 const navMain = [
   {
@@ -68,11 +72,6 @@ const navSecondary = [
     icon: <ListChecksIcon />,
   },
   {
-    title: "Playbook Editor",
-    url: "/settings/playbooks",
-    icon: <ListChecksIcon />,
-  },
-  {
     title: "Settings",
     url: "/settings",
     icon: <Settings2Icon />,
@@ -94,7 +93,10 @@ interface Engagement {
 
 const MAX_RECENTS = 5
 
+const THEME_CYCLE = ["dark", "light", "system"] as const
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { theme, setTheme } = useTheme()
   const [engagements, setEngagements] = React.useState<Engagement[]>([])
   const [mounted, setMounted] = React.useState(false)
 
@@ -182,7 +184,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <div className="px-2 py-1 space-y-0.5">
+        <div className="px-2 py-1 space-y-2">
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+            {THEME_CYCLE.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTheme(t)}
+                className={`flex items-center justify-center gap-1 flex-1 px-1.5 py-1 rounded text-[10px] font-mono transition-colors ${theme === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                title={t.charAt(0).toUpperCase() + t.slice(1)}
+              >
+                {t === "light" && <SunIcon className="size-3" />}
+                {t === "dark" && <MoonIcon className="size-3" />}
+                {t === "system" && <MonitorIcon className="size-3" />}
+                <span className="hidden group-data-[collapsible=icon]:hidden sm:inline">{t}</span>
+              </button>
+            ))}
+          </div>
           <div className="text-[10px] text-muted-foreground/50 font-mono">v0.1.0</div>
           <div className="text-[10px] text-primary/40 font-mono italic">definitely not a script kiddie</div>
         </div>

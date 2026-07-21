@@ -61,10 +61,6 @@ export interface Repo {
   addAgentLog(input: { engagementId: string; agent: string; phase: string; message: string; category?: string }): Promise<unknown>;
   listAgentLog(engagementId: string): Promise<unknown[]>;
 
-  sendMessage(input: { body: string; engagementId?: string; direction?: string; author?: string }): Promise<unknown>;
-  listMessages(engagementId: string): Promise<unknown[]>;
-  pollInbox(engagementId?: string): Promise<unknown[]>;
-
   emitEvent(engagementId: string, type: string, payload: Record<string, unknown>, source: string): Promise<unknown>;
   listEvents(engagementId: string, opts?: { type?: string }): Promise<unknown[]>;
   addDiscovery(input: { engagementId: string; type: string; category: string; summary: string; detail?: Record<string, unknown>; sourceEventId?: string; parentId?: string }): Promise<unknown>;
@@ -73,14 +69,6 @@ export interface Repo {
   recordExecOutcome(engagementId: string, command: string, target: string, exitCode: number, outcomeSummary?: string): Promise<unknown>;
   getExecDedup(engagementId: string): Promise<unknown[]>;
   isExecBlocked(engagementId: string, command: string, target: string): Promise<boolean>;
-
-  listEngagementSteps(engagementId: string): Promise<unknown[]>;
-  completeStep(engagementId: string, stepKey: string, result?: { type: string; id: string }): Promise<unknown>;
-  skipStep(engagementId: string, stepKey: string, reason: string): Promise<unknown>;
-  startStep(engagementId: string, stepKey: string, agentId?: string): Promise<unknown>;
-  getNextSteps(engagementId: string, maxSteps?: number): Promise<unknown>;
-  getDefaultPlaybook(engagementType: string): Promise<unknown>;
-  initEngagementSteps(engagementId: string, playbookId: string): Promise<unknown[]>;
 }
 
 function createLocalRepo(): Repo {
@@ -129,9 +117,6 @@ function createLocalRepo(): Repo {
     finishAgentRun: async (i) => (await r).finishAgentRun(i as Parameters<Awaited<typeof r>["finishAgentRun"]>[0]),
     addAgentLog: async (i) => (await r).addAgentLog(i as Parameters<Awaited<typeof r>["addAgentLog"]>[0]),
     listAgentLog: async (eid) => (await r).listAgentLog(eid),
-    sendMessage: async (i) => (await r).sendMessage(i as Parameters<Awaited<typeof r>["sendMessage"]>[0]),
-    listMessages: async (eid) => (await r).listMessages(eid),
-    pollInbox: async (eid) => (await r).pollInbox(eid),
     emitEvent: async (eid, type, payload, source) => (await r).emitEvent(eid, type, payload, source),
     listEvents: async (eid, opts) => (await r).listEvents(eid, opts),
     addDiscovery: async (i) => (await r).addDiscovery(i as Parameters<Awaited<typeof r>["addDiscovery"]>[0]),
@@ -140,13 +125,6 @@ function createLocalRepo(): Repo {
     recordExecOutcome: async (eid, cmd, tgt, exit, summary) => (await r).recordExecOutcome(eid, cmd, tgt, exit, summary),
     getExecDedup: async (eid) => (await r).getExecDedup(eid),
     isExecBlocked: async (eid, cmd, tgt) => (await r).isExecBlocked(eid, cmd, tgt),
-    listEngagementSteps: async (eid) => (await r).listEngagementSteps(eid),
-    completeStep: async (eid, key, result) => (await r).completeStep(eid, key, result),
-    skipStep: async (eid, key, reason) => (await r).skipStep(eid, key, reason),
-    startStep: async (eid, key, agentId) => (await r).startStep(eid, key, agentId),
-    getNextSteps: async (eid, maxSteps) => (await r).getNextSteps(eid, maxSteps),
-    getDefaultPlaybook: async (type) => (await r).getDefaultPlaybook(type),
-    initEngagementSteps: async (eid, pid) => (await r).initEngagementSteps(eid, pid),
   };
 }
 
@@ -225,9 +203,6 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     finishAgentRun: (i) => put(`/agent-runs/${i.runId}/finish`, i),
     addAgentLog: (i) => post(`/engagements/${i.engagementId}/agent-log`, i),
     listAgentLog: (eid) => get<unknown[]>(`/engagements/${eid}/agent-log`),
-    sendMessage: (i) => post("/messages", i),
-    listMessages: (eid) => get<unknown[]>(`/messages?engagementId=${eid}`),
-    pollInbox: (eid) => get<unknown[]>(`/messages/poll${eid ? `?engagementId=${eid}` : ""}`),
     emitEvent: (eid, type, payload, source) => post(`/engagements/${eid}/events`, { type, payload, source }),
     listEvents: (eid, opts) => get<unknown[]>(`/engagements/${eid}/events${opts?.type ? `?type=${opts.type}` : ""}`),
     addDiscovery: (i) => post(`/engagements/${i.engagementId}/discoveries`, i),
@@ -242,13 +217,6 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     recordExecOutcome: (eid, cmd, tgt, exit, summary) => post(`/engagements/${eid}/exec-dedup`, { command: cmd, target: tgt, exitCode: exit, outcomeSummary: summary }),
     getExecDedup: (eid) => get<unknown[]>(`/engagements/${eid}/exec-dedup`),
     isExecBlocked: (eid, cmd, tgt) => get(`/engagements/${eid}/exec-dedup/blocked?command=${encodeURIComponent(cmd)}&target=${encodeURIComponent(tgt)}`),
-    listEngagementSteps: (eid) => get<unknown[]>(`/engagements/${eid}/steps`),
-    completeStep: (eid, key, result) => put(`/engagements/${eid}/steps/${key}/complete`, result ?? {}),
-    skipStep: (eid, key, reason) => put(`/engagements/${eid}/steps/${key}/skip`, { reason }),
-    startStep: (eid, key, agentId) => put(`/engagements/${eid}/steps/${key}/start`, { agentId }),
-    getNextSteps: (eid, maxSteps) => get(`/engagements/${eid}/steps/next${maxSteps ? `?max=${maxSteps}` : ""}`),
-    getDefaultPlaybook: (type) => get(`/playbooks/default/${type}`),
-    initEngagementSteps: (eid, pid) => post(`/engagements/${eid}/steps/init`, { playbookId: pid }) as Promise<unknown[]>,
   };
 }
 
