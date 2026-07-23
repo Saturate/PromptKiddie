@@ -5,13 +5,16 @@
  * stored in pgvector. Agents search on demand during playbook execution.
  * Past findings are auto-ingested so future engagements learn from them.
  */
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat, rm } from "node:fs/promises";
 import { join, dirname, extname, relative } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 import { sql, eq, and } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { embeddings } from "./schema.js";
 import { getEmbeddingProvider } from "./embeddings.js";
+import { KNOWLEDGE_SOURCES, type FrontmatterFilter } from "./knowledge-sources.js";
 
 export interface KnowledgeResult {
   id: string;
@@ -32,7 +35,7 @@ export interface IngestResult {
 
 export type SearchMode = "hybrid" | "vector" | "keyword";
 
-function parseFrontmatter(content: string): { frontmatter: Record<string, unknown> | null; body: string } {
+export function parseFrontmatter(content: string): { frontmatter: Record<string, unknown> | null; body: string } {
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) return { frontmatter: null, body: content };
 
@@ -156,12 +159,21 @@ export async function ingestDocument(
   return chunks.length;
 }
 
+function matchesFrontmatterFilter(content: string, filter: FrontmatterFilter): boolean {
+  const { frontmatter } = parseFrontmatter(content);
+  const val = frontmatter?.[filter.field] as string | undefined;
+  if (filter.include && (!val || !filter.include.includes(val))) return false;
+  if (filter.exclude && val && filter.exclude.includes(val)) return false;
+  return true;
+}
+
 export async function ingestDirectory(
   dirPath: string,
   opts: {
     source: string;
     extensions?: string[];
     chunkStrategy?: "heading" | "file" | "fixed";
+    frontmatterFilter?: FrontmatterFilter;
     onProgress?: (file: string, chunks: number) => void;
   },
 ): Promise<IngestResult> {
@@ -189,6 +201,11 @@ export async function ingestDirectory(
       try {
         const content = await readFile(fullPath, "utf-8");
         if (content.trim().length < 50) {
+          result.skipped++;
+          continue;
+        }
+
+        if (opts.frontmatterFilter && !matchesFrontmatterFilter(content, opts.frontmatterFilter)) {
           result.skipped++;
           continue;
         }
@@ -442,4 +459,58 @@ export async function listSources(): Promise<Array<{ source: string; chunks: num
     chunks: Number(r.chunks),
     lastIngested: new Date(r.last_ingested as string),
   }));
+}
+
+export interface SeedResult {
+  seeded: string[];
+  skipped: string[];
+  errors: string[];
+}
+
+export async function seedKnowledge(
+  opts?: { onProgress?: (source: string, message: string) => void },
+): Promise<SeedResult> {
+  const existing = await listSources();
+  const existingNames = new Set(existing.map((s) => s.source));
+  const result: SeedResult = { seeded: [], skipped: [], errors: [] };
+
+  const remote = KNOWLEDGE_SOURCES.filter((s) => s.repo && s.autoSeed && !existingNames.has(s.name));
+  if (remote.length === 0) return result;
+
+  for (const src of remote) {
+    const tmpDir = join(tmpdir(), `pk-seed-${src.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`);
+
+    try {
+      opts?.onProgress?.(src.name, "cloning...");
+      execFileSync("git", ["clone", "--depth", "1", "--filter=blob:none", src.repo, tmpDir], {
+        stdio: "pipe",
+        timeout: 120_000,
+      });
+
+      for (const subPath of src.paths) {
+        const ingestDir = subPath === "." ? tmpDir : join(tmpDir, subPath);
+
+        opts?.onProgress?.(src.name, `ingesting ${subPath}...`);
+        const ir = await ingestDirectory(ingestDir, {
+          source: src.name,
+          extensions: src.extensions.length > 0 ? src.extensions : undefined,
+          chunkStrategy: src.chunkStrategy,
+          frontmatterFilter: src.frontmatterFilter,
+          onProgress: (file, chunks) => {
+            opts?.onProgress?.(src.name, `${file} (${chunks} chunks)`);
+          },
+        });
+
+        opts?.onProgress?.(src.name, `done: ${ir.files} files, ${ir.chunks} chunks`);
+      }
+
+      result.seeded.push(src.name);
+    } catch (err) {
+      result.errors.push(`${src.name}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  return result;
 }

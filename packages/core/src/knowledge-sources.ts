@@ -5,6 +5,12 @@
  * is searched via tools (searchsploit, nuclei, web search), not ingested.
  */
 
+export interface FrontmatterFilter {
+  field: string;
+  include?: string[];
+  exclude?: string[];
+}
+
 export interface KnowledgeSource {
   name: string;
   repo: string;
@@ -13,6 +19,9 @@ export interface KnowledgeSource {
   category: string;
   chunkStrategy: "heading" | "file" | "fixed";
   description: string;
+  frontmatterFilter?: FrontmatterFilter;
+  /** Safe to clone directly on host (no exploit code that triggers AV). Sources without this flag require Docker-based pull. */
+  autoSeed?: boolean;
 }
 
 export const KNOWLEDGE_SOURCES: KnowledgeSource[] = [
@@ -42,6 +51,20 @@ export const KNOWLEDGE_SOURCES: KnowledgeSource[] = [
     category: "techniques",
     chunkStrategy: "heading",
     description: "Pentesting methodology, techniques, and tool usage guides.",
+  },
+  {
+    name: "AnthropicCyberskills",
+    repo: "https://github.com/mukul975/Anthropic-Cybersecurity-Skills",
+    paths: ["skills"],
+    extensions: [".md"],
+    category: "techniques",
+    chunkStrategy: "heading",
+    description: "Procedural cybersecurity skills with MITRE ATT&CK mappings covering TTPs, DFIR, cloud security, and detection engineering.",
+    frontmatterFilter: {
+      field: "subdomain",
+      exclude: ["compliance-governance"],
+    },
+    autoSeed: true,
   },
   {
     name: "pk-techniques",
