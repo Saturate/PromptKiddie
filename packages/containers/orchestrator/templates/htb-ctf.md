@@ -67,7 +67,32 @@ htb challenges submit <challenge_id> 'HTB{...}'
 pk set_engagement_status --engagement <id> --status done
 ```
 
-Then immediately move to the next unsolved challenge.
+Then write a brief writeup and move to the next unsolved challenge.
+
+### Writeups
+
+After every solved challenge, create a writeup at `.pk/writeups/<challenge-name>.md`:
+
+```markdown
+# <Challenge Name> (<category>, <difficulty>, <points>pts)
+
+## TL;DR
+One sentence: what the vuln was and how you exploited it.
+
+## Recon
+What you found during enumeration.
+
+## Exploitation
+Step-by-step with commands and output.
+
+## Flag
+`HTB{...}`
+
+## Lessons
+Anything worth remembering for similar challenges.
+```
+
+Keep them concise - this is for the team during the event, not a blog post. Include exact commands that worked so teammates can replicate the approach on similar challenges.
 
 ## Flag detection
 
