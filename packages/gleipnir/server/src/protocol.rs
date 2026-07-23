@@ -161,7 +161,7 @@ impl Encoder<Frame> for GleipnirCodec {
 
         dst.reserve(HEADER_LEN + payload_len);
         dst.put_u32(MAGIC);
-        dst.put_u32(payload_len as u32);
+        dst.put_u32(u32::try_from(payload_len).expect("MAX_FRAME_LEN fits u32"));
         dst.put_u8(frame.frame_type as u8);
         dst.put_u32(frame.request_id);
         dst.extend_from_slice(&frame.payload);

@@ -1,12 +1,12 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Request, State};
 use axum::http::StatusCode;
+use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use crate::listener::{ListenerManager, ListenerMode};
@@ -33,7 +33,32 @@ fn err(status: StatusCode, msg: impl Into<String>) -> (StatusCode, Json<ErrorBod
     (status, Json(ErrorBody { error: msg.into() }))
 }
 
+async fn auth_middleware(
+    State(key): State<Option<String>>,
+    req: Request,
+    next: Next,
+) -> impl IntoResponse {
+    if let Some(ref expected) = key {
+        let provided = req
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "));
+        if provided != Some(expected.as_str()) {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+    Ok(next.run(req).await)
+}
+
 pub async fn start(port: u16, state: AppState) {
+    let api_key = std::env::var("GLEIPNIR_API_KEY")
+        .ok()
+        .filter(|k| !k.is_empty());
+    if api_key.is_none() {
+        tracing::warn!("GLEIPNIR_API_KEY not set - HTTP API has no authentication");
+    }
+
     let app = Router::new()
         .route("/api/health", get(health))
         .route("/api/info", get(info_handler))
@@ -54,13 +79,9 @@ pub async fn start(port: u16, state: AppState) {
         )
         .route("/api/agents", get(list_agents))
         .route("/api/agents/{platform}/{arch}", get(get_agent))
-        .route("/c2/{session}/checkin", post(c2_checkin))
-        .route("/c2/{session}/task", get(c2_task))
-        .route("/c2/{session}/result", post(c2_result))
-        .route("/c2/{session}/exfil", post(c2_exfil))
         .route("/ws/events", get(ws::ws_events))
         .route("/ws/sessions/{name}", get(ws::ws_attach))
-        .layer(CorsLayer::permissive())
+        .layer(middleware::from_fn_with_state(api_key, auth_middleware))
         .with_state(state);
 
     let addr = format!("0.0.0.0:{port}");
@@ -390,66 +411,6 @@ async fn close_listener(
     }
 }
 
-// ── C2 HTTP callback endpoints ──
-
-async fn c2_checkin(
-    State(_state): State<AppState>,
-    Path(session): Path<String>,
-    Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    let hostname = body
-        .get("hostname")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    let username = body
-        .get("username")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "session": session,
-            "hostname": hostname,
-            "username": username,
-            "poll_interval": 5,
-            "status": "registered"
-        })),
-    )
-}
-
-async fn c2_task(State(_state): State<AppState>, Path(session): Path<String>) -> impl IntoResponse {
-    // Placeholder: no task queuing yet (needs integration with SessionManager)
-    Json(serde_json::json!({
-        "session": session,
-        "command": serde_json::Value::Null,
-    }))
-}
-
-async fn c2_result(
-    State(_state): State<AppState>,
-    Path(session): Path<String>,
-    Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    let output = body.get("output").and_then(|v| v.as_str()).unwrap_or("");
-    Json(serde_json::json!({
-        "session": session,
-        "received": output.len(),
-        "status": "ok"
-    }))
-}
-
-async fn c2_exfil(
-    State(_state): State<AppState>,
-    Path(session): Path<String>,
-    body: axum::body::Bytes,
-) -> impl IntoResponse {
-    Json(serde_json::json!({
-        "session": session,
-        "received": body.len(),
-        "status": "ok"
-    }))
-}
-
 // ── Agent binary serving ──
 
 async fn list_agents(
@@ -460,12 +421,12 @@ async fn list_agents(
     };
 
     let mut agents = Vec::new();
-    let entries = match std::fs::read_dir(dir) {
+    let mut entries = match tokio::fs::read_dir(dir).await {
         Ok(e) => e,
         Err(_) => return Ok(Json(serde_json::json!([]))),
     };
 
-    for entry in entries.flatten() {
+    while let Ok(Some(entry)) = entries.next_entry().await {
         let name = entry.file_name().to_string_lossy().to_string();
         if !name.starts_with("gleipnir-agent") {
             continue;
@@ -478,7 +439,7 @@ async fn list_agents(
                 "platform": platform,
                 "arch": arch,
                 "filename": name,
-                "size": entry.metadata().map(|m| m.len()).unwrap_or(0),
+                "size": entry.metadata().await.map(|m| m.len()).unwrap_or(0),
             }));
         }
     }

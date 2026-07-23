@@ -233,8 +233,10 @@ impl SessionManager {
             let mut sessions = self.sessions.lock().await;
             if let Some(existing) = sessions.get_mut(&name) {
                 if existing.info.connected {
-                    info!("session '{name}' takeover: disconnecting old connection");
-                    // Drop the old cmd_tx, which will cause the old session_loop to exit
+                    let age = existing.info.last_seen.elapsed();
+                    warn!(
+                        "session '{name}' takeover: disconnecting old connection (last seen {age:.1?} ago)"
+                    );
                     let (new_tx, _) = mpsc::channel::<SessionCommand>(32);
                     existing.cmd_tx = new_tx;
                 }

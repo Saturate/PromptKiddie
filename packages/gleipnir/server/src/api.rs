@@ -153,6 +153,11 @@ async fn handle_request(
                     "file upload not supported for raw sessions".to_string(),
                 );
             }
+            if !src.starts_with("/tmp/") && !src.starts_with("/workspace/") {
+                return ApiResponse::error(
+                    "src path restricted to /tmp/ and /workspace/".to_string(),
+                );
+            }
             match tokio::fs::read(&src).await {
                 Ok(data) => {
                     let size = data.len();

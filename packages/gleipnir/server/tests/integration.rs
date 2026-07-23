@@ -8,6 +8,8 @@ const RELAY_PORT: u16 = 14444;
 const API_SOCKET: &str = "/tmp/gleipnir-test.sock";
 const STARTUP_WAIT: Duration = Duration::from_millis(500);
 const CMD_TIMEOUT: Duration = Duration::from_secs(10);
+const SESSION_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const SESSION_POLL_TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn api_request(req: &str) -> serde_json::Value {
     let stream = UnixStream::connect(API_SOCKET)
@@ -30,6 +32,23 @@ async fn api_request(req: &str) -> serde_json::Value {
         .expect("read response");
 
     serde_json::from_str(&response).expect("parse JSON response")
+}
+
+async fn wait_for_session() -> String {
+    let deadline = tokio::time::Instant::now() + SESSION_POLL_TIMEOUT;
+    loop {
+        let resp = api_request(r#"{"action":"sessions"}"#).await;
+        if let Some(sessions) = resp["data"].as_array()
+            && let Some(first) = sessions.first()
+            && let Some(name) = first["name"].as_str()
+        {
+            return name.to_string();
+        }
+        if tokio::time::Instant::now() >= deadline {
+            panic!("no session appeared within {:?}", SESSION_POLL_TIMEOUT);
+        }
+        tokio::time::sleep(SESSION_POLL_INTERVAL).await;
+    }
 }
 
 struct TestHarness {
@@ -107,19 +126,23 @@ impl Drop for TestHarness {
 async fn test_session_appears() {
     let _harness = TestHarness::start().await;
 
+    let name = wait_for_session().await;
     let resp = api_request(r#"{"action":"sessions"}"#).await;
     assert!(resp["ok"].as_bool().unwrap());
     let sessions = resp["data"].as_array().unwrap();
     assert!(!sessions.is_empty(), "expected at least one session");
-    assert!(sessions[0]["connected"].as_bool().unwrap());
+    let s = sessions
+        .iter()
+        .find(|s| s["name"].as_str() == Some(&name))
+        .unwrap();
+    assert!(s["connected"].as_bool().unwrap());
 }
 
 #[tokio::test]
 async fn test_exec_whoami() {
     let _harness = TestHarness::start().await;
 
-    let resp = api_request(r#"{"action":"sessions"}"#).await;
-    let session_name = resp["data"][0]["name"].as_str().unwrap().to_string();
+    let session_name = wait_for_session().await;
 
     let req = serde_json::json!({
         "action": "exec",
@@ -140,8 +163,7 @@ async fn test_exec_whoami() {
 async fn test_file_transfer() {
     let _harness = TestHarness::start().await;
 
-    let resp = api_request(r#"{"action":"sessions"}"#).await;
-    let session_name = resp["data"][0]["name"].as_str().unwrap().to_string();
+    let session_name = wait_for_session().await;
 
     let test_content = "gleipnir_test_content_12345";
     let upload_src = "/tmp/gleipnir_test_upload_src.txt";

@@ -3,8 +3,6 @@ mod http_api;
 mod listener;
 mod protocol;
 mod session;
-#[allow(dead_code)]
-mod session_http;
 mod session_raw;
 mod socks;
 mod ws;
