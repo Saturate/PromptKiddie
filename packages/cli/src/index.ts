@@ -1665,7 +1665,7 @@ knowledge
   .option("--all", "Pull all registered sources")
   .option("--container <name>", "Docker container to clone inside", config.attackbox.container)
   .action(async (sourceName, o) => {
-    const { KNOWLEDGE_SOURCES, getKnowledgeSource, ingestDocument, clearSource } = await import("@promptkiddie/core");
+    const { KNOWLEDGE_SOURCES, getKnowledgeSource, ingestDocument, clearSource, parseFrontmatter } = await import("@promptkiddie/core");
     const container = o.container;
 
     const sources = o.all ? KNOWLEDGE_SOURCES : sourceName ? [getKnowledgeSource(sourceName)].filter(Boolean) : [];
@@ -1725,6 +1725,13 @@ knowledge
           try {
             const content = dockerExec(`cat "${filePath}"`);
             if (content.trim().length < 50) continue;
+
+            if (src.frontmatterFilter) {
+              const { frontmatter } = parseFrontmatter(content);
+              const val = frontmatter?.[src.frontmatterFilter.field] as string | undefined;
+              if (src.frontmatterFilter.include && (!val || !src.frontmatterFilter.include.includes(val))) continue;
+              if (src.frontmatterFilter.exclude && val && src.frontmatterFilter.exclude.includes(val)) continue;
+            }
 
             const relPath = filePath.replace(tmpDir + "/", "");
             const chunks = await ingestDocument(content, {

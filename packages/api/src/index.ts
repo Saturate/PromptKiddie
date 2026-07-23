@@ -132,6 +132,18 @@ const server = serve({ fetch: root.fetch, port }, () => {
 if (databaseUrl) {
   wsBroadcast = setupWebSocket(server as unknown as import("node:http").Server, databaseUrl);
 
+  // Seed knowledge base on first run (non-blocking)
+  import("@promptkiddie/core").then(({ seedKnowledge }) => {
+    seedKnowledge({
+      onProgress: (source, msg) => console.log(`[knowledge] ${source}: ${msg}`),
+    }).then((result) => {
+      if (result.seeded.length > 0) console.log(`[knowledge] seeded: ${result.seeded.join(", ")}`);
+      if (result.errors.length > 0) result.errors.forEach((e) => console.error(`[knowledge] ${e}`));
+    }).catch((err) => {
+      console.error("[knowledge] seed failed:", (err as Error).message ?? err);
+    });
+  });
+
   // Start supervisor standby: auto-manages per-engagement supervisors on status change
   import("@promptkiddie/supervisor").then(({ startStandby }) => {
     startStandby({})

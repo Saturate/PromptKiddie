@@ -24,11 +24,15 @@ export {
   type KnowledgeResult,
   type IngestResult,
   type SearchMode,
+  parseFrontmatter,
+  seedKnowledge,
+  type SeedResult,
 } from "./knowledge.js";
 export {
   KNOWLEDGE_SOURCES,
   getKnowledgeSource,
   type KnowledgeSource,
+  type FrontmatterFilter,
 } from "./knowledge-sources.js";
 export { buildLlmContext, type LlmContext } from "./context-builder.js";
 export {
