@@ -22,12 +22,24 @@ Use the `htb` CLI (or HTB MCP if available) for platform operations:
 
 ## Triage order
 
-When challenges drop:
-1. Pull full list: `htb challenges list --json`
-2. Filter out `is_owned: true`
-3. Sort remaining by: first bloods (solves=0) first, then by difficulty (Very Easy > Easy > Medium)
-4. For each web/machine challenge: create PK engagement, assign, go
-5. For download-only challenges: note them for manual work, don't create engagements
+When challenges drop, use these jq filters:
+
+```bash
+# Unsolved challenges, sorted by fewest solves (first blood candidates)
+htb challenges list --json | jq '[.[] | select(.is_owned == false)] | sort_by(.solves)'
+
+# Unsolved web challenges with spawn instances
+htb challenges list --json | jq '[.[] | select(.is_owned == false and .category_name == "Web" and (.play_methods | index("spawn")))] | sort_by(.solves)'
+
+# Quick triage: category counts for unsolved only
+htb challenges list --json | jq '[.[] | select(.is_owned == false)] | group_by(.category_name) | map({category: .[0].category_name, count: length}) | sort_by(-.count)'
+
+# First bloods available (zero solves)
+htb challenges list --json | jq '[.[] | select(.is_owned == false and .solves == 0)]'
+```
+
+For each web/machine challenge: create PK engagement, assign, go.
+Download-only challenges (crypto, reversing): note them for manual work, don't create engagements.
 
 ## PK engagement flow
 
