@@ -2474,7 +2474,7 @@ initCmd
   .option("--event <name>", "Event name", "CTF Event")
   .option("--create-engagement", "Create a PK engagement for the event")
   .action(async (o) => {
-    const { mkdirSync, writeFileSync, existsSync: fileExists } = await import("node:fs");
+    const { mkdirSync, writeFileSync, readFileSync, existsSync: fileExists } = await import("node:fs");
     const { join: pathJoin } = await import("node:path");
 
     const pkDir = pathJoin(process.cwd(), ".pk");
@@ -2492,31 +2492,54 @@ initCmd
       content = content.replace(/^# .+$/m, `# ${o.event}`);
     }
     writeFileSync(orchPath, content, "utf-8");
-    console.error(`[init] wrote .pk/orchestrator.md (template: ${o.platform})`);
 
-    // HTB challenge discovery
+    // Symlink so any harness picks it up
+    const { symlinkSync, unlinkSync } = await import("node:fs");
+    for (const link of ["CLAUDE.md", "AGENTS.md"]) {
+      const linkPath = pathJoin(pkDir, link);
+      try { unlinkSync(linkPath); } catch {}
+      symlinkSync("orchestrator.md", linkPath);
+    }
+
+    console.error(`[init] wrote .pk/orchestrator.md (template: ${o.platform})`);
+    console.error(`[init] symlinked -> CLAUDE.md, AGENTS.md`);
+
+    // Set up .claude/settings.local.json with MCP config
+    const claudeDir = pathJoin(process.cwd(), ".claude");
+    mkdirSync(claudeDir, { recursive: true });
+    const settingsPath = pathJoin(claudeDir, "settings.local.json");
+
+    let settings: Record<string, unknown> = {};
+    if (fileExists(settingsPath)) {
+      try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
+    }
+
+    const mcpServers: Record<string, unknown> = (settings.mcpServers as Record<string, unknown>) ?? {};
+
+    // PK MCP server
+    mcpServers["promptkiddie"] = mcpServers["promptkiddie"] ?? {
+      command: "node",
+      args: ["packages/mcp-server/dist/index.js"],
+      env: { DATABASE_URL: process.env.DATABASE_URL ?? "" },
+    };
+
+    // HTB MCP if platform is htb and htb CLI is available
     if (o.platform === "htb") {
       try {
-        const htbOut = execFileSync("htb", ["challenges", "list", "--json"], {
-          timeout: 15000,
-          encoding: "utf-8",
-        });
-        const challenges = JSON.parse(htbOut);
-        if (Array.isArray(challenges) && challenges.length > 0) {
-          const categories: Record<string, number> = {};
-          for (const ch of challenges) {
-            const cat = ch.category_name ?? ch.category ?? ch.type ?? "unknown";
-            categories[cat] = (categories[cat] ?? 0) + 1;
-          }
-          console.error(`[init] HTB challenges: ${challenges.length} total`);
-          for (const [cat, count] of Object.entries(categories).sort((a, b) => b[1] - a[1])) {
-            console.error(`  ${cat}: ${count}`);
-          }
-        }
+        execFileSync("htb", ["--version"], { timeout: 3000 });
+        mcpServers["htb"] = mcpServers["htb"] ?? {
+          command: "htb",
+          args: ["mcp"],
+        };
+        console.error("[init] added HTB MCP server config");
       } catch {
-        console.error("[init] htb CLI not available or no active challenges");
+        console.error("[init] htb CLI not found, skipping HTB MCP config");
       }
     }
+
+    settings.mcpServers = mcpServers;
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+    console.error(`[init] wrote .claude/settings.local.json`);
 
     // Create engagement if requested
     if (o.createEngagement) {
@@ -2533,10 +2556,8 @@ initCmd
     }
 
     console.error("");
-    console.error("[init] Next steps:");
-    console.error("  Host mode:   Your Claude Code session IS the orchestrator.");
-    console.error("               Read .pk/orchestrator.md for strategy instructions.");
-    console.error("  Hosted mode: docker run -v $(pwd)/.pk:/workspace/.pk pk-orchestrator");
+    console.error("[init] Ready. Start a Claude Code session and the orchestrator");
+    console.error("       instructions + MCP tools will be available automatically.");
     console.error("");
   });
 

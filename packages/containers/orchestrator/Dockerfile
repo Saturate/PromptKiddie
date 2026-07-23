@@ -43,7 +43,8 @@ RUN mkdir -p /etc/pk /workspace/.tool-log
 
 # Default orchestrator instructions (can be overridden by mounting a custom file)
 COPY packages/containers/orchestrator/ORCHESTRATOR.md /workspace/ORCHESTRATOR.md
-RUN ln -sf ORCHESTRATOR.md /workspace/CLAUDE.md
+RUN ln -sf ORCHESTRATOR.md /workspace/CLAUDE.md && \
+    ln -sf ORCHESTRATOR.md /workspace/AGENTS.md
 
 # Entrypoint: starts daemon in standby, then delegates to Cartridge
 COPY packages/containers/orchestrator/entrypoint.sh /usr/local/bin/pk-entrypoint
