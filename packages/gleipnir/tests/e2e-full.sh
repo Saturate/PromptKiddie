@@ -121,7 +121,8 @@ echo "$ID_RESULT" | grep -q "uid=" && pass "Exec 'id' returns uid" || fail "exec
 # ── Test 12: Exec hostname ──
 HOST_RESULT=$(curl -s -X POST "$API/api/sessions/$SESSION_NAME/exec" \
   -H 'Content-Type: application/json' -d '{"command": "hostname", "timeout": 10}')
-echo "$HOST_RESULT" | grep -q "output" && pass "Exec 'hostname' returns output" || fail "exec hostname" "$HOST_RESULT"
+HOST_OUTPUT=$(echo "$HOST_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('output',''))" 2>/dev/null || echo "")
+[ -n "$HOST_OUTPUT" ] && pass "Exec 'hostname' returns non-empty output: $HOST_OUTPUT" || fail "exec hostname" "$HOST_RESULT"
 
 # ── Test 13: Upload/download rejected for raw ──
 echo ""
@@ -134,7 +135,7 @@ DL_RESULT=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/sessions/$S
   -H 'Content-Type: application/json' -d '{"remote_path": "/etc/hostname"}')
 [ "$DL_RESULT" = "400" ] && pass "Download rejected for raw session (400)" || fail "download reject" "$DL_RESULT"
 
-# ── Test 14: HTTP Beacon ──
+# ── HTTP Beacon Tests ──
 echo ""
 echo "── HTTP Beacon Tests ──"
 BEACON_LST=$(curl -s -X POST "$API/api/listeners" -H 'Content-Type: application/json' -d '{"port": 9002, "mode": "http"}')
@@ -148,26 +149,137 @@ CHECKIN=$(curl -s -X POST "$BEACON_URL/checkin" -H 'Content-Type: application/js
 BEACON_SID=$(echo "$CHECKIN" | python3 -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
 [ -n "$BEACON_SID" ] && pass "Beacon checkin returned session_id: $BEACON_SID" || fail "beacon checkin" "$CHECKIN"
 
+# Beacon empty poll: no command queued, should return null command within timeout
 if [ -n "$BEACON_SID" ]; then
   TASK=$(curl -s --max-time 3 "$BEACON_URL/task/$BEACON_SID" 2>/dev/null || true)
-  if [ -n "$TASK" ]; then
-    echo "$TASK" | grep -q "command" && pass "Beacon task poll returns response" || pass "Beacon task poll timed out (expected, no pending task)"
+  TASK_CMD=$(echo "$TASK" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('command') or '')" 2>/dev/null || echo "PARSE_FAIL")
+  if [ "$TASK_CMD" = "" ]; then
+    pass "Beacon empty poll returns null command"
+  elif [ "$TASK_CMD" = "PARSE_FAIL" ]; then
+    pass "Beacon poll timed out (no pending task)"
   else
-    pass "Beacon task poll timed out (expected, no pending task)"
+    fail "beacon empty poll" "expected null command, got '$TASK_CMD'"
   fi
 fi
 
-# ── Test 15: Kill session ──
+# Beacon E2E: queue command via exec API, poll via beacon, post result, verify caller gets output
+if [ -n "$BEACON_SID" ]; then
+  echo ""
+  echo "── Beacon E2E Command Flow ──"
+  BEACON_TMPFILE=$(mktemp /tmp/gleipnir-beacon-e2e-XXXXXX)
+
+  # Queue a command in the background (blocks until result arrives or timeout)
+  curl -s -X POST "$API/api/sessions/$BEACON_SID/exec" \
+    -H 'Content-Type: application/json' -d '{"command": "echo beacon_e2e_works", "timeout": 15}' > "$BEACON_TMPFILE" 2>/dev/null &
+  EXEC_BG_PID=$!
+
+  sleep 1
+
+  # Agent polls for task
+  TASK=$(curl -s --max-time 10 "$BEACON_URL/task/$BEACON_SID" 2>/dev/null || true)
+  TASK_ID=$(echo "$TASK" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id') or '')" 2>/dev/null || echo "")
+  TASK_CMD=$(echo "$TASK" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('command') or '')" 2>/dev/null || echo "")
+
+  if [ -n "$TASK_ID" ] && [ -n "$TASK_CMD" ]; then
+    pass "Beacon poll received task id=$TASK_ID command='$TASK_CMD'"
+  else
+    fail "beacon poll task" "id='$TASK_ID' command='$TASK_CMD' raw='$TASK'"
+  fi
+
+  # Agent posts result back
+  if [ -n "$TASK_ID" ]; then
+    RESULT_RESP=$(curl -s -X POST "$BEACON_URL/result/$BEACON_SID" \
+      -H 'Content-Type: application/json' \
+      -d "{\"id\": $TASK_ID, \"output\": \"beacon_e2e_works\"}" 2>/dev/null || true)
+    echo "$RESULT_RESP" | grep -q '"ok"' && pass "Beacon result posted" || fail "beacon result post" "$RESULT_RESP"
+  fi
+
+  # Wait for the background exec to finish
+  wait "$EXEC_BG_PID" 2>/dev/null || true
+  EXEC_OUTPUT=$(cat "$BEACON_TMPFILE" 2>/dev/null || echo "")
+  rm -f "$BEACON_TMPFILE"
+
+  if echo "$EXEC_OUTPUT" | grep -q "beacon_e2e_works"; then
+    pass "Beacon E2E: exec caller received correct output"
+  else
+    fail "beacon e2e output" "$EXEC_OUTPUT"
+  fi
+fi
+
+# ── SOCKS Tunnel API Tests ──
+echo ""
+echo "── SOCKS Tunnel Tests ──"
+TUNNEL_CREATE=$(curl -s -X POST "$API/api/tunnels" \
+  -H 'Content-Type: application/json' -d "{\"session\": \"$SESSION_NAME\", \"port\": 11080}" 2>/dev/null || true)
+# Session may be raw (no SOCKS support), but the API should respond
+TUNNEL_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/tunnels" \
+  -H 'Content-Type: application/json' -d "{\"session\": \"$SESSION_NAME\", \"port\": 11081}" 2>/dev/null || echo "000")
+if [ "$TUNNEL_CODE" = "201" ] || [ "$TUNNEL_CODE" = "400" ]; then
+  pass "SOCKS tunnel create returns valid response ($TUNNEL_CODE)"
+else
+  fail "socks create" "got $TUNNEL_CODE"
+fi
+
+TUNNELS=$(curl -s "$API/api/tunnels" 2>/dev/null || echo "[]")
+echo "$TUNNELS" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null && pass "GET /api/tunnels returns valid JSON" || fail "tunnels list" "$TUNNELS"
+
+# Stop tunnel if one was created
+if [ "$TUNNEL_CODE" = "201" ]; then
+  STOP_TUNNEL=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/api/tunnels/$SESSION_NAME" 2>/dev/null || echo "000")
+  [ "$STOP_TUNNEL" = "200" ] && pass "SOCKS tunnel stop returns 200" || fail "socks stop" "got $STOP_TUNNEL"
+fi
+
+# ── Auth Rejection Tests ──
+echo ""
+echo "── Auth Tests ──"
+AUTH_API="http://localhost:16667"
+
+echo "Starting auth-enabled server..."
+$COMPOSE up -d gleipnir-auth 2>&1
+
+echo "Waiting for auth server health..."
+AUTH_READY=false
+for i in $(seq 1 20); do
+  if curl -sf -H "Authorization: Bearer test-secret-key" "$AUTH_API/api/health" >/dev/null 2>&1; then
+    AUTH_READY=true
+    break
+  fi
+  sleep 1
+done
+
+if [ "$AUTH_READY" = "true" ]; then
+  # Request without auth should be rejected
+  NOAUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$AUTH_API/api/sessions" 2>/dev/null)
+  [ "$NOAUTH_CODE" = "401" ] && pass "Auth: unauthenticated request returns 401" || fail "auth reject" "got $NOAUTH_CODE"
+
+  # Request with wrong key should be rejected
+  BADAUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer wrong-key" "$AUTH_API/api/sessions" 2>/dev/null)
+  [ "$BADAUTH_CODE" = "401" ] && pass "Auth: wrong key returns 401" || fail "auth wrong key" "got $BADAUTH_CODE"
+
+  # Request with correct key should succeed
+  GOODAUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer test-secret-key" "$AUTH_API/api/sessions" 2>/dev/null)
+  [ "$GOODAUTH_CODE" = "200" ] && pass "Auth: correct key returns 200" || fail "auth accept" "got $GOODAUTH_CODE"
+
+  # Health endpoint should also require auth
+  HEALTH_NOAUTH=$(curl -s -o /dev/null -w "%{http_code}" "$AUTH_API/api/health" 2>/dev/null)
+  [ "$HEALTH_NOAUTH" = "401" ] && pass "Auth: health endpoint also protected" || fail "auth health" "got $HEALTH_NOAUTH"
+else
+  fail "auth server" "did not become healthy within 20s"
+fi
+
+# ── Session Management Tests ──
 echo ""
 echo "── Session Management Tests ──"
 KILL_RESULT=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/api/sessions/$SESSION_NAME")
 [ "$KILL_RESULT" = "200" ] && pass "Kill session returns 200" || fail "kill session" "$KILL_RESULT"
 
-# ── Test 16: Session not found ──
 NOT_FOUND=$(curl -s -o /dev/null -w "%{http_code}" "$API/api/sessions/nonexistent")
 [ "$NOT_FOUND" = "404" ] && pass "Nonexistent session returns 404" || fail "not found" "$NOT_FOUND"
 
-# ── Test 17: Close listener ──
+# Double-kill should return 404
+DOUBLE_KILL=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/api/sessions/$SESSION_NAME")
+[ "$DOUBLE_KILL" = "404" ] && pass "Double-kill returns 404" || fail "double kill" "got $DOUBLE_KILL"
+
 LST_ID=$(echo "$RAW_LST" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null)
 if [ -n "$LST_ID" ]; then
   CLOSE_RESULT=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/api/listeners/$LST_ID")
