@@ -179,7 +179,12 @@ impl SessionManager {
 
         let session_info = SessionInfo {
             name: name.clone(),
-            os: if shell_info.windows { "windows" } else { "unknown" }.to_string(),
+            os: if shell_info.windows {
+                "windows"
+            } else {
+                "unknown"
+            }
+            .to_string(),
             arch: "unknown".to_string(),
             hostname: shell_info.hostname,
             username: shell_info.username,
@@ -345,6 +350,8 @@ impl SessionManager {
 
         // Pending response waiters keyed by request_id
         let mut pending: HashMap<u32, oneshot::Sender<Result<Vec<u8>, String>>> = HashMap::new();
+        // Accumulator for chunked file downloads from agent
+        let mut chunked_downloads: HashMap<u32, Vec<u8>> = HashMap::new();
         let (timeout_tx, mut timeout_rx) = mpsc::channel::<u32>(64);
         let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(5));
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -387,16 +394,56 @@ impl SessionManager {
                         }
                         SessionCommand::FileUp { data, remote_path, reply } => {
                             let rid = request_counter;
-                            let mut payload = BytesMut::new();
+                            const CHUNK_SIZE: usize = 1024 * 1024; // 1MB
+
+                            // First frame always carries the path header
                             let path_bytes = remote_path.as_bytes();
-                            payload.extend_from_slice(&(path_bytes.len() as u32).to_be_bytes());
-                            payload.extend_from_slice(path_bytes);
-                            payload.extend_from_slice(&data);
-                            let frame = Frame::new(FrameType::FileUp, rid, payload);
-                            if framed.send(frame).await.is_err() {
-                                let _ = reply.send(Err("send failed".into()));
-                                break;
+                            let mut header = BytesMut::new();
+                            header.extend_from_slice(&(path_bytes.len() as u32).to_be_bytes());
+                            header.extend_from_slice(path_bytes);
+
+                            if data.len() <= CHUNK_SIZE {
+                                // Small file: FileUp + FileEnd
+                                header.extend_from_slice(&data);
+                                let frame = Frame::new(FrameType::FileUp, rid, header);
+                                if framed.send(frame).await.is_err() {
+                                    let _ = reply.send(Err("send failed".into()));
+                                    break;
+                                }
+                                let end_frame = Frame::new(FrameType::FileEnd, rid, BytesMut::new());
+                                if framed.send(end_frame).await.is_err() {
+                                    let _ = reply.send(Err("send failed".into()));
+                                    break;
+                                }
+                            } else {
+                                // Large file: FileUp (path + first chunk), FileChunk*, FileEnd
+                                let first_chunk = &data[..CHUNK_SIZE.min(data.len())];
+                                header.extend_from_slice(first_chunk);
+                                let frame = Frame::new(FrameType::FileUp, rid, header);
+                                if framed.send(frame).await.is_err() {
+                                    let _ = reply.send(Err("send failed".into()));
+                                    break;
+                                }
+
+                                let mut offset = CHUNK_SIZE;
+                                let mut send_ok = true;
+                                while offset < data.len() && send_ok {
+                                    let end = (offset + CHUNK_SIZE).min(data.len());
+                                    let chunk = &data[offset..end];
+                                    let frame = Frame::new(FrameType::FileChunk, rid, BytesMut::from(chunk));
+                                    send_ok = framed.send(frame).await.is_ok();
+                                    offset = end;
+                                }
+                                if send_ok {
+                                    let frame = Frame::new(FrameType::FileEnd, rid, BytesMut::new());
+                                    send_ok = framed.send(frame).await.is_ok();
+                                }
+                                if !send_ok {
+                                    let _ = reply.send(Err("send failed".into()));
+                                    break;
+                                }
                             }
+
                             // Wrap the reply to convert Vec<u8> -> ()
                             let (inner_tx, inner_rx) = oneshot::channel();
                             pending.insert(rid, inner_tx);
@@ -453,12 +500,28 @@ impl SessionManager {
                                     }
                                 }
 
+                                FrameType::FileChunk => {
+                                    chunked_downloads
+                                        .entry(frame.request_id)
+                                        .or_default()
+                                        .extend_from_slice(&frame.payload);
+                                }
+
+                                FrameType::FileEnd => {
+                                    if let Some(data) = chunked_downloads.remove(&frame.request_id)
+                                        && let Some(reply) = pending.remove(&frame.request_id)
+                                    {
+                                        let _ = reply.send(Ok(data));
+                                    }
+                                }
+
                                 FrameType::Error => {
                                     if let Some(reply) = pending.remove(&frame.request_id) {
                                         let msg = frame.payload_as_str()
                                             .unwrap_or("unknown error").to_string();
                                         let _ = reply.send(Err(msg));
                                     }
+                                    chunked_downloads.remove(&frame.request_id);
                                 }
 
                                 // SOCKS frames from agent: route to the right client

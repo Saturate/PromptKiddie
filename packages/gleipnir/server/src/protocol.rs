@@ -21,6 +21,8 @@ pub enum FrameType {
     Info = 10,
     InfoResponse = 11,
     Error = 12,
+    FileChunk = 13,
+    FileEnd = 14,
 }
 
 impl FrameType {
@@ -38,6 +40,8 @@ impl FrameType {
             10 => Some(Self::Info),
             11 => Some(Self::InfoResponse),
             12 => Some(Self::Error),
+            13 => Some(Self::FileChunk),
+            14 => Some(Self::FileEnd),
             _ => None,
         }
     }
@@ -311,10 +315,10 @@ mod tests {
 
     #[test]
     fn all_frame_types_valid() {
-        for t in 1..=12_u8 {
+        for t in 1..=14_u8 {
             assert!(FrameType::from_u8(t).is_some(), "type {t} should be valid");
         }
         assert!(FrameType::from_u8(0).is_none());
-        assert!(FrameType::from_u8(13).is_none());
+        assert!(FrameType::from_u8(15).is_none());
     }
 }

