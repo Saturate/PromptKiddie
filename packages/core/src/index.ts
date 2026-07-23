@@ -48,6 +48,8 @@ export {
   type MockContextOpts,
   type ExploitHit,
   type LlmOpts,
+  type CallbackOpts,
+  type CallbackInfo,
   createMockContext,
 } from "./sdk.js";
 export { CTF_PLAYBOOK as CTF_ACTIONS } from "./actions/index.js";

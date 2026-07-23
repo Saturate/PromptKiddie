@@ -12,7 +12,7 @@ RELAY_PID=""
 AGENT_PID=""
 PASS=0
 FAIL=0
-TMPDIR_E2E=$(mktemp -d)
+TMPDIR_E2E=$(mktemp -d /tmp/gleipnir-hostile-XXXXXX)
 
 cleanup() {
   [[ -n "$AGENT_PID" ]] && kill "$AGENT_PID" 2>/dev/null || true
@@ -55,13 +55,13 @@ get_session_name() {
 echo "=== Building gleipnir (release) ==="
 cargo build --release 2>&1 | tail -3
 
-RELAY_BIN="target/release/gleipnir-relay"
+RELAY_BIN="target/release/gleipnir-server"
 AGENT_BIN="target/release/gleipnir-agent"
 
 # --- start relay + agent ----------------------------------------------------
 echo ""
 echo "=== Starting relay + agent ==="
-"$RELAY_BIN" --port "$RELAY_PORT" --api-socket "$API_SOCK" 2>/dev/null &
+"$RELAY_BIN" --port "$RELAY_PORT" --api-socket "$API_SOCK" --no-tls 2>/dev/null &
 RELAY_PID=$!
 sleep 0.3
 

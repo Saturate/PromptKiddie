@@ -7,6 +7,17 @@ use tracing::{debug, info, warn};
 use crate::session::SessionManager;
 use crate::socks::SocksRelay;
 
+fn is_allowed_path(path: &str) -> bool {
+    let check = |p: &str| {
+        p.starts_with("/tmp/") || p.starts_with("/private/tmp/") || p.starts_with("/workspace/")
+    };
+    if let Ok(canonical) = std::path::Path::new(path).canonicalize() {
+        check(&canonical.to_string_lossy())
+    } else {
+        check(path)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "action", rename_all = "lowercase")]
 enum ApiRequest {
@@ -31,6 +42,10 @@ enum ApiRequest {
         port: u16,
         #[serde(default)]
         stop: bool,
+    },
+    Rename {
+        session: String,
+        name: String,
     },
     Tunnels,
     Sessions,
@@ -129,7 +144,7 @@ async fn handle_request(
             timeout,
         } => match manager.exec(&session, &command, timeout).await {
             Ok(output) => {
-                if output.iter().any(|&b| b == 0) || std::str::from_utf8(&output).is_err() {
+                if output.contains(&0) || std::str::from_utf8(&output).is_err() {
                     use base64::Engine;
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&output);
                     ApiResponse::success(
@@ -143,26 +158,47 @@ async fn handle_request(
             Err(e) => ApiResponse::error(e),
         },
 
-        ApiRequest::Upload { session, src, dst } => match tokio::fs::read(&src).await {
-            Ok(data) => {
-                let size = data.len();
-                let start = std::time::Instant::now();
-                match manager.upload(&session, data, &dst).await {
-                    Ok(()) => {
-                        let elapsed_ms = start.elapsed().as_millis();
-                        ApiResponse::success(serde_json::json!({
-                            "uploaded": dst,
-                            "size": size,
-                            "elapsed_ms": elapsed_ms,
-                        }))
-                    }
-                    Err(e) => ApiResponse::error(e),
-                }
+        ApiRequest::Upload { session, src, dst } => {
+            if manager
+                .get_session(&session)
+                .await
+                .is_some_and(|i| i.mode == "raw")
+            {
+                return ApiResponse::error(
+                    "file upload not supported for raw sessions".to_string(),
+                );
             }
-            Err(e) => ApiResponse::error(format!("failed to read {src}: {e}")),
-        },
+            if !is_allowed_path(&src) {
+                return ApiResponse::error(
+                    "src path restricted to /tmp/ and /workspace/".to_string(),
+                );
+            }
+            match tokio::fs::read(&src).await {
+                Ok(data) => {
+                    let size = data.len();
+                    let start = std::time::Instant::now();
+                    match manager.upload(&session, data, &dst).await {
+                        Ok(()) => {
+                            let elapsed_ms = start.elapsed().as_millis();
+                            ApiResponse::success(serde_json::json!({
+                                "uploaded": dst,
+                                "size": size,
+                                "elapsed_ms": elapsed_ms,
+                            }))
+                        }
+                        Err(e) => ApiResponse::error(e),
+                    }
+                }
+                Err(e) => ApiResponse::error(format!("failed to read {src}: {e}")),
+            }
+        }
 
         ApiRequest::Download { session, src, dst } => {
+            if !is_allowed_path(&dst) {
+                return ApiResponse::error(
+                    "dst path restricted to /tmp/ and /workspace/".to_string(),
+                );
+            }
             match manager.download(&session, &src).await {
                 Ok(data) => match tokio::fs::write(&dst, &data).await {
                     Ok(()) => ApiResponse::success(serde_json::json!({
@@ -207,6 +243,12 @@ async fn handle_request(
                 }
             }
         }
+
+        ApiRequest::Rename { session, name } => match manager.rename_session(&session, &name).await
+        {
+            Ok(info) => ApiResponse::success(serde_json::to_value(info).unwrap_or_default()),
+            Err(e) => ApiResponse::error(e),
+        },
 
         ApiRequest::Tunnels => {
             let tunnels = socks_relay.list_tunnels().await;

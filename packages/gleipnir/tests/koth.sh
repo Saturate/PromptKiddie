@@ -12,7 +12,7 @@ RELAY_PID=""
 AGENT_PID=""
 PASS=0
 FAIL=0
-TMPDIR_E2E=$(mktemp -d)
+TMPDIR_E2E=$(mktemp -d /tmp/gleipnir-koth-XXXXXX)
 
 cleanup() {
   [[ -n "$AGENT_PID" ]] && kill "$AGENT_PID" 2>/dev/null || true
@@ -59,12 +59,12 @@ session_count() {
 echo "=== Building gleipnir (release) ==="
 cargo build --release 2>&1 | tail -3
 
-RELAY_BIN="target/release/gleipnir-relay"
+RELAY_BIN="target/release/gleipnir-server"
 AGENT_BIN="target/release/gleipnir-agent"
 
 echo ""
 echo "=== Starting relay ==="
-"$RELAY_BIN" --port "$RELAY_PORT" --api-socket "$API_SOCK" 2>/dev/null &
+"$RELAY_BIN" --port "$RELAY_PORT" --api-socket "$API_SOCK" --no-tls 2>/dev/null &
 RELAY_PID=$!
 sleep 0.3
 
@@ -293,9 +293,9 @@ echo "--- Multiple agents ---"
 
 AGENT2_PID=""
 AGENT3_PID=""
-"$AGENT_BIN" -H 127.0.0.1 -p "$RELAY_PORT" --cmd-timeout 5 2>/dev/null &
+"$AGENT_BIN" -H 127.0.0.1 -p "$RELAY_PORT" --cmd-timeout 5 --session-id "koth-agent-2-$$" 2>/dev/null &
 AGENT2_PID=$!
-"$AGENT_BIN" -H 127.0.0.1 -p "$RELAY_PORT" --cmd-timeout 5 2>/dev/null &
+"$AGENT_BIN" -H 127.0.0.1 -p "$RELAY_PORT" --cmd-timeout 5 --session-id "koth-agent-3-$$" 2>/dev/null &
 AGENT3_PID=$!
 sleep 1
 
@@ -340,6 +340,15 @@ sleep 0.2
 # Send a partial valid header then disconnect
 printf '\x50\x4B\x52\x4C\xFF\xFF\xFF\xFF' | nc -w 1 127.0.0.1 "$RELAY_PORT" 2>/dev/null || true
 sleep 0.2
+
+# Restart agent (previous ones were killed in multi-agent cleanup)
+kill "$AGENT_PID" 2>/dev/null || true
+wait "$AGENT_PID" 2>/dev/null || true
+"$AGENT_BIN" -H 127.0.0.1 -p "$RELAY_PORT" --cmd-timeout 5 2>/dev/null &
+AGENT_PID=$!
+if wait_for_sessions 1; then
+  SESSION=$(get_session_name)
+fi
 
 # Verify relay still works
 resp=$(api "{\"action\":\"exec\",\"session\":\"$SESSION\",\"command\":\"echo after_garbage\",\"timeout\":5}")

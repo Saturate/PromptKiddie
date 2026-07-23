@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELAY_PORT=34444
 CONTAINER_NAME="gleipnir-e2e-$$"
-IMAGE_NAME="gleipnir-relay-e2e"
+IMAGE_NAME="gleipnir-server-e2e"
 API_SOCK="/tmp/gleipnir-docker-e2e-$$.sock"
 AGENT_PID=""
 PASS=0

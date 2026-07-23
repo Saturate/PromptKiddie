@@ -4,7 +4,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 const MAGIC: u32 = 0x504B524C; // "PKRL"
 const HEADER_LEN: usize = 13; // 4 magic + 4 length + 1 type + 4 request_id
-const MAX_FRAME_LEN: usize = 64 * 1024 * 1024; // 64MB ceiling
+const MAX_FRAME_LEN: usize = 512 * 1024 * 1024; // 512MB ceiling
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -21,6 +21,8 @@ pub enum FrameType {
     Info = 10,
     InfoResponse = 11,
     Error = 12,
+    FileChunk = 13,
+    FileEnd = 14,
 }
 
 impl FrameType {
@@ -38,18 +40,22 @@ impl FrameType {
             10 => Some(Self::Info),
             11 => Some(Self::InfoResponse),
             12 => Some(Self::Error),
+            13 => Some(Self::FileChunk),
+            14 => Some(Self::FileEnd),
             _ => None,
         }
     }
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Frame {
     pub frame_type: FrameType,
     pub request_id: u32,
     pub payload: BytesMut,
 }
 
+#[allow(dead_code)]
 impl Frame {
     pub fn new(frame_type: FrameType, request_id: u32, payload: impl Into<BytesMut>) -> Self {
         Self {
@@ -159,7 +165,7 @@ impl Encoder<Frame> for GleipnirCodec {
 
         dst.reserve(HEADER_LEN + payload_len);
         dst.put_u32(MAGIC);
-        dst.put_u32(payload_len as u32);
+        dst.put_u32(u32::try_from(payload_len).expect("MAX_FRAME_LEN fits u32"));
         dst.put_u8(frame.frame_type as u8);
         dst.put_u32(frame.request_id);
         dst.extend_from_slice(&frame.payload);
@@ -309,10 +315,10 @@ mod tests {
 
     #[test]
     fn all_frame_types_valid() {
-        for t in 1..=12_u8 {
+        for t in 1..=14_u8 {
             assert!(FrameType::from_u8(t).is_some(), "type {t} should be valid");
         }
         assert!(FrameType::from_u8(0).is_none());
-        assert!(FrameType::from_u8(13).is_none());
+        assert!(FrameType::from_u8(15).is_none());
     }
 }
