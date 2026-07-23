@@ -198,8 +198,14 @@ async fn upload(
             .decode(b64)
             .map_err(|e| err(StatusCode::BAD_REQUEST, format!("invalid base64: {e}")))?
     } else if let Some(src) = &body.src_path {
-        // Only allow paths under /tmp or /workspace for safety
-        if !src.starts_with("/tmp/") && !src.starts_with("/workspace/") {
+        let resolved = std::path::Path::new(src.as_str())
+            .canonicalize()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| src.clone());
+        let allowed = |p: &str| {
+            p.starts_with("/tmp/") || p.starts_with("/private/tmp/") || p.starts_with("/workspace/")
+        };
+        if !allowed(&resolved) {
             return Err(err(
                 StatusCode::FORBIDDEN,
                 "src_path restricted to /tmp/ and /workspace/",

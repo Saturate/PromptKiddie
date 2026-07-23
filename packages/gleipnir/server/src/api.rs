@@ -7,6 +7,17 @@ use tracing::{debug, info, warn};
 use crate::session::SessionManager;
 use crate::socks::SocksRelay;
 
+fn is_allowed_path(path: &str) -> bool {
+    let check = |p: &str| {
+        p.starts_with("/tmp/") || p.starts_with("/private/tmp/") || p.starts_with("/workspace/")
+    };
+    if let Ok(canonical) = std::path::Path::new(path).canonicalize() {
+        check(&canonical.to_string_lossy())
+    } else {
+        check(path)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "action", rename_all = "lowercase")]
 enum ApiRequest {
@@ -153,7 +164,7 @@ async fn handle_request(
                     "file upload not supported for raw sessions".to_string(),
                 );
             }
-            if !src.starts_with("/tmp/") && !src.starts_with("/workspace/") {
+            if !is_allowed_path(&src) {
                 return ApiResponse::error(
                     "src path restricted to /tmp/ and /workspace/".to_string(),
                 );
@@ -179,6 +190,11 @@ async fn handle_request(
         }
 
         ApiRequest::Download { session, src, dst } => {
+            if !is_allowed_path(&dst) {
+                return ApiResponse::error(
+                    "dst path restricted to /tmp/ and /workspace/".to_string(),
+                );
+            }
             match manager.download(&session, &src).await {
                 Ok(data) => match tokio::fs::write(&dst, &data).await {
                     Ok(()) => ApiResponse::success(serde_json::json!({
