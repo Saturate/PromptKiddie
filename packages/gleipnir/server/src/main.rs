@@ -1,4 +1,5 @@
 mod api;
+mod beacon;
 mod http_api;
 mod listener;
 mod protocol;
@@ -15,7 +16,7 @@ use tracing::info;
 use listener::{ListenerManager, ListenerMode};
 use session::SessionManager;
 use socks::SocksRelay;
-use ws::EventBus;
+pub(crate) use ws::EventBus;
 
 #[derive(Parser)]
 #[command(name = "gleipnir-server", about = "Gleipnir C2 server")]
@@ -66,7 +67,8 @@ async fn main() {
         .expect("install rustls crypto provider");
 
     let cli = Cli::parse();
-    let manager = Arc::new(SessionManager::new());
+    let event_bus = Arc::new(EventBus::new());
+    let manager = Arc::new(SessionManager::new().with_event_bus(event_bus.clone()));
     let socks_relay = Arc::new(SocksRelay::new());
     let started_at = Instant::now();
 
@@ -123,8 +125,6 @@ async fn main() {
         api::start(&api_socket, api_manager, api_socks).await;
     });
 
-    let event_bus = Arc::new(EventBus::new());
-
     // HTTP API (runs forever)
     let agent_dir = if std::path::Path::new(&cli.agent_dir).exists() {
         Some(cli.agent_dir.clone())
@@ -135,7 +135,7 @@ async fn main() {
         manager: manager.clone(),
         socks_relay: socks_relay.clone(),
         listener_manager: listener_manager.clone(),
-        event_bus,
+        event_bus: event_bus.clone(),
         started_at,
         agent_dir,
     };

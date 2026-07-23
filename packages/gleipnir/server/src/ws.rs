@@ -15,7 +15,6 @@ pub struct SessionEvent {
     pub data: serde_json::Value,
 }
 
-#[allow(dead_code)]
 impl SessionEvent {
     pub fn new_session(name: &str, mode: &str, target: &str) -> Self {
         Self {
@@ -28,13 +27,6 @@ impl SessionEvent {
         Self {
             event: "session.closed".into(),
             data: serde_json::json!({ "session": name, "reason": reason }),
-        }
-    }
-
-    pub fn listener_connection(listener_id: &str, from: &str) -> Self {
-        Self {
-            event: "listener.connection".into(),
-            data: serde_json::json!({ "listener": listener_id, "from": from }),
         }
     }
 }
@@ -50,7 +42,6 @@ impl EventBus {
         Self { tx }
     }
 
-    #[allow(dead_code)]
     pub fn emit(&self, event: SessionEvent) {
         let _ = self.tx.send(event);
     }

@@ -35,8 +35,6 @@ impl Executor {
             Err(e) => {
                 return ExecutionResult {
                     output: format!("exec error: {e}").into_bytes(),
-                    exit_code: -1,
-                    timed_out: false,
                 };
             }
         };
@@ -49,7 +47,7 @@ impl Executor {
             tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), child.wait()).await;
 
         match result {
-            Ok(Ok(status)) => {
+            Ok(Ok(_status)) => {
                 use tokio::io::AsyncReadExt;
                 let mut combined = Vec::new();
                 if let Some(mut out) = stdout {
@@ -68,24 +66,16 @@ impl Executor {
 
                 self.maybe_update_cwd(command).await;
 
-                ExecutionResult {
-                    output: combined,
-                    exit_code: status.code().unwrap_or(-1),
-                    timed_out: false,
-                }
+                ExecutionResult { output: combined }
             }
             Ok(Err(e)) => ExecutionResult {
                 output: format!("exec error: {e}").into_bytes(),
-                exit_code: -1,
-                timed_out: false,
             },
             Err(_) => {
                 warn!("command timed out after {timeout_secs}s: {command}");
                 let _ = child.kill().await;
                 ExecutionResult {
                     output: format!("timed out after {timeout_secs}s").into_bytes(),
-                    exit_code: -1,
-                    timed_out: true,
                 }
             }
         }
@@ -108,18 +98,10 @@ impl Executor {
             }
         }
     }
-
-    #[allow(dead_code)]
-    pub async fn cwd(&self) -> String {
-        self.cwd.lock().await.to_string_lossy().to_string()
-    }
 }
 
-#[allow(dead_code)]
 pub struct ExecutionResult {
     pub output: Vec<u8>,
-    pub exit_code: i32,
-    pub timed_out: bool,
 }
 
 fn shell_for_platform() -> (&'static str, &'static str) {

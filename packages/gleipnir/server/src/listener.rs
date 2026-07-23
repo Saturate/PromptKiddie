@@ -17,7 +17,6 @@ const PKRL_MAGIC: u32 = 0x504B524C;
 const MAX_CONNECTIONS_PER_LISTENER: usize = 64;
 
 /// Supported listener protocol modes.
-/// For now all modes accept PKRL agent connections; raw/http are stubs.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ListenerMode {
@@ -185,18 +184,24 @@ impl ListenerManager {
             mode.as_str()
         );
 
-        let handle = tokio::spawn(async move {
-            accept_loop(
-                tcp_listener,
-                mgr,
-                counter,
-                accept_mode,
-                accept_prefix,
-                #[cfg(feature = "tls")]
-                tls,
-            )
-            .await;
-        });
+        let handle = if accept_mode == ListenerMode::Http {
+            tokio::spawn(async move {
+                crate::beacon::start(tcp_listener, mgr).await;
+            })
+        } else {
+            tokio::spawn(async move {
+                accept_loop(
+                    tcp_listener,
+                    mgr,
+                    counter,
+                    accept_mode,
+                    accept_prefix,
+                    #[cfg(feature = "tls")]
+                    tls,
+                )
+                .await;
+            })
+        };
 
         let running = RunningListener {
             id: id.clone(),

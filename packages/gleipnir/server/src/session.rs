@@ -14,6 +14,7 @@ use tracing::{debug, info, warn};
 
 use crate::protocol::{Frame, FrameType, GleipnirCodec};
 use crate::socks::SocksConnection;
+use crate::ws::{EventBus, SessionEvent};
 
 pub enum BoxedStream {
     Tcp(TcpStream),
@@ -116,9 +117,14 @@ pub(crate) struct ActiveSession {
     pub(crate) socks_connections: Arc<Mutex<HashMap<u32, SocksConnection>>>,
 }
 
+type HttpPendingMap = Arc<Mutex<HashMap<(String, u32), oneshot::Sender<Result<Vec<u8>, String>>>>>;
+
 pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<String, ActiveSession>>>,
     next_id: Arc<Mutex<u32>>,
+    event_bus: Option<Arc<EventBus>>,
+    http_pending: HttpPendingMap,
+    http_next_task_id: Arc<Mutex<u32>>,
 }
 
 impl SessionManager {
@@ -126,6 +132,20 @@ impl SessionManager {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             next_id: Arc::new(Mutex::new(1)),
+            event_bus: None,
+            http_pending: Arc::new(Mutex::new(HashMap::new())),
+            http_next_task_id: Arc::new(Mutex::new(1)),
+        }
+    }
+
+    pub fn with_event_bus(mut self, bus: Arc<EventBus>) -> Self {
+        self.event_bus = Some(bus);
+        self
+    }
+
+    fn emit(&self, event: SessionEvent) {
+        if let Some(ref bus) = self.event_bus {
+            bus.emit(event);
         }
     }
 
@@ -182,6 +202,7 @@ impl SessionManager {
             );
         }
 
+        self.emit(SessionEvent::new_session(&name, "raw", &format!("{peer}")));
         crate::session_raw::raw_session_loop(stream, cmd_rx).await;
 
         {
@@ -190,6 +211,7 @@ impl SessionManager {
                 s.info.connected = false;
             }
         }
+        self.emit(SessionEvent::session_closed(&name, "disconnected"));
         info!("raw session '{name}' disconnected");
     }
 
@@ -289,6 +311,11 @@ impl SessionManager {
             );
         }
 
+        self.emit(SessionEvent::new_session(
+            &name,
+            "agent",
+            &format!("{peer}"),
+        ));
         self.session_loop(&name, framed, cmd_rx, socks_connections)
             .await;
 
@@ -298,6 +325,7 @@ impl SessionManager {
                 s.info.connected = false;
             }
         }
+        self.emit(SessionEvent::session_closed(&name, "disconnected"));
         info!("session '{name}' disconnected");
     }
 
@@ -559,14 +587,6 @@ impl SessionManager {
             .map_err(|_| "session dropped reply".to_string())?
     }
 
-    #[allow(dead_code)]
-    pub async fn send_frame(&self, session: &str, frame: Frame) -> Result<(), String> {
-        let tx = self.get_tx(session).await?;
-        tx.send(SessionCommand::SendFrame(frame))
-            .await
-            .map_err(|_| "session channel closed".to_string())
-    }
-
     pub async fn get_socks_connections(
         &self,
         session: &str,
@@ -607,6 +627,75 @@ impl SessionManager {
             }
         });
         Ok(frame_tx)
+    }
+
+    pub async fn register_http_session(
+        &self,
+        platform: PlatformInfo,
+    ) -> Result<(String, mpsc::Receiver<SessionCommand>), String> {
+        let name = if let Some(ref sid) = platform.session_id {
+            sid.clone()
+        } else {
+            self.generate_name(&platform).await
+        };
+
+        let (cmd_tx, cmd_rx) = mpsc::channel::<SessionCommand>(32);
+
+        let session_info = SessionInfo {
+            name: name.clone(),
+            os: platform.os,
+            arch: platform.arch,
+            hostname: platform.hostname,
+            username: platform.username,
+            pid: platform.pid,
+            cwd: platform.cwd,
+            connected: true,
+            mode: "http".to_string(),
+            last_seen: Instant::now(),
+        };
+
+        {
+            let mut sessions = self.sessions.lock().await;
+            sessions.insert(
+                name.clone(),
+                ActiveSession {
+                    info: session_info,
+                    cmd_tx,
+                    socks_connections: Arc::new(Mutex::new(HashMap::new())),
+                },
+            );
+        }
+
+        self.emit(SessionEvent::new_session(&name, "http", "http-beacon"));
+        Ok((name, cmd_rx))
+    }
+
+    pub async fn store_http_pending(
+        &self,
+        session: &str,
+        reply: oneshot::Sender<Result<Vec<u8>, String>>,
+    ) -> u32 {
+        let mut id = self.http_next_task_id.lock().await;
+        let task_id = *id;
+        *id = id.wrapping_add(1);
+        drop(id);
+
+        self.http_pending
+            .lock()
+            .await
+            .insert((session.to_string(), task_id), reply);
+        task_id
+    }
+
+    pub async fn take_http_pending(
+        &self,
+        session: &str,
+        task_id: u32,
+    ) -> Option<oneshot::Sender<Result<Vec<u8>, String>>> {
+        self.http_pending
+            .lock()
+            .await
+            .remove(&(session.to_string(), task_id))
     }
 
     async fn get_tx(&self, session: &str) -> Result<mpsc::Sender<SessionCommand>, String> {
