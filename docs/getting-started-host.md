@@ -21,15 +21,15 @@ Postgres, headless Chrome, and Gleipnir.
 ## First engagement
 
 Open the project directory in your AI agent. The agent reads `AGENTS.md` (or
-`CLAUDE.md`, which symlinks to it) for orchestrator instructions.
+`CLAUDE.md`, which symlinks to it) for supervisor instructions.
 
 ```bash
 pk engagement new --name "Box Name" --type ctf --scope "10.10.11.x"
 pk target add --kind host --id 10.10.11.x --in-scope
-pk supervisor <engagement-id>
+pk daemon <engagement-id>
 ```
 
-The supervisor handles the rest: port scanning, web recon, directory brute-forcing,
+The daemon handles the rest: port scanning, web recon, directory brute-forcing,
 CVE matching, and spawning exploit agents.
 
 ## VPN (Hack The Box / TryHackMe)

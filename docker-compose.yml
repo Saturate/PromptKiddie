@@ -1,5 +1,5 @@
 # PromptKiddie v2: infrastructure services only.
-# Agent and orchestrator containers are spawned dynamically via `pk spawn`.
+# Agent and supervisor containers are spawned dynamically via `pk spawn`.
 
 services:
   postgres:
@@ -177,7 +177,7 @@ services:
     networks:
       - pk-network
 
-  # Orchestrator (Cartridge + pk CLI + supervisor in standby)
+  # Orchestrator (Cartridge + pk CLI + daemon in standby)
   orchestrator:
     build:
       context: .

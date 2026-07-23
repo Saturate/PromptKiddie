@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  An autonomous supervisor that scans, enumerates, and escalates while you steer.<br>
+  An autonomous daemon that scans, enumerates, and escalates while you steer.<br>
   You set the scope; PK handles the methodology, evidence, and reporting.
 </p>
 
@@ -80,7 +80,7 @@ graph LR
 
 ## Knowledge base
 
-PK ships exploits and techniques as structured knowledge in [OKF](packages/core/src/knowledge/SPEC.md) format. The supervisor auto-matches discovered versions against the exploit index and fires when it finds a hit. Sources include HackTricks and GTFOBins.
+PK ships exploits and techniques as structured knowledge in [OKF](packages/core/src/knowledge/SPEC.md) format. The daemon auto-matches discovered versions against the exploit index and fires when it finds a hit. Sources include HackTricks and GTFOBins.
 
 ## Documentation
 
@@ -94,6 +94,6 @@ PK ships exploits and techniques as structured knowledge in [OKF](packages/core/
 
 For authorized testing, CTFs, and education only. Every engagement requires a
 Rules-of-Engagement record with scope, allowed actions, and time windows. The
-orchestrator refuses to act outside defined scope.
+supervisor refuses to act outside defined scope.
 
 LLMs with access to live machines and networks can be quite dangerous. Use at your own risk.

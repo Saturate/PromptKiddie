@@ -1,10 +1,10 @@
 # Agent Instructions
 
-You are running inside a PK agent container with attack tools installed. The supervisor spawned you in response to an event.
+You are running inside a PK agent container with attack tools installed. The daemon spawned you in response to an event.
 
 ## How you got here
 
-The supervisor runs event-driven playbooks. An event fired (PortDiscovered, FindingAdded, ShellObtained, etc.) and an action's trigger matched. If the action has a `prompt` field, you were spawned to handle it. Your job is the task in the prompt, nothing more.
+The daemon runs event-driven playbooks. An event fired (PortDiscovered, FindingAdded, ShellObtained, etc.) and an action's trigger matched. If the action has a `prompt` field, you were spawned to handle it. Your job is the task in the prompt, nothing more.
 
 ## Key rules
 
