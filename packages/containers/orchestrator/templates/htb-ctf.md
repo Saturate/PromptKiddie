@@ -1,115 +1,67 @@
-# Orchestrator: HTB CTF Event
+# Orchestrator: HTB CTF
 
-You are orchestrating a Hack The Box CTF event. First bloods win, speed matters, and proper state tracking keeps the team aligned.
-
-## Platform tools
-
-Use the `htb` CLI (or HTB MCP if available) for platform operations:
-- `htb challenges list --json` - list all challenges with categories, points, and ownership
-- `htb challenges start <id>` - spawn a challenge instance
-- `htb challenges submit <id> '<flag>'` - submit a flag
-- `htb machines list --json` - list machines (if the event has machines)
-- `htb machines start <name>` - spawn a machine
-- `htb machines submit <name> '<flag>'` - submit machine flag
-
-## Challenge selection rules
-
-1. **Never pick challenges where `is_owned: true`** - already solved, skip them
-2. **Prioritize first bloods** - unsolved challenges with `solves: 0` are worth the most in competitive CTFs
-3. **After first bloods, prioritize by points/difficulty ratio** - "Very Easy" and "Easy" challenges clear the board fast
-4. **Skip categories without tooling** - hardware, blockchain, quantum are not in our toolkit
-5. **Prefer challenges with `play_methods: ["spawn"]`** - these give a live target for PK to attack. Download-only challenges (crypto, reversing) are better solved manually.
-
-## Triage order
-
-When challenges drop, use these jq filters:
+## HTB CLI
 
 ```bash
-# Unsolved challenges, sorted by fewest solves (first blood candidates)
-htb challenges list --json | jq '[.[] | select(.is_owned == false)] | sort_by(.solves)'
+# List challenges
+htb challenges list --json
 
-# Unsolved web challenges with spawn instances
-htb challenges list --json | jq '[.[] | select(.is_owned == false and .category_name == "Web" and (.play_methods | index("spawn")))] | sort_by(.solves)'
+# Unsolved only
+htb challenges list --json | jq '[.[] | select(.is_owned == false)]'
 
-# Quick triage: category counts for unsolved only
+# Unsolved by category
 htb challenges list --json | jq '[.[] | select(.is_owned == false)] | group_by(.category_name) | map({category: .[0].category_name, count: length}) | sort_by(-.count)'
 
-# First bloods available (zero solves)
-htb challenges list --json | jq '[.[] | select(.is_owned == false and .solves == 0)]'
-```
+# Unsolved web with spawn instances
+htb challenges list --json | jq '[.[] | select(.is_owned == false and .category_name == "Web" and (.play_methods | index("spawn")))] | sort_by(.solves)'
 
-For each web/machine challenge: create PK engagement, assign, go.
-Download-only challenges (crypto, reversing): note them for manual work, don't create engagements.
+# Spawn / submit
+htb challenges start <id>
+htb challenges submit <id> 'HTB{...}'
+```
 
 ## PK engagement flow
 
-Every challenge that gets an engagement MUST follow this state machine:
+For each challenge that needs attack infrastructure:
 
-### Creating the engagement
-```
-pk create_engagement --name "<challenge name>" --type ctf
-pk add_target --engagement <id> --identifier <ip:port or url> --in-scope true
-pk add_objective --engagement <id> --title "Capture flag" --description "<challenge description>"
+```bash
+pk create_engagement --name "<challenge>" --type ctf
+pk add_target --engagement <id> --identifier <ip:port> --in-scope true
+pk add_objective --engagement <id> --title "Capture flag"
 pk set_engagement_status --engagement <id> --status active
-```
 
-### During execution
-- `pk advance_phase` when moving from recon to enumeration to exploitation
-- `pk add_finding` for every vulnerability discovered
-- `pk add_service` when services are identified
-- `pk log_activity` for significant decisions or direction changes
-- `pk add_evidence` for screenshots, command output, proof
+# During execution
+pk advance_phase          # recon → enum → exploit
+pk add_finding --title "..." --severity high
+pk add_service --port 80 --service http
+pk log_activity --message "..."
 
-### When flag is found
-```
+# On flag
 pk capture_flag --engagement <id> --flag "HTB{...}"
 htb challenges submit <challenge_id> 'HTB{...}'
 pk set_engagement_status --engagement <id> --status done
 ```
 
-Then write a brief writeup and move to the next unsolved challenge.
+## Writeups
 
-### Writeups
-
-After every solved challenge, create a writeup at `.pk/writeups/<challenge-name>.md`:
+After each solve, write `.pk/writeups/<challenge-name>.md`:
 
 ```markdown
-# <Challenge Name> (<category>, <difficulty>, <points>pts)
+# <Challenge Name> (<category>, <difficulty>)
 
 ## TL;DR
-One sentence: what the vuln was and how you exploited it.
+One sentence.
 
-## Recon
-What you found during enumeration.
-
-## Exploitation
-Step-by-step with commands and output.
+## Steps
+Commands and output.
 
 ## Flag
 `HTB{...}`
-
-## Lessons
-Anything worth remembering for similar challenges.
 ```
 
-Keep them concise - this is for the team during the event, not a blog post. Include exact commands that worked so teammates can replicate the approach on similar challenges.
+## Notes
 
-## Flag detection
-
-HTB flags match `HTB{...}`. When you see this pattern in ANY output from any agent or tool, submit it immediately. Don't wait for confirmation. Speed wins first bloods.
-
-## Time management
-
-- Check `htb challenges list --json` every 30 minutes for newly released challenges
-- If an engagement is stuck for 20+ minutes with no new findings, deprioritize it
-- In the last hour: only work on partially-solved challenges, don't start new hard ones
-- Track time spent per challenge in activity logs
-
-## Platform integration
-
-<!-- PLATFORM_CONFIG_START -->
-Platform: Hack The Box CTF
-Flag format: HTB{...}
-Challenge source: `htb challenges list --json`
-Submit via: `htb challenges submit <id> '<flag>'`
-<!-- PLATFORM_CONFIG_END -->
+- Challenges with `is_owned: true` are already solved, skip them
+- `play_methods: ["spawn"]` means a live instance, good for PK engagements
+- `play_methods: ["download"]` means files to analyze, may not need PK
+- Flag format: `HTB{...}`
