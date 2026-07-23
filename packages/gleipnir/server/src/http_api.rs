@@ -68,6 +68,7 @@ pub async fn start(port: u16, state: AppState) {
             get(get_session).delete(kill_session),
         )
         .route("/api/sessions/{name}/exec", post(exec))
+        .route("/api/sessions/{name}/rename", post(rename_session))
         .route("/api/sessions/{name}/upload", post(upload))
         .route("/api/sessions/{name}/download", post(download))
         .route("/api/tunnels", get(list_tunnels).post(create_tunnel))
@@ -287,6 +288,22 @@ async fn kill_session(
     match state.manager.kill_session(&name).await {
         Ok(()) => Ok(Json(serde_json::json!({ "killed": name }))),
         Err(e) => Err(err(StatusCode::NOT_FOUND, e)),
+    }
+}
+
+#[derive(Deserialize)]
+struct RenameRequest {
+    name: String,
+}
+
+async fn rename_session(
+    State(state): State<AppState>,
+    Path(old_name): Path<String>,
+    Json(body): Json<RenameRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
+    match state.manager.rename_session(&old_name, &body.name).await {
+        Ok(info) => Ok(Json(serde_json::to_value(info).unwrap_or_default())),
+        Err(e) => Err(err(StatusCode::BAD_REQUEST, e)),
     }
 }
 

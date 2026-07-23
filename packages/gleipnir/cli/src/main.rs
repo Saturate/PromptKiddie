@@ -46,6 +46,14 @@ enum Commands {
         /// Local path to save to (defaults to filename from remote_path)
         local_path: Option<String>,
     },
+    /// Rename a session
+    Rename { session: String, new_name: String },
+    /// Interactive shell on a session
+    Shell {
+        session: String,
+        #[arg(short, long, default_value_t = 300)]
+        timeout: u64,
+    },
     /// Kill a session
     Kill { session: String },
     /// Close a listener
@@ -168,6 +176,61 @@ async fn main() {
                 }
                 Err(e) => eprintln!("error: {e}"),
             }
+        }
+        Commands::Rename { session, new_name } => {
+            let body = serde_json::json!({ "name": new_name });
+            match c
+                .post(&format!("/api/sessions/{session}/rename"), &body)
+                .await
+            {
+                Ok(v) => {
+                    eprintln!("[+] renamed '{session}' -> '{new_name}'");
+                    print_json(&v);
+                }
+                Err(e) => eprintln!("error: {e}"),
+            }
+        }
+        Commands::Shell { session, timeout } => {
+            eprintln!("[*] interactive shell on '{session}' (type 'exit' to quit)");
+            let stdin = std::io::stdin();
+            let reader = std::io::BufRead::lines(stdin.lock());
+            for line in reader {
+                let line = match line {
+                    Ok(l) => l,
+                    Err(_) => break,
+                };
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if trimmed == "exit" || trimmed == "quit" {
+                    break;
+                }
+                let body = serde_json::json!({ "command": trimmed, "timeout": timeout });
+                match c
+                    .post(&format!("/api/sessions/{session}/exec"), &body)
+                    .await
+                {
+                    Ok(v) => {
+                        if let Some(output) = v.get("output").and_then(|v| v.as_str()) {
+                            println!("{output}");
+                        } else if let Some(b64) = v.get("output_b64").and_then(|v| v.as_str()) {
+                            use base64::Engine;
+                            if let Ok(data) = base64::engine::general_purpose::STANDARD.decode(b64)
+                            {
+                                let _ = std::io::Write::write_all(&mut std::io::stdout(), &data);
+                                println!();
+                            } else {
+                                print_json(&v);
+                            }
+                        } else {
+                            print_json(&v);
+                        }
+                    }
+                    Err(e) => eprintln!("error: {e}"),
+                }
+            }
+            eprintln!("[*] shell closed");
         }
         Commands::Kill { session } => match c.delete(&format!("/api/sessions/{session}")).await {
             Ok(v) => print_json(&v),

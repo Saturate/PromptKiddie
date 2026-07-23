@@ -43,6 +43,10 @@ enum ApiRequest {
         #[serde(default)]
         stop: bool,
     },
+    Rename {
+        session: String,
+        name: String,
+    },
     Tunnels,
     Sessions,
     Session {
@@ -239,6 +243,12 @@ async fn handle_request(
                 }
             }
         }
+
+        ApiRequest::Rename { session, name } => match manager.rename_session(&session, &name).await
+        {
+            Ok(info) => ApiResponse::success(serde_json::to_value(info).unwrap_or_default()),
+            Err(e) => ApiResponse::error(e),
+        },
 
         ApiRequest::Tunnels => {
             let tunnels = socks_relay.list_tunnels().await;

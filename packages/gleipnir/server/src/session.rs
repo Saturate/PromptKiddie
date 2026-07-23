@@ -179,7 +179,7 @@ impl SessionManager {
 
         let session_info = SessionInfo {
             name: name.clone(),
-            os: "unknown".to_string(),
+            os: if shell_info.windows { "windows" } else { "unknown" }.to_string(),
             arch: "unknown".to_string(),
             hostname: shell_info.hostname,
             username: shell_info.username,
@@ -203,7 +203,7 @@ impl SessionManager {
         }
 
         self.emit(SessionEvent::new_session(&name, "raw", &format!("{peer}")));
-        crate::session_raw::raw_session_loop(stream, cmd_rx).await;
+        crate::session_raw::raw_session_loop(stream, cmd_rx, shell_info.windows).await;
 
         {
             let mut sessions = self.sessions.lock().await;
@@ -614,6 +614,20 @@ impl SessionManager {
             Some(_) => Ok(()),
             None => Err(format!("session '{name}' not found")),
         }
+    }
+
+    pub async fn rename_session(&self, old: &str, new: &str) -> Result<SessionInfo, String> {
+        let mut sessions = self.sessions.lock().await;
+        if sessions.contains_key(new) {
+            return Err(format!("session '{new}' already exists"));
+        }
+        let mut active = sessions
+            .remove(old)
+            .ok_or_else(|| format!("session '{old}' not found"))?;
+        active.info.name = new.to_string();
+        let info = active.info.clone();
+        sessions.insert(new.to_string(), active);
+        Ok(info)
     }
 
     pub async fn get_frame_sender(&self, session: &str) -> Result<mpsc::Sender<Frame>, String> {
