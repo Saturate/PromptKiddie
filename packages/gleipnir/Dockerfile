@@ -29,6 +29,6 @@ RUN mkdir -p /opt/gleipnir/agents && \
       chmod +x /opt/gleipnir/agents/pk-agent-* 2>/dev/null || true; \
     fi
 
-EXPOSE 4444 6666
+EXPOSE 4444 6666 8080 8443 9001-9010
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD curl -sf http://localhost:6666/api/health || exit 1
 ENTRYPOINT ["gleipnir-server"]

