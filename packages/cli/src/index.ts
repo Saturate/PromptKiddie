@@ -2322,6 +2322,225 @@ spawn
     }
   });
 
+// --- init ctf ----------------------------------------------------------------
+
+const ORCHESTRATOR_GENERIC = `# Orchestrator Instructions
+
+You are the PK orchestrator. You manage engagements at the platform level - creating them, assigning playbooks, monitoring progress, and making strategic decisions across all active work.
+
+## Your role
+
+You sit above individual engagements. Supervisors handle per-engagement decisions (which agent to spawn, when to intervene). You handle cross-engagement decisions (what to work on next, when to pivot, resource allocation).
+
+## Available tools
+
+You have access to PK's MCP server with these capabilities:
+- \`create_engagement\` / \`list_engagements\` / \`get_engagement\` - manage engagements
+- \`add_target\` / \`list_targets\` - define what to attack
+- \`add_objective\` / \`list_objectives\` / \`capture_flag\` - track goals
+- \`advance_phase\` / \`get_phase\` - control engagement phases
+- \`list_findings\` / \`list_services\` - monitor progress
+- \`list_activity\` - watch what's happening
+- \`search_knowledge\` - query the technique knowledge base
+
+You also have the \`pk\` CLI for direct database operations.
+
+## Decision framework
+
+### When to create an engagement
+- A new target or challenge is identified that needs attack infrastructure
+- The platform (HTB, lab, client) provides a target IP or instance
+
+### When to intervene
+- An engagement is stalled (no new events for 10+ minutes)
+- A supervisor reports it's blocked
+- A phase gate condition is met and needs advancement
+- A flag is found and needs to be submitted
+
+### When to skip or deprioritize
+- Challenges that don't need infrastructure (crypto, forensics, reversing)
+- Low-point challenges when higher-point ones are available
+- Challenges where the team is already stuck after significant effort
+
+## Event monitoring
+
+Watch the activity stream across all engagements. Key events to act on:
+- \`FlagFound\` - submit it immediately
+- \`PhaseComplete\` - advance to next phase or mark done
+- \`EngagementStalled\` - investigate and intervene
+- \`ShellObtained\` - ensure post-exploitation is running
+
+## Rules
+
+- Never run offensive tools directly. Delegate to engagements and their agents.
+- Create engagements with clear objectives, not vague goals.
+- When a flag is captured, submit it through the platform immediately.
+- Log strategic decisions via \`pk log_activity\` so the team can see your reasoning.
+- If you're unsure about scope or rules of engagement, ask the user.
+`;
+
+const ORCHESTRATOR_HTB_CTF = `# Orchestrator: HTB CTF Event
+
+You are orchestrating a Hack The Box CTF event. Time is limited, points matter, and triage is everything.
+
+## Platform tools
+
+Use the \`htb\` CLI (or HTB MCP if available) for platform operations:
+- \`htb challenges list --json\` - list all challenges with categories and points
+- \`htb challenges start <id>\` - spawn a challenge instance
+- \`htb challenges submit <id> '<flag>'\` - submit a flag
+- \`htb machines list --json\` - list machines (if the event has machines)
+- \`htb machines start <name>\` - spawn a machine
+- \`htb machines submit <name> '<flag>'\` - submit machine flag
+
+## CTF strategy
+
+### Phase 1: Triage (first 15 minutes)
+1. Pull the full challenge list: \`htb challenges list --json\`
+2. Categorize by type and difficulty
+3. Identify quick wins: low-point challenges in familiar categories
+4. Identify high-value targets: challenges worth the most points
+5. Skip categories you have no tooling for (hardware, blockchain)
+
+### Phase 2: Parallel execution
+- Create a PK engagement per attackable challenge (web, pwn, machine)
+- Set objectives with the challenge name and point value
+- Let supervisors and agents handle execution
+- Monitor progress across all engagements
+
+### Phase 3: Triage ongoing
+- Every 30 minutes: check scoreboard, reprioritize
+- If an engagement is stuck for 20+ minutes, note it and move resources
+- When a flag is found, submit immediately via \`htb challenges submit\`
+- Log the flag to PK: \`pk capture_flag --flag 'HTB{...}'\`
+
+### Challenge-to-engagement mapping
+- **Web**: create engagement, set target to challenge URL/IP, use CTF playbook
+- **Machine**: create engagement, start machine, set target IP, use pentest playbook
+- **Pwn/Rev**: these may not need PK - just download the binary and analyze locally
+- **Crypto/Forensics/OSINT**: skip PK, solve directly
+- **Misc**: evaluate case by case
+
+## Flag format
+HTB flags follow the pattern \`HTB{...}\`. When you see this pattern in any output, submit it immediately.
+
+## Time management
+- Check remaining time periodically
+- In the last hour: focus on partially-solved challenges, don't start new hard ones
+- Submit partial flags or write-ups if the platform supports it
+`;
+
+const ORCHESTRATOR_PENTEST = `# Orchestrator: Pentest Engagement
+
+You are orchestrating a penetration test. Scope and rules of engagement are defined by the client.
+
+## Strategy
+
+### Scoping
+1. Confirm in-scope targets from the engagement configuration
+2. Create one engagement per network segment or major target
+3. Set objectives based on the statement of work
+
+### Execution
+- Start with passive recon across all targets
+- Create focused engagements for each target as services are discovered
+- Prioritize internet-facing services over internal
+- Document everything: findings, evidence, activity logs
+
+### Reporting
+- When significant findings are confirmed, log them immediately
+- Use severity ratings consistently (Critical/High/Medium/Low/Info)
+- Link evidence to findings
+- At the end: generate the report via \`pk report\`
+
+## Rules
+- Stay in scope at all times
+- No denial of service
+- Document permission/authorization before testing
+- Escalate critical findings immediately
+`;
+
+const TEMPLATES: Record<string, string> = {
+  generic: ORCHESTRATOR_GENERIC,
+  htb: ORCHESTRATOR_HTB_CTF,
+  pentest: ORCHESTRATOR_PENTEST,
+};
+
+const initGroup = program.command("init").description("Initialize PK workspaces and events");
+
+initGroup
+  .command("ctf")
+  .description("Scaffold a CTF event with orchestrator instructions")
+  .option("--platform <platform>", "Platform template: htb, pentest, generic", "generic")
+  .option("--event <name>", "Event name", "CTF Event")
+  .option("--create-engagement", "Create a PK engagement for the event")
+  .action(async (o) => {
+    const { mkdirSync, writeFileSync, existsSync: fileExists } = await import("node:fs");
+    const { join: pathJoin } = await import("node:path");
+
+    const pkDir = pathJoin(process.cwd(), ".pk");
+    mkdirSync(pkDir, { recursive: true });
+
+    const template = TEMPLATES[o.platform] ?? TEMPLATES.generic;
+    const orchPath = pathJoin(pkDir, "orchestrator.md");
+
+    if (fileExists(orchPath)) {
+      console.error(`[init] .pk/orchestrator.md already exists, overwriting`);
+    }
+
+    let content = template;
+    if (o.event) {
+      content = content.replace(/^# .+$/m, `# ${o.event}`);
+    }
+    writeFileSync(orchPath, content, "utf-8");
+    console.error(`[init] wrote .pk/orchestrator.md (template: ${o.platform})`);
+
+    // HTB challenge discovery
+    if (o.platform === "htb") {
+      try {
+        const htbOut = execFileSync("htb", ["challenges", "list", "--json"], {
+          timeout: 15000,
+          encoding: "utf-8",
+        });
+        const challenges = JSON.parse(htbOut);
+        if (Array.isArray(challenges) && challenges.length > 0) {
+          const categories: Record<string, number> = {};
+          for (const ch of challenges) {
+            const cat = ch.category ?? ch.type ?? "unknown";
+            categories[cat] = (categories[cat] ?? 0) + 1;
+          }
+          console.error(`[init] HTB challenges: ${challenges.length} total`);
+          for (const [cat, count] of Object.entries(categories).sort((a, b) => b[1] - a[1])) {
+            console.error(`  ${cat}: ${count}`);
+          }
+        }
+      } catch {
+        console.error("[init] htb CLI not available or no active challenges");
+      }
+    }
+
+    // Create engagement if requested
+    if (o.createEngagement) {
+      try {
+        const engagement = await repo.createEngagement({
+          name: o.event,
+          type: "ctf",
+        });
+        const eng = engagement as { id: string; slug: string };
+        console.error(`[init] engagement created: ${eng.id} (${eng.slug})`);
+      } catch (err) {
+        console.error(`[init] failed to create engagement: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    console.error("");
+    console.error("[init] Next steps:");
+    console.error("  Host mode:   Your Claude Code session IS the orchestrator.");
+    console.error("               Read .pk/orchestrator.md for strategy instructions.");
+    console.error("  Hosted mode: docker run -v $(pwd)/.pk:/workspace/.pk pk-orchestrator");
+    console.error("");
+  });
+
 async function main() {
   try {
     await program.parseAsync(process.argv);
