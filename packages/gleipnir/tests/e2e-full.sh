@@ -209,11 +209,8 @@ fi
 # ── SOCKS Tunnel API Tests ──
 echo ""
 echo "── SOCKS Tunnel Tests ──"
-TUNNEL_CREATE=$(curl -s -X POST "$API/api/tunnels" \
-  -H 'Content-Type: application/json' -d "{\"session\": \"$SESSION_NAME\", \"port\": 11080}" 2>/dev/null || true)
-# Session may be raw (no SOCKS support), but the API should respond
 TUNNEL_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/tunnels" \
-  -H 'Content-Type: application/json' -d "{\"session\": \"$SESSION_NAME\", \"port\": 11081}" 2>/dev/null || echo "000")
+  -H 'Content-Type: application/json' -d "{\"session\": \"$SESSION_NAME\", \"port\": 11080}" 2>/dev/null || echo "000")
 if [ "$TUNNEL_CODE" = "201" ] || [ "$TUNNEL_CODE" = "400" ]; then
   pass "SOCKS tunnel create returns valid response ($TUNNEL_CODE)"
 else
@@ -223,10 +220,12 @@ fi
 TUNNELS=$(curl -s "$API/api/tunnels" 2>/dev/null || echo "[]")
 echo "$TUNNELS" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null && pass "GET /api/tunnels returns valid JSON" || fail "tunnels list" "$TUNNELS"
 
-# Stop tunnel if one was created
 if [ "$TUNNEL_CODE" = "201" ]; then
   STOP_TUNNEL=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/api/tunnels/$SESSION_NAME" 2>/dev/null || echo "000")
   [ "$STOP_TUNNEL" = "200" ] && pass "SOCKS tunnel stop returns 200" || fail "socks stop" "got $STOP_TUNNEL"
+
+  DOUBLE_STOP=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$API/api/tunnels/$SESSION_NAME" 2>/dev/null || echo "000")
+  [ "$DOUBLE_STOP" = "404" ] && pass "SOCKS tunnel double-stop returns 404" || fail "socks double stop" "got $DOUBLE_STOP"
 fi
 
 # ── Auth Rejection Tests ──
