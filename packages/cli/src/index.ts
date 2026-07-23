@@ -711,10 +711,10 @@ program
     out(await repo.getDiscoverySummary(eid));
   });
 
-// --- supervisor ------------------------------------------------------------
+// --- daemon ----------------------------------------------------------------
 program
-  .command("supervisor")
-  .description("Start the event-driven supervisor for an engagement")
+  .command("daemon")
+  .description("Start the event-driven daemon for an engagement")
   .option("--engagement <id>")
   .option("--mode <mode>", "Execution mode: race, standard, methodical, or learning")
   .action(async (o) => {
@@ -724,8 +724,8 @@ program
       console.error(`Invalid mode "${o.mode}". Valid modes: ${validModes.join(", ")}`);
       process.exit(1);
     }
-    const { startSupervisor } = await import("@promptkiddie/supervisor");
-    await startSupervisor({
+    const { startSupervisor: startDaemon } = await import("@promptkiddie/daemon");
+    await startDaemon({
       engagementId: eid,
       mode: o.mode,
       onEvent: (e) => console.log(`[event] ${e.type}: ${JSON.stringify(e.payload).slice(0, 100)}`),
@@ -2159,7 +2159,7 @@ report
   });
 
 // --- spawn (dynamic container provisioning) ----------------------------------
-const spawn = program.command("spawn").description("Spawn agent/orchestrator containers for v2 architecture")
+const spawn = program.command("spawn").description("Spawn agent/supervisor containers for v2 architecture")
   .hook("preAction", () => {
     if (isContainer) { console.error("Spawn is not available inside agent containers."); process.exit(1); }
   });
@@ -2293,7 +2293,7 @@ spawn
   .action(async () => {
     const { execFileSync: efs } = await import("node:child_process");
     try {
-      const out = efs("docker", ["ps", "--filter", "name=pk-agent-", "--filter", "name=pk-orchestrator-",
+      const out = efs("docker", ["ps", "--filter", "name=pk-agent-", "--filter", "name=pk-sup-",
         "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.ID}}"], { timeout: 10000 }).toString();
       if (!out.trim()) { console.log("No running PK containers"); return; }
       console.log("NAME\tIMAGE\tSTATUS\tID");

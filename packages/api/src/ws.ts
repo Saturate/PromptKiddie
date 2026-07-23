@@ -254,7 +254,7 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
     const subscribeIds = new Set([agentId, resolvedId]);
 
     // If this is a Cartridge container, bridge its native WS
-    const isContainer = rawId.startsWith("pk-orch-") || rawId.startsWith("pk-agent-");
+    const isContainer = rawId.startsWith("pk-sup-") || rawId.startsWith("pk-agent-");
     if (isContainer) {
       bridgeCartridgeWs(rawId, ws);
     }

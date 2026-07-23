@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@promptkiddie/core": "workspace:*",
-    "@promptkiddie/supervisor": "workspace:*",
+    "@promptkiddie/daemon": "workspace:*",
     "commander": "^13.0.0",
     "dotenv": "^16.4.0"
   },

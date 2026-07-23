@@ -152,8 +152,8 @@ interface DockerContainer {
 function ContainerButton({ container, onSelect, onKill }: { container: DockerContainer; onSelect: (name: string) => void; onKill?: (name: string) => void }) {
   const isUp = container.status.startsWith("Up");
   const isWorker = container.name.startsWith("pk-worker-");
-  const isOrch = container.name.startsWith("pk-orch-");
-  const label = isOrch
+  const isSup = container.name.startsWith("pk-sup-");
+  const label = isSup
     ? "Orchestrator"
     : container.displayName ?? container.name.replace(/^pk-(agent|worker)-/, "").replace(/-[a-z0-9]{6}$/, "");
   const shortId = container.name.split("-").pop() ?? "";
@@ -167,11 +167,11 @@ function ContainerButton({ container, onSelect, onKill }: { container: DockerCon
   };
 
   const dotColor = !isUp ? "bg-zinc-500"
-    : isOrch ? "bg-cyan-400"
+    : isSup ? "bg-cyan-400"
     : isWorker ? "bg-emerald-400"
     : "bg-pk-amber animate-pulse";
 
-  const roleLabel = isOrch ? "orchestrator" : isWorker ? "toolbox" : "agent";
+  const roleLabel = isSup ? "orchestrator" : isWorker ? "toolbox" : "agent";
 
   return (
     <div
@@ -179,7 +179,7 @@ function ContainerButton({ container, onSelect, onKill }: { container: DockerCon
       className={`w-full text-left px-2.5 py-2 rounded-md transition-colors ${
         nonClickable
           ? "border border-border/50"
-          : isOrch && isUp
+          : isSup && isUp
             ? "border border-cyan-500/30 hover:border-cyan-400/50 hover:bg-cyan-500/5 cursor-pointer"
             : isUp ? "border border-border hover:border-pk-amber/30 hover:bg-accent/50 cursor-pointer" : "hover:bg-accent/50 cursor-pointer"
       }`}
@@ -256,7 +256,7 @@ function AgentList({ onSelect, onAutoConnect }: { onSelect: (id: string) => void
 
   // Sort: orchestrator first, then workers, then task agents
   const sortedCurrentContainers = [...currentContainers].sort((a, b) => {
-    const order = (c: DockerContainer) => c.name.startsWith("pk-orch-") ? 0 : c.name.startsWith("pk-worker-") ? 1 : 2;
+    const order = (c: DockerContainer) => c.name.startsWith("pk-sup-") ? 0 : c.name.startsWith("pk-worker-") ? 1 : 2;
     return order(a) - order(b);
   });
 
@@ -264,7 +264,7 @@ function AgentList({ onSelect, onAutoConnect }: { onSelect: (id: string) => void
   const autoConnectFired = useRef(false);
   useEffect(() => {
     if (autoConnectFired.current) return;
-    const orch = sortedCurrentContainers.find(c => c.name.startsWith("pk-orch-") && c.status.startsWith("Up"));
+    const orch = sortedCurrentContainers.find(c => c.name.startsWith("pk-sup-") && c.status.startsWith("Up"));
     if (orch) {
       autoConnectFired.current = true;
       onAutoConnect?.(orch.name);

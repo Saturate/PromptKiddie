@@ -14,7 +14,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.14",
     "@promptkiddie/core": "workspace:*",
-    "@promptkiddie/supervisor": "workspace:^",
+    "@promptkiddie/daemon": "workspace:^",
     "dotenv": "^16",
     "hono": "^4",
     "ws": "^8.21.0"

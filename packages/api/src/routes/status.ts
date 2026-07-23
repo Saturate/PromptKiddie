@@ -54,8 +54,8 @@ app.get("/status", async (c) => {
         const [name, image, status, created] = line.split("\t");
         const meta = allMeta[name];
         const isWorker = name.startsWith("pk-worker-");
-        const isOrch = name.startsWith("pk-orch-");
-        const displayName = isOrch
+        const isSup = name.startsWith("pk-sup-");
+        const displayName = isSup
           ? "Orchestrator"
           : isWorker
           ? `Worker (${name.replace(/^pk-worker-/, "")})`
@@ -64,7 +64,7 @@ app.get("/status", async (c) => {
             : name.replace(/^pk-agent-/, "").replace(/-[a-z0-9]{6}$/, "");
         return { name, image, status, created, action: meta?.action, engagementId: meta?.engagementId, displayName };
       })
-      .filter(c => c.name.startsWith("pk-agent-") || c.name.startsWith("pk-worker-") || c.name.startsWith("pk-orch-"));
+      .filter(c => c.name.startsWith("pk-agent-") || c.name.startsWith("pk-worker-") || c.name.startsWith("pk-sup-"));
   } catch (err) {
     docker = { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

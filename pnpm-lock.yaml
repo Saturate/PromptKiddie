@@ -51,9 +51,9 @@ importers:
       '@promptkiddie/core':
         specifier: workspace:*
         version: link:../core
-      '@promptkiddie/supervisor':
+      '@promptkiddie/daemon':
         specifier: workspace:^
-        version: link:../supervisor
+        version: link:../daemon
       dotenv:
         specifier: ^16
         version: 16.6.1
@@ -76,9 +76,9 @@ importers:
       '@promptkiddie/core':
         specifier: workspace:*
         version: link:../core
-      '@promptkiddie/supervisor':
+      '@promptkiddie/daemon':
         specifier: workspace:*
-        version: link:../supervisor
+        version: link:../daemon
       commander:
         specifier: ^13.0.0
         version: 13.1.0
@@ -116,6 +116,37 @@ importers:
         version: 8.20.0
       typescript:
         specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@22.19.21)(vite@8.1.5(@types/node@22.19.21)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
+
+  packages/daemon:
+    dependencies:
+      '@promptkiddie/core':
+        specifier: workspace:*
+        version: link:../core
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+      pg:
+        specifier: ^8.13.3
+        version: 8.21.0
+      ws:
+        specifier: ^8.21.0
+        version: 8.21.0
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.11
+        version: 8.20.0
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: ^5.8.3
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
@@ -257,37 +288,6 @@ importers:
       vite:
         specifier: ^8.1.5
         version: 8.1.5(@types/node@22.19.21)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)
-
-  packages/supervisor:
-    dependencies:
-      '@promptkiddie/core':
-        specifier: workspace:*
-        version: link:../core
-      dotenv:
-        specifier: ^16.4.7
-        version: 16.6.1
-      pg:
-        specifier: ^8.13.3
-        version: 8.21.0
-      ws:
-        specifier: ^8.21.0
-        version: 8.21.0
-    devDependencies:
-      '@types/pg':
-        specifier: ^8.11.11
-        version: 8.20.0
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
-      tsx:
-        specifier: ^4.22.4
-        version: 4.22.4
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@types/node@22.19.21)(vite@8.1.5(@types/node@22.19.21)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
 
   packages/tooling-mcp:
     dependencies:
