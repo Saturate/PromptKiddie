@@ -81,22 +81,49 @@ pub async fn probe_and_upgrade(stream: &mut TcpStream) -> RawShellInfo {
         }
     }
 
-    // Attempt PTY upgrade: python3 first
+    // Detect available shell for PTY upgrade
+    let shell = detect_shell(stream).await;
+
+    // Attempt PTY upgrade: python3 first (works on most Linux distros)
     let _ = send_and_read(
         stream,
-        "python3 -c \"import pty;pty.spawn('/bin/bash')\" 2>/dev/null\n",
+        &format!("python3 -c \"import pty;pty.spawn('{shell}')\" 2>/dev/null\n"),
         1000,
     )
     .await;
 
-    // Fallback: script(1)
-    let _ = send_and_read(stream, "script -qc /bin/bash /dev/null 2>/dev/null\n", 500).await;
+    // Fallback: python2
+    let _ = send_and_read(
+        stream,
+        &format!("python -c \"import pty;pty.spawn('{shell}')\" 2>/dev/null\n"),
+        500,
+    )
+    .await;
+
+    // Fallback: script(1) with GNU syntax, then BusyBox syntax
+    let _ = send_and_read(
+        stream,
+        &format!("script -qc {shell} /dev/null 2>/dev/null\n"),
+        500,
+    )
+    .await;
+    let _ = send_and_read(
+        stream,
+        &format!("script -q /dev/null {shell} 2>/dev/null\n"),
+        500,
+    )
+    .await;
 
     // Disable command echo so exec output is clean
     let _ = send_and_read(stream, "stty -echo 2>/dev/null\n", 300).await;
 
     // Set a minimal prompt to reduce noise in output
-    let _ = send_and_read(stream, "PS1='' PS2='' 2>/dev/null\n", 300).await;
+    let _ = send_and_read(
+        stream,
+        "export PS1='' PS2='' PROMPT_COMMAND='' 2>/dev/null\n",
+        300,
+    )
+    .await;
 
     info
 }
@@ -208,6 +235,17 @@ async fn raw_exec(
 }
 
 // ── Helpers ──
+
+/// Detect which shell is available: prefer /bin/bash, fall back to /bin/sh.
+async fn detect_shell(stream: &mut TcpStream) -> &'static str {
+    if let Some(output) = send_and_read(stream, "test -x /bin/bash && echo HAS_BASH\n", 500).await {
+        let text = String::from_utf8_lossy(&output);
+        if text.contains("HAS_BASH") {
+            return "/bin/bash";
+        }
+    }
+    "/bin/sh"
+}
 
 /// Read whatever is available on the stream, waiting up to `timeout_ms`.
 /// Returns empty vec on timeout (not an error).

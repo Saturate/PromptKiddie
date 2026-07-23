@@ -4,7 +4,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 const MAGIC: u32 = 0x504B524C; // "PKRL"
 const HEADER_LEN: usize = 13; // 4 magic + 4 length + 1 type + 4 request_id
-const MAX_FRAME_LEN: usize = 64 * 1024 * 1024; // 64MB ceiling
+const MAX_FRAME_LEN: usize = 512 * 1024 * 1024; // 512MB ceiling
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

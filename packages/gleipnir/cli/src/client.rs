@@ -1,3 +1,4 @@
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use serde_json::Value;
 
 pub struct Client {
@@ -7,9 +8,20 @@ pub struct Client {
 
 impl Client {
     pub fn new(base_url: &str) -> Self {
+        let mut headers = HeaderMap::new();
+        if let Ok(key) = std::env::var("GLEIPNIR_API_KEY")
+            && !key.is_empty()
+            && let Ok(val) = HeaderValue::from_str(&format!("Bearer {key}"))
+        {
+            headers.insert(AUTHORIZATION, val);
+        }
+
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .default_headers(headers)
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
         }
     }
 

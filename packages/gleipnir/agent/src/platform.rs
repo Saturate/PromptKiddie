@@ -37,14 +37,17 @@ impl PlatformInfo {
     }
 }
 
-const SESSION_ID_FILE: &str = "/tmp/.gleipnir-sid";
+fn session_id_path() -> std::path::PathBuf {
+    std::env::temp_dir().join(".gleipnir-sid")
+}
 
 pub fn resolve_session_id(explicit: Option<String>) -> String {
     if let Some(id) = explicit {
         return id;
     }
 
-    if let Ok(id) = std::fs::read_to_string(SESSION_ID_FILE) {
+    let path = session_id_path();
+    if let Ok(id) = std::fs::read_to_string(&path) {
         let id = id.trim().to_string();
         if !id.is_empty() {
             return id;
@@ -52,7 +55,7 @@ pub fn resolve_session_id(explicit: Option<String>) -> String {
     }
 
     let id = format!("{:016x}", rand_id());
-    let _ = std::fs::write(SESSION_ID_FILE, &id);
+    let _ = std::fs::write(&path, &id);
     id
 }
 

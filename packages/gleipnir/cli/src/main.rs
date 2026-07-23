@@ -33,6 +33,19 @@ enum Commands {
     Listeners,
     /// Show server info
     Info,
+    /// Upload a local file to a session target
+    Upload {
+        session: String,
+        local_path: String,
+        remote_path: String,
+    },
+    /// Download a file from a session target
+    Download {
+        session: String,
+        remote_path: String,
+        /// Local path to save to (defaults to filename from remote_path)
+        local_path: Option<String>,
+    },
     /// Kill a session
     Kill { session: String },
     /// Close a listener
@@ -90,6 +103,72 @@ async fn main() {
             Ok(v) => print_json(&v),
             Err(e) => eprintln!("error: {e}"),
         },
+        Commands::Upload {
+            session,
+            local_path,
+            remote_path,
+        } => {
+            let data = match std::fs::read(&local_path) {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("error: failed to read {local_path}: {e}");
+                    std::process::exit(1);
+                }
+            };
+            use base64::Engine;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+            let body = serde_json::json!({
+                "data_b64": b64,
+                "dst_path": remote_path,
+            });
+            match c
+                .post(&format!("/api/sessions/{session}/upload"), &body)
+                .await
+            {
+                Ok(v) => print_json(&v),
+                Err(e) => eprintln!("error: {e}"),
+            }
+        }
+        Commands::Download {
+            session,
+            remote_path,
+            local_path,
+        } => {
+            let body = serde_json::json!({ "remote_path": remote_path });
+            match c
+                .post(&format!("/api/sessions/{session}/download"), &body)
+                .await
+            {
+                Ok(v) => {
+                    let Some(b64) = v.get("data_b64").and_then(|v| v.as_str()) else {
+                        eprintln!("error: no data_b64 in response");
+                        print_json(&v);
+                        std::process::exit(1);
+                    };
+                    use base64::Engine;
+                    let data = match base64::engine::general_purpose::STANDARD.decode(b64) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            eprintln!("error: invalid base64: {e}");
+                            std::process::exit(1);
+                        }
+                    };
+                    let save_path = local_path.unwrap_or_else(|| {
+                        std::path::Path::new(&remote_path)
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "download".to_string())
+                    });
+                    match std::fs::write(&save_path, &data) {
+                        Ok(()) => {
+                            eprintln!("[+] saved {} bytes to {save_path}", data.len());
+                        }
+                        Err(e) => eprintln!("error: failed to write {save_path}: {e}"),
+                    }
+                }
+                Err(e) => eprintln!("error: {e}"),
+            }
+        }
         Commands::Kill { session } => match c.delete(&format!("/api/sessions/{session}")).await {
             Ok(v) => print_json(&v),
             Err(e) => eprintln!("error: {e}"),

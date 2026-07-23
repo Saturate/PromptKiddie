@@ -22,7 +22,7 @@ struct C2State {
 }
 
 struct HttpSessionState {
-    cmd_rx: mpsc::Receiver<SessionCommand>,
+    cmd_rx: Arc<Mutex<mpsc::Receiver<SessionCommand>>>,
     last_poll: Instant,
 }
 
@@ -174,7 +174,7 @@ async fn checkin(
     state.http_sessions.lock().await.insert(
         name.clone(),
         HttpSessionState {
-            cmd_rx,
+            cmd_rx: Arc::new(Mutex::new(cmd_rx)),
             last_poll: Instant::now(),
         },
     );
@@ -194,17 +194,20 @@ async fn poll_task(
     State(state): State<C2State>,
     Path(session_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
-    let mut hs = state.http_sessions.lock().await;
-    let session = hs.get_mut(&session_id).ok_or_else(|| {
-        err(
-            StatusCode::NOT_FOUND,
-            format!("session '{session_id}' not found"),
-        )
-    })?;
+    // Grab the per-session cmd_rx Arc and update timestamps, then release the HashMap lock
+    let cmd_rx = {
+        let mut hs = state.http_sessions.lock().await;
+        let session = hs.get_mut(&session_id).ok_or_else(|| {
+            err(
+                StatusCode::NOT_FOUND,
+                format!("session '{session_id}' not found"),
+            )
+        })?;
+        session.last_poll = Instant::now();
+        session.cmd_rx.clone()
+    };
 
-    session.last_poll = Instant::now();
-
-    // Update last_seen on the main session
+    // Update last_seen on the main session (separate lock scope)
     {
         let mut mgr_sessions = state.manager.sessions_ref().lock().await;
         if let Some(s) = mgr_sessions.get_mut(&session_id) {
@@ -212,8 +215,11 @@ async fn poll_task(
         }
     }
 
-    // Long-poll: wait up to POLL_TIMEOUT for a command
-    let cmd = tokio::time::timeout(POLL_TIMEOUT, session.cmd_rx.recv()).await;
+    // Long-poll: wait up to POLL_TIMEOUT for a command (no locks held)
+    let cmd = {
+        let mut rx = cmd_rx.lock().await;
+        tokio::time::timeout(POLL_TIMEOUT, rx.recv()).await
+    };
 
     match cmd {
         Ok(Some(SessionCommand::Exec {
