@@ -23,6 +23,7 @@ ARG CHISEL_TAG=v1.10.1
 ARG LIGOLO_TAG=v0.7.5
 ARG KERBRUTE_TAG=v1.0.3
 ARG MIMIKATZ_TAG=2.2.0-20220919
+ARG FEROXBUSTER_TAG=v2.11.0
 
 # ── 1. System packages (apt - stable, expensive) ─────────────────
 
@@ -60,6 +61,9 @@ RUN pip3 install --break-system-packages --no-cache-dir \
 RUN pip3 install --break-system-packages --no-cache-dir \
     name-that-hash search-that-hash || true
 
+RUN pip3 install --break-system-packages --no-cache-dir \
+    coercer bloodhound pwncat-cs || true
+
 RUN gem install evil-winrm || true
 
 # ── 3. Binary tools from GitHub releases ─────────────────────────
@@ -87,7 +91,12 @@ RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL "https://github.com/nicocha30/ligolo-ng/releases/download/${LIGOLO_TAG}/ligolo-ng_agent_${LIGOLO_TAG#v}_linux_${GOARCH}.tar.gz" | tar xz -C /usr/local/bin ligolo-agent; \
     # kerbrute
     (curl -fsSL "https://github.com/ropnop/kerbrute/releases/download/${KERBRUTE_TAG}/kerbrute_linux_${GOARCH}" -o /usr/local/bin/kerbrute && \
-    chmod +x /usr/local/bin/kerbrute) || echo "WARNING: kerbrute not available for ${GOARCH}"
+    chmod +x /usr/local/bin/kerbrute) || echo "WARNING: kerbrute not available for ${GOARCH}"; \
+    # feroxbuster
+    FBARCH=$(case "$ARCH" in amd64) echo x86_64;; arm64) echo aarch64;; *) echo "$ARCH";; esac) && \
+    (curl -fsSL "https://github.com/epi052/feroxbuster/releases/download/${FEROXBUSTER_TAG}/feroxbuster_${FBARCH}-linux.zip" -o /tmp/ferox.zip && \
+    unzip -o /tmp/ferox.zip -d /usr/local/bin feroxbuster && chmod +x /usr/local/bin/feroxbuster && rm /tmp/ferox.zip) || \
+    echo "WARNING: feroxbuster not available for ${ARCH}"
 
 # nikto (not in Debian repos, install from source)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -96,6 +105,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto && \
     ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto && \
     chmod +x /opt/nikto/program/nikto.pl
+
+# AD automation tools
+RUN git clone --depth 1 https://github.com/grimlockx/ADCSKiller.git /opt/ADCSKiller && \
+    git clone --depth 1 https://github.com/lefayjey/linWinPwn.git /opt/linWinPwn && \
+    chmod +x /opt/linWinPwn/linWinPwn.sh && \
+    ln -sf /opt/linWinPwn/linWinPwn.sh /usr/local/bin/linWinPwn
 
 # ── 4. Pre-staged attack binaries (upload to targets) ────────────
 
@@ -134,7 +149,11 @@ RUN echo "=== Tool smoke test ===" && \
 # ── 6. Wordlists (stable, large - git clone is slow) ─────────────
 
 RUN mkdir -p /usr/share/wordlists && \
-    git clone --depth 1 --single-branch https://github.com/danielmiessler/SecLists.git /usr/share/seclists
+    git clone --depth 1 --single-branch https://github.com/danielmiessler/SecLists.git /usr/share/seclists && \
+    curl -fsSL https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt \
+      -o /usr/share/wordlists/rockyou.txt || \
+    curl -fsSL https://github.com/zacheller/rockyou/raw/master/rockyou.txt.tar.gz | \
+      tar xz -C /usr/share/wordlists || true
 
 # ── 7. PK code bundle (changes often - keep late) ────────────────
 
