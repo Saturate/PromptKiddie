@@ -1,6 +1,6 @@
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
+use tokio::net::{TcpStream as TokioTcpStream, UnixStream};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -539,4 +539,171 @@ async fn test_raw_session() {
         "expected 'not supported' error, got: {}",
         resp["error"]
     );
+}
+
+// ── HTTP API Auth tests ──
+
+const AUTH_RELAY_PORT: u16 = 14447;
+const AUTH_API_PORT: u16 = 16667;
+const AUTH_API_SOCKET: &str = "/tmp/gleipnir-test-auth.sock";
+const AUTH_KEY: &str = "test-secret-key-42";
+
+async fn http_get(port: u16, path: &str, auth: Option<&str>) -> (u16, String) {
+    let mut stream = TokioTcpStream::connect(format!("127.0.0.1:{port}"))
+        .await
+        .expect("connect to HTTP API");
+
+    let auth_header = match auth {
+        Some(key) => format!("Authorization: Bearer {key}\r\n"),
+        None => String::new(),
+    };
+    let request =
+        format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n{auth_header}Connection: close\r\n\r\n");
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .expect("write HTTP request");
+
+    let mut response = Vec::new();
+    timeout(Duration::from_secs(5), stream.read_to_end(&mut response))
+        .await
+        .expect("HTTP response timeout")
+        .expect("read HTTP response");
+
+    let text = String::from_utf8_lossy(&response).to_string();
+    let status = text
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(0);
+
+    let body = text.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+
+    (status, body)
+}
+
+#[tokio::test]
+async fn test_http_api_auth_rejection() {
+    let _ = tokio::fs::remove_file(AUTH_API_SOCKET).await;
+
+    let mut relay_args = vec![
+        "--port".to_string(),
+        AUTH_RELAY_PORT.to_string(),
+        "--api-socket".to_string(),
+        AUTH_API_SOCKET.to_string(),
+        "--api-port".to_string(),
+        AUTH_API_PORT.to_string(),
+    ];
+    #[cfg(feature = "tls")]
+    relay_args.push("--no-tls".to_string());
+
+    let mut relay = Command::new(find_binary("gleipnir-server"))
+        .args(&relay_args)
+        .env("GLEIPNIR_API_KEY", AUTH_KEY)
+        .kill_on_drop(true)
+        .spawn()
+        .expect("start auth relay");
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // No auth header -> 401
+    let (status, _) = http_get(AUTH_API_PORT, "/api/health", None).await;
+    assert_eq!(status, 401, "expected 401 without auth, got {status}");
+
+    // Wrong key -> 401
+    let (status, _) = http_get(AUTH_API_PORT, "/api/health", Some("wrong-key")).await;
+    assert_eq!(status, 401, "expected 401 with wrong key, got {status}");
+
+    // Correct key -> 200
+    let (status, body) = http_get(AUTH_API_PORT, "/api/health", Some(AUTH_KEY)).await;
+    assert_eq!(status, 200, "expected 200 with correct key, got {status}");
+    assert!(
+        body.contains("\"status\":\"ok\""),
+        "expected health ok, got: {body}"
+    );
+
+    // Correct key on another endpoint
+    let (status, body) = http_get(AUTH_API_PORT, "/api/sessions", Some(AUTH_KEY)).await;
+    assert_eq!(status, 200, "expected 200 on /api/sessions, got {status}");
+    assert!(body.contains('['), "expected JSON array, got: {body}");
+
+    let _ = relay.kill().await;
+    let _ = std::fs::remove_file(AUTH_API_SOCKET);
+}
+
+// ── WebSocket event tests ──
+
+const WS_RELAY_PORT: u16 = 14448;
+const WS_API_PORT: u16 = 16668;
+const WS_API_SOCKET: &str = "/tmp/gleipnir-test-ws.sock";
+
+#[tokio::test]
+async fn test_websocket_session_events() {
+    let _ = tokio::fs::remove_file(WS_API_SOCKET).await;
+
+    let mut relay_args = vec![
+        "--port".to_string(),
+        WS_RELAY_PORT.to_string(),
+        "--api-socket".to_string(),
+        WS_API_SOCKET.to_string(),
+        "--api-port".to_string(),
+        WS_API_PORT.to_string(),
+    ];
+    #[cfg(feature = "tls")]
+    relay_args.push("--no-tls".to_string());
+
+    let mut relay = Command::new(find_binary("gleipnir-server"))
+        .args(&relay_args)
+        .kill_on_drop(true)
+        .spawn()
+        .expect("start WS relay");
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // Connect WebSocket client to /ws/events
+    let ws_url = format!("ws://127.0.0.1:{WS_API_PORT}/ws/events");
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
+        .await
+        .expect("connect WebSocket");
+
+    // Now connect an agent to trigger a session.new event
+    let agent = Command::new(find_binary("gleipnir-agent"))
+        .args([
+            "-H",
+            "127.0.0.1",
+            "-p",
+            &WS_RELAY_PORT.to_string(),
+            "--session-id",
+            "ws-test-agent",
+        ])
+        .kill_on_drop(true)
+        .spawn()
+        .expect("start WS test agent");
+
+    // Read from WebSocket, expect a session.new event
+    use futures_util::StreamExt;
+    let msg = timeout(Duration::from_secs(5), ws.next())
+        .await
+        .expect("WS message timeout")
+        .expect("WS stream ended")
+        .expect("WS read error");
+
+    let text = msg.to_text().expect("WS message not text");
+    let event: serde_json::Value = serde_json::from_str(text).expect("parse WS event JSON");
+
+    assert_eq!(
+        event["event"].as_str().unwrap(),
+        "session.new",
+        "expected session.new event, got: {event}"
+    );
+    assert!(
+        event["session"].as_str().is_some(),
+        "event missing session field: {event}"
+    );
+
+    drop(agent);
+    drop(ws);
+    let _ = relay.kill().await;
+    let _ = std::fs::remove_file(WS_API_SOCKET);
 }
