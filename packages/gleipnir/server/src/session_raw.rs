@@ -59,16 +59,21 @@ pub async fn probe_and_upgrade(stream: &mut TcpStream) -> RawShellInfo {
         }
     }
 
+    // Drain any leftover output from the id command
+    let _ = read_available(stream, 200).await;
+
     // Send `hostname` and parse output
     if let Some(output) = send_and_read(stream, "hostname\n", 1000).await {
         let clean = strip_ansi(&output);
-        let text = String::from_utf8_lossy(&clean);
+        let text = String::from_utf8_lossy(&clean).replace('\r', "");
         for line in text.lines() {
             let trimmed = line.trim();
             if !trimmed.is_empty()
                 && !trimmed.contains("hostname")
+                && !trimmed.contains("uid=")
                 && !trimmed.ends_with('$')
                 && !trimmed.ends_with('#')
+                && trimmed.len() > 1
             {
                 info.hostname = trimmed.to_string();
                 break;
@@ -86,6 +91,12 @@ pub async fn probe_and_upgrade(stream: &mut TcpStream) -> RawShellInfo {
 
     // Fallback: script(1)
     let _ = send_and_read(stream, "script -qc /bin/bash /dev/null 2>/dev/null\n", 500).await;
+
+    // Disable command echo so exec output is clean
+    let _ = send_and_read(stream, "stty -echo 2>/dev/null\n", 300).await;
+
+    // Set a minimal prompt to reduce noise in output
+    let _ = send_and_read(stream, "PS1='' PS2='' 2>/dev/null\n", 300).await;
 
     info
 }
@@ -148,21 +159,52 @@ async fn raw_exec(
     let clean = strip_ansi(&raw);
     let text = String::from_utf8_lossy(&clean);
 
-    // Extract output: everything between the command echo and the marker
+    // Extract output: strip command echo, marker, prompts, and \r characters
+    let text = text.replace('\r', "");
+    let cmd_words: Vec<&str> = command.split_whitespace().collect();
+
     let output = if let Some(marker_pos) = text.find(&marker) {
         let before = &text[..marker_pos];
-        let lines: Vec<&str> = before.lines().collect();
-        if lines.len() > 1 {
-            // Skip first line (command echo)
-            lines[1..].join("\n")
-        } else {
-            before.to_string()
-        }
+        let lines: Vec<&str> = before
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    return true;
+                }
+                // Skip lines that look like command echo
+                if cmd_words.len() >= 2 && cmd_words.iter().all(|w| trimmed.contains(w)) {
+                    return false;
+                }
+                // Skip lines containing the marker echo command
+                if trimmed.contains("echo") && trimmed.contains("__GLEIPNIR_") {
+                    return false;
+                }
+                // Skip prompt-only lines
+                if trimmed.ends_with('$') || trimmed.ends_with('#') {
+                    let before_prompt = trimmed.trim_end_matches(['$', '#', ' ']);
+                    if before_prompt.is_empty()
+                        || before_prompt.chars().all(|c| {
+                            c.is_alphanumeric()
+                                || c == '@'
+                                || c == ':'
+                                || c == '~'
+                                || c == '-'
+                                || c == '/'
+                        })
+                    {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect();
+        lines.join("\n")
     } else {
         text.to_string()
     };
 
-    Ok(output.trim_end().as_bytes().to_vec())
+    Ok(output.trim().as_bytes().to_vec())
 }
 
 // ── Helpers ──
