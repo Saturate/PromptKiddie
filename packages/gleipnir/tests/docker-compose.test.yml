@@ -9,6 +9,7 @@ services:
       - "14444:4444"
       - "16666:6666"
       - "19001:9001"
+      - "19002:9002"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:6666/api/health"]
       interval: 2s

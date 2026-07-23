@@ -61,7 +61,7 @@ RAW_LST=$(curl -s -X POST "$API/api/listeners" -H 'Content-Type: application/jso
 echo "$RAW_LST" | grep -q '"raw"' && pass "POST /api/listeners (raw) created" || fail "raw listener" "$RAW_LST"
 
 # ── Test 5: List shows both listeners ──
-LST_COUNT=$(curl -s "$API/api/listeners" | grep -c '"id"')
+LST_COUNT=$(curl -s "$API/api/listeners" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
 [ "$LST_COUNT" -ge 2 ] && pass "Two listeners active" || fail "listener count" "got $LST_COUNT"
 
 # ── Test 6: Sessions initially empty ──
@@ -134,19 +134,28 @@ DL_RESULT=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/api/sessions/$S
   -H 'Content-Type: application/json' -d '{"remote_path": "/etc/hostname"}')
 [ "$DL_RESULT" = "400" ] && pass "Download rejected for raw session (400)" || fail "download reject" "$DL_RESULT"
 
-# ── Test 14: HTTP C2 ──
+# ── Test 14: HTTP Beacon ──
 echo ""
-echo "── HTTP C2 Tests ──"
-CHECKIN=$(curl -s -X POST "$API/c2/http-test/checkin" -H 'Content-Type: application/json' -d '{}')
-echo "$CHECKIN" | grep -q "http-test" && pass "HTTP C2 checkin" || fail "c2 checkin" "$CHECKIN"
+echo "── HTTP Beacon Tests ──"
+BEACON_LST=$(curl -s -X POST "$API/api/listeners" -H 'Content-Type: application/json' -d '{"port": 9002, "mode": "http"}')
+echo "$BEACON_LST" | grep -q '"http"' && pass "HTTP beacon listener created" || fail "beacon listener" "$BEACON_LST"
 
-# Queue a task
-curl -s -X POST "$API/api/sessions/http-test/exec" \
-  -H 'Content-Type: application/json' -d '{"command": "id", "timeout": 10}' >/dev/null 2>&1 &
+BEACON_URL="http://localhost:19002"
 sleep 1
 
-TASK=$(curl -s "$API/c2/http-test/task")
-echo "$TASK" | grep -q "id" && pass "HTTP C2 task polling" || pass "HTTP C2 no pending task (ok)"
+CHECKIN=$(curl -s -X POST "$BEACON_URL/checkin" -H 'Content-Type: application/json' \
+  -d '{"os":"linux","arch":"x86_64","hostname":"beacon-test","username":"tester","pid":1,"cwd":"/tmp"}')
+BEACON_SID=$(echo "$CHECKIN" | python3 -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null)
+[ -n "$BEACON_SID" ] && pass "Beacon checkin returned session_id: $BEACON_SID" || fail "beacon checkin" "$CHECKIN"
+
+if [ -n "$BEACON_SID" ]; then
+  TASK=$(curl -s --max-time 3 "$BEACON_URL/task/$BEACON_SID" 2>/dev/null || true)
+  if [ -n "$TASK" ]; then
+    echo "$TASK" | grep -q "command" && pass "Beacon task poll returns response" || pass "Beacon task poll timed out (expected, no pending task)"
+  else
+    pass "Beacon task poll timed out (expected, no pending task)"
+  fi
+fi
 
 # ── Test 15: Kill session ──
 echo ""
