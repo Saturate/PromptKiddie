@@ -1,14 +1,4 @@
 ---
-init: patch
-tooling-mcp: patch
-supervisor: patch
-core: patch
-api: patch
-web: patch
-gleipnir: patch
-mcp-server: patch
-cli: patch
-ratatosk: patch
 ---
 
 # Add Contributor Covenant Code of Conduct
