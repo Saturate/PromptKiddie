@@ -2068,8 +2068,9 @@ build
   });
 
 // --- init (scaffold workspace) ---------------------------------------------
-program
-  .command("init")
+const initCmd = program.command("init").description("Initialize PK workspaces and events");
+initCmd
+  .command("workspace", { isDefault: true })
   .description("Scaffold a PromptKiddie workspace in the current directory")
   .option("--harness <harness>", "AI harness: claude-code | opencode | pi")
   .option("--db-url <url>", "PostgreSQL connection string")
@@ -2466,9 +2467,7 @@ const TEMPLATES: Record<string, string> = {
   pentest: ORCHESTRATOR_PENTEST,
 };
 
-const initGroup = program.command("init").description("Initialize PK workspaces and events");
-
-initGroup
+initCmd
   .command("ctf")
   .description("Scaffold a CTF event with orchestrator instructions")
   .option("--platform <platform>", "Platform template: htb, pentest, generic", "generic")
@@ -2506,7 +2505,7 @@ initGroup
         if (Array.isArray(challenges) && challenges.length > 0) {
           const categories: Record<string, number> = {};
           for (const ch of challenges) {
-            const cat = ch.category ?? ch.type ?? "unknown";
+            const cat = ch.category_name ?? ch.category ?? ch.type ?? "unknown";
             categories[cat] = (categories[cat] ?? 0) + 1;
           }
           console.error(`[init] HTB challenges: ${challenges.length} total`);
