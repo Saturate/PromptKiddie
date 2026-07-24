@@ -1,20 +1,17 @@
-# Supervisor
+# @promptkiddie/daemon
 
-Event-driven process that watches engagement events via Postgres LISTEN/NOTIFY
-and dispatches playbook actions. Not an LLM; pure code.
+Event-driven process that watches engagement events via Postgres LISTEN/NOTIFY and dispatches playbook actions. Deterministic code, no LLM.
 
 ## Usage
 
-```bash
-pk supervisor <engagement-id>
-pk supervisor <engagement-id> --mode race    # max parallelism
-pk supervisor <engagement-id> --mode learning # human gates before LLM actions
-```
+Normally runs embedded in the API server, auto-starting per-engagement daemons when status changes to "active".
 
-Or directly:
+Standalone:
 
 ```bash
-pnpm --filter @promptkiddie/supervisor start -- <engagement-id>
+pk daemon <engagement-id>
+pk daemon <engagement-id> --mode race    # max parallelism
+pk daemon <engagement-id> --mode learning # human gates before LLM actions
 ```
 
 ## How it works
@@ -22,9 +19,9 @@ pnpm --filter @promptkiddie/supervisor start -- <engagement-id>
 1. Connects to Postgres and `LISTEN pk_events`
 2. Emits `EngagementStarted` to kick off the playbook
 3. On each event: evaluates all action triggers, dispatches matches
-4. Script actions (`run` field) execute via `docker exec` on the attackbox
-5. Prompt actions (`prompt` field) send the task to the orchestrator inbox
-6. Output streams to connected WebSocket clients on port 3200
+4. Script actions (`run` field) execute via `docker exec` on the worker container
+5. Prompt actions (`prompt` field) spawn agent containers with the task
+6. Output streams to connected WebSocket clients
 
 ## Execution modes
 
@@ -37,9 +34,7 @@ pnpm --filter @promptkiddie/supervisor start -- <engagement-id>
 
 ## WebSocket protocol
 
-Connects on `ws://localhost:3200` (configurable via `PK_WS_PORT`).
-
-Messages from supervisor to client:
+Messages from daemon to client:
 
 ```json
 { "type": "event", "data": { "type": "PortDiscovered", "payload": {...} } }
