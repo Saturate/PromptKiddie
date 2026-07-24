@@ -7,12 +7,12 @@ Monorepo for the PromptKiddie platform. pnpm workspaces, TypeScript for the plat
 | Package | Language | What it is |
 |---------|----------|------------|
 | `core` | TS | Database schema (drizzle), engagement repo, playbook SDK, action graph |
-| `cli` | TS | `pk` CLI that agents and orchestrator use to read/write the engagement DB |
-| `api` | TS | HTTP + WebSocket API + embedded supervisor for the web UI |
+| `cli` | TS | `pk` CLI that agents and supervisors use to read/write the engagement DB |
+| `api` | TS | HTTP + WebSocket API + embedded daemon for the web UI |
 | `spa` | TS/React | Dashboard SPA (Vite + React + TanStack Query + shadcn/ui) |
 | `web` | TS/Next.js | Legacy Next.js UI (being replaced by spa) |
 | `mcp-server` | TS | MCP server exposing engagement DB to Claude Code |
-| `supervisor` | TS | Event-driven process that runs playbook actions against targets |
+| `daemon` | TS | Event-driven process that runs playbook actions against targets |
 | `tooling` | Docker | Attackbox container image with pentest tools |
 | `gleipnir` | Rust | Persistent reverse shell handler (relay + agent binary) |
 | `ratatosk` | Rust | Privilege escalation scanner (runs on target, outputs JSON) |
@@ -29,28 +29,28 @@ Playbooks are TypeScript modules exporting `Action[]`. Each action has:
 - `prompt` - LLM task prompt (agent-tier, spawns a Cartridge agent)
 - `emits` - event types this action may produce
 
-The supervisor evaluates actions against events. When `on()` returns true, the action fires. Script actions run tools via `ctx.exec()`. Agent actions spawn Docker containers with Cartridge + attack tools.
+The daemon evaluates actions against events. When `on()` returns true, the action fires. Script actions run tools via `ctx.exec()`. Agent actions spawn Docker containers with Cartridge + attack tools.
 
 Built-in playbooks: `CTF_ACTIONS` (29 actions), `PENTEST_PLAYBOOK` (14 actions, phased with gates).
 
-### Supervisor
+### Daemon
 
-The supervisor runs in standby mode embedded in the API process. It auto-starts per-engagement supervisors when status changes to "active" and stops them on "paused"/"done".
+The daemon runs in standby mode embedded in the API process. It auto-starts per-engagement daemons when status changes to "active" and stops them on "paused"/"done".
 
-Event propagation: events table -> Postgres NOTIFY trigger -> supervisor event stream -> action dispatch.
+Event propagation: events table -> Postgres NOTIFY trigger -> daemon event stream -> action dispatch.
 
 ### LLM tiers
 
-Three levels of LLM involvement, from none to full autonomy:
+Four tiers, from deterministic to full autonomy:
 
 | Tier | Container | Scope | Lifecycle | Purpose |
 |------|-----------|-------|-----------|---------|
-| **Supervisor** | (embedded in API) | per-engagement | auto start/stop | Deterministic code. Fires playbook actions on events. No LLM. |
-| **Task Agent** | `pk-agent-<slug>-<id>` | per-action | spawned per prompt action, dies after | Short-lived LLM for one job: exploit this, analyze that. Reads AGENT.md. |
-| **Orchestrator** | `pk-orch-<slug>` | per-engagement | persistent while active | Persistent LLM sidekick. Watches events, intervenes on stalls, redirects stuck agents. Reads ORCHESTRATOR.md. |
-| **Controller** | `pk-controller` | global | always-on (hosted only) | Optional global LLM for hosted mode. Creates engagements, assigns playbooks, manages PK state. Not scoped to any engagement. |
+| **Daemon** | (embedded in API) | per-engagement | auto start/stop | Deterministic code. Fires playbook actions on events. No LLM. |
+| **Agent** | `pk-agent-<slug>-<id>` | per-action | spawned per prompt action, dies after | Short-lived LLM for one job: exploit this, analyze that. Reads AGENT.md. |
+| **Supervisor** | `pk-sup-<slug>` | per-engagement | persistent while active | Persistent LLM. Watches events, intervenes on stalls, redirects stuck agents. Reads SUPERVISOR.md. |
+| **Orchestrator** | `pk-orchestrator` | global | always-on (hosted) or host mode | Global LLM. Creates engagements, assigns playbooks, manages PK state. In host mode, the user's harness (Claude Code, etc.) fills this role via the PK MCP server. |
 
-The supervisor handles the deterministic playbook; the orchestrator handles judgment calls; the controller handles platform-level decisions. In host mode, the user's own harness (Claude Code, etc.) fills the controller role via the PK MCP server.
+The daemon handles the deterministic playbook; the supervisor handles per-engagement judgment calls; the orchestrator handles platform-level decisions across engagements.
 
 ### Docker containers
 
@@ -58,9 +58,9 @@ Single unified image: `pk-agent` (all tools in one). Built from `packages/contai
 
 Build: `pnpm build && docker build -t pk-agent -f packages/containers/agent/Dockerfile .`
 
-Per-engagement containers spawned by the supervisor:
+Per-engagement containers spawned by the daemon:
 - `pk-worker-<slug>` - persistent toolbox for `ctx.exec()`, runs `sleep infinity`
-- `pk-orch-<slug>` - persistent orchestrator with Cartridge + LLM
+- `pk-sup-<slug>` - persistent supervisor with Cartridge + LLM
 - `pk-agent-<slug>-<id>` - temporary task agents for prompt actions
 
 Playbooks declare their image via `meta.image` (default: `pk-agent`). Individual actions can override with `action.image`.
@@ -71,13 +71,13 @@ Vite + React SPA at `packages/spa/`. Design system: amber accent (oklch 0.75 0.1
 
 Key pages: Dashboard, Engagements, EngagementDetail (with start/pause/stop controls), Playbooks (catalog + simulator), Status (system health), Knowledge (search).
 
-Collapsible agent terminal panel on the right side connects to running containers via WebSocket PTY. The orchestrator terminal is the default view on engagement pages.
+Collapsible agent terminal panel on the right side connects to running containers via WebSocket PTY. The supervisor terminal is the default view on engagement pages.
 
 ## Scopes
 
 Commit scopes match knope package names. Check `knope.toml` for the mapping. Common:
 
-- `core`, `cli`, `api`, `spa`, `web`, `mcp-server`, `supervisor`, `gleipnir`, `ratatosk`
+- `core`, `cli`, `api`, `spa`, `web`, `mcp-server`, `daemon`, `gleipnir`, `ratatosk`
 
 ## Changesets
 
@@ -101,7 +101,7 @@ pnpm build          # TypeScript compilation
 pnpm dev            # SPA dev server (Vite, port 5173)
 ```
 
-API server (includes embedded supervisor):
+API server (includes embedded daemon):
 ```bash
 source .env && export DATABASE_URL
 pnpm --filter @promptkiddie/api start  # port 3200

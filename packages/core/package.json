@@ -1,10 +1,17 @@
 {
   "name": "@promptkiddie/core",
   "version": "0.1.2",
-  "private": true,
+  "description": "Database schema, engagement repo, playbook SDK, and action graph for PromptKiddie.",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Saturate/PromptKiddie.git",
+    "directory": "packages/core"
+  },
   "exports": {
     ".": "./dist/index.js",
     "./schema": "./dist/schema.js"

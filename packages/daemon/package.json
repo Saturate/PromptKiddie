@@ -1,8 +1,15 @@
 {
-  "name": "@promptkiddie/supervisor",
+  "name": "@promptkiddie/daemon",
   "version": "0.1.2",
-  "private": true,
+  "description": "Event-driven daemon that evaluates playbook actions against engagement events.",
+  "license": "MIT",
   "type": "module",
+  "files": ["dist"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Saturate/PromptKiddie.git",
+    "directory": "packages/daemon"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",

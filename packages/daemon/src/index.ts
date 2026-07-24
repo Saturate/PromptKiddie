@@ -252,14 +252,14 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
     }
     if (completedActions.size > 0) {
-      console.log(`[supervisor] resumed with ${completedActions.size} completed action:event pairs`);
+      console.log(`[daemon] resumed with ${completedActions.size} completed action:event pairs`);
     }
   } catch {}
 
-  console.log(`[supervisor] starting for "${engagement.name}" (${opts.engagementId})`);
-  console.log(`[supervisor] mode: ${mode} (maxConcurrent: ${maxConcurrent})`);
-  console.log(`[supervisor] target: ${primaryTarget}`);
-  console.log(`[supervisor] playbook: ${playbook.name} (${playbook.actions.length} actions)`);
+  console.log(`[daemon] starting for "${engagement.name}" (${opts.engagementId})`);
+  console.log(`[daemon] mode: ${mode} (maxConcurrent: ${maxConcurrent})`);
+  console.log(`[daemon] target: ${primaryTarget}`);
+  console.log(`[daemon] playbook: ${playbook.name} (${playbook.actions.length} actions)`);
 
   // Spawn persistent worker container for script actions (ctx.exec)
   let workerContainer: string | null = null;
@@ -279,7 +279,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         execFile("docker", ["start", workerName], { timeout: 10000 }, () => resolve());
       });
       workerContainer = workerName;
-      console.log(`[supervisor] worker container reused: ${workerName}`);
+      console.log(`[daemon] worker container reused: ${workerName}`);
     } else {
       const dockerArgs = [
         "run", "-d",
@@ -317,33 +317,33 @@ export async function startSupervisor(opts: SupervisorOpts) {
         });
       });
       workerContainer = workerName;
-      console.log(`[supervisor] worker container started: ${workerName}`);
+      console.log(`[daemon] worker container started: ${workerName}`);
     }
   } catch (err) {
-    console.error(`[supervisor] worker spawn failed: ${err instanceof Error ? err.message : err}`);
+    console.error(`[daemon] worker spawn failed: ${err instanceof Error ? err.message : err}`);
   }
 
   // Spawn persistent orchestrator container (LLM sidekick)
-  let orchContainer: string | null = null;
-  const orchName = `pk-orch-${slug}`;
+  let supContainer: string | null = null;
+  const supName = `pk-sup-${slug}`;
 
   try {
     const existing = await new Promise<string>((resolve, reject) => {
-      execFile("docker", ["ps", "-aq", "--filter", `name=^/${orchName}$`], { timeout: 5000 },
+      execFile("docker", ["ps", "-aq", "--filter", `name=^/${supName}$`], { timeout: 5000 },
         (err, stdout) => err ? reject(err) : resolve((stdout ?? "").trim()));
     });
 
     if (existing) {
       // Remove stale container; orchestrator needs a fresh Cartridge session
       await new Promise<void>((resolve) => {
-        execFile("docker", ["rm", "-f", orchName], { timeout: 10000 }, () => resolve());
+        execFile("docker", ["rm", "-f", supName], { timeout: 10000 }, () => resolve());
       });
     }
     {
-      const orchImage = playbook.meta?.image ?? DEFAULT_IMAGE;
+      const supImage = playbook.meta?.image ?? DEFAULT_IMAGE;
       const orchDockerArgs = [
         "run", "-d",
-        "--name", orchName,
+        "--name", supName,
         "-e", `TARGET=${primaryTarget}`,
         "-e", `TARGETS=${targets.filter(t => t.inScope).map(t => t.identifier).join(",")}`,
         "-e", `ENGAGEMENT_ID=${opts.engagementId}`,
@@ -391,7 +391,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         }
       }
 
-      orchDockerArgs.push(orchImage);
+      orchDockerArgs.push(supImage);
 
       await new Promise<void>((resolve, reject) => {
         execFile("docker", orchDockerArgs, { timeout: 60000 }, (err, _stdout, stderr) => {
@@ -399,54 +399,54 @@ export async function startSupervisor(opts: SupervisorOpts) {
           resolve();
         });
       });
-      orchContainer = orchName;
-      console.log(`[supervisor] orchestrator started: ${orchName}`);
+      supContainer = supName;
+      console.log(`[daemon] supervisor started: ${supName}`);
 
       // Switch CLAUDE.md -> ORCHESTRATOR.md inside the container
       await new Promise<void>((resolve) => {
-        execFile("docker", ["exec", orchName, "ln", "-sf", "ORCHESTRATOR.md", "/workspace/CLAUDE.md"], { timeout: 5000 }, () => resolve());
+        execFile("docker", ["exec", supName, "ln", "-sf", "ORCHESTRATOR.md", "/workspace/CLAUDE.md"], { timeout: 5000 }, () => resolve());
       });
 
-      // Wait for Cartridge API, then start the orchestrator agent
+      // Wait for Cartridge API, then start the supervisor agent
       try {
-        await waitForCartridge(orchName);
-        const orchProvider = process.env.PK_HARNESS ?? "claude";
-        const orchModel = playbook.meta?.orchestratorModel
+        await waitForCartridge(supName);
+        const supProvider = process.env.PK_HARNESS ?? "claude";
+        const supModel = playbook.meta?.orchestratorModel
           ?? process.env.PK_MODEL
           ?? undefined;
 
         const context = await repo.getDiscoverySummary(opts.engagementId) as Record<string, unknown>;
-        const orchPrompt = [
+        const supPrompt = [
           `You are the orchestrator for "${engagement.name}" (${engagement.type}).`,
           `Target: ${primaryTarget}. Phase: ${currentPhase}.`,
           context ? `\nEngagement state:\n${JSON.stringify(context, null, 2).slice(0, 2000)}` : "",
           "\nWatch for events. Intervene when progress stalls. Read CLAUDE.md for full instructions.",
         ].join("\n");
 
-        const orchAgentId = await startCartridgeAgent(orchName, orchPrompt, orchProvider, orchModel);
-        console.log(`[supervisor] orchestrator agent: ${orchName} (${orchAgentId})`);
+        const supAgentId = await startCartridgeAgent(supName, supPrompt, supProvider, supModel);
+        console.log(`[daemon] supervisor agent: ${supName} (${supAgentId})`);
 
         // Register PTY alias
         try {
           await new Promise<void>((res, rej) => {
             execFile("curl", ["-sf", "-X", "POST",
-              `${API_URL}/api/agents/${orchAgentId}/alias`,
+              `${API_URL}/api/agents/${supAgentId}/alias`,
               "-H", "Content-Type: application/json",
-              "-d", JSON.stringify({ container: orchName, action: "orchestrator", image: orchImage, engagementId: opts.engagementId }),
+              "-d", JSON.stringify({ container: supName, action: "orchestrator", image: supImage, engagementId: opts.engagementId }),
             ], { timeout: 5000 }, (err) => err ? rej(err) : res());
           });
         } catch {}
       } catch (err) {
-        console.error(`[supervisor] orchestrator agent failed: ${err instanceof Error ? err.message : err}`);
+        console.error(`[daemon] supervisor agent failed: ${err instanceof Error ? err.message : err}`);
       }
     }
   } catch (err) {
-    console.error(`[supervisor] orchestrator spawn failed: ${err instanceof Error ? err.message : err}`);
+    console.error(`[daemon] supervisor spawn failed: ${err instanceof Error ? err.message : err}`);
   }
 
   async function dispatchAction(action: Action, event: { type: string; payload: Record<string, unknown>; id?: string }) {
     if (activeActions.size >= maxConcurrent) {
-      console.log(`[supervisor] queued: ${action.name} (${activeActions.size}/${maxConcurrent} running)`);
+      console.log(`[daemon] queued: ${action.name} (${activeActions.size}/${maxConcurrent} running)`);
       bus.once(`slot_free`, () => dispatchAction(action, event));
       return;
     }
@@ -454,7 +454,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     const ac = new AbortController();
     activeActions.set(`${action.name}-${Math.random().toString(36).slice(2, 10)}`, ac);
     opts.onActionStart?.(action.name);
-    console.log(`[supervisor] running: ${action.name} (triggered by ${event.type})`);
+    console.log(`[daemon] running: ${action.name} (triggered by ${event.type})`);
 
     try {
       if (action.run) {
@@ -482,7 +482,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
           },
           onReprioritize: (name, priority) => {
             priorityOverrides.set(name, priority);
-            console.log(`[supervisor] reprioritized: ${name} -> p${priority}`);
+            console.log(`[daemon] reprioritized: ${name} -> p${priority}`);
           },
           onOutput: (line) => opts.onOutput?.(action.name, line),
           signal: ac.signal,
@@ -497,14 +497,14 @@ export async function startSupervisor(opts: SupervisorOpts) {
         const priorFails = spawnFailures.get(failKey) ?? 0;
 
         if (priorFails >= MAX_SPAWN_RETRIES) {
-          console.log(`[supervisor] skipping "${action.name}" (spawn failed ${priorFails}x for ${agentImage})`);
+          console.log(`[daemon] skipping "${action.name}" (spawn failed ${priorFails}x for ${agentImage})`);
           return;
         }
 
-        console.log(`[supervisor] agent action "${action.name}" -> spawning ${agentImage}`);
+        console.log(`[daemon] agent action "${action.name}" -> spawning ${agentImage}`);
 
         if (mode === "learning") {
-          console.log(`[supervisor] learning mode: action "${action.name}" wants to spawn ${agentImage}`);
+          console.log(`[daemon] learning mode: action "${action.name}" wants to spawn ${agentImage}`);
         }
 
         // Interpolate template variables in the prompt
@@ -514,14 +514,14 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
         try {
           const containerName = await spawnAgentContainer(repo, opts.engagementId, agentImage, primaryTarget);
-          console.log(`[supervisor] spawned: ${containerName}`);
+          console.log(`[daemon] spawned: ${containerName}`);
 
           // Wait for Cartridge API, then start agent with prompt
           const provider = process.env.PK_HARNESS ?? "claude";
           const model = process.env.PK_MODEL || undefined;
           await waitForCartridge(containerName);
           const agentId = await startCartridgeAgent(containerName, interpolated, provider, model);
-          console.log(`[supervisor] agent started: ${containerName} (${agentId})`);
+          console.log(`[daemon] agent started: ${containerName} (${agentId})`);
 
           // Register PTY alias + metadata so the web panel can connect by container name
           try {
@@ -545,7 +545,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           spawnFailures.set(failKey, priorFails + 1);
-          console.error(`[supervisor] spawn failed for "${action.name}" (${priorFails + 1}/${MAX_SPAWN_RETRIES}): ${msg}`);
+          console.error(`[daemon] spawn failed for "${action.name}" (${priorFails + 1}/${MAX_SPAWN_RETRIES}): ${msg}`);
           await repo.addDiscovery({
             engagementId: opts.engagementId,
             type: "negative",
@@ -556,7 +556,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[supervisor] action "${action.name}" failed: ${msg}`);
+      console.error(`[daemon] action "${action.name}" failed: ${msg}`);
       await repo.addDiscovery({
         engagementId: opts.engagementId,
         type: "negative",
@@ -597,12 +597,12 @@ export async function startSupervisor(opts: SupervisorOpts) {
       if (targetPhase && targetPhase !== currentPhase) {
         const result = await repo.advancePhase(eid, targetPhase) as { warning?: string };
         currentPhase = targetPhase;
-        console.log(`[supervisor] phase advanced: ${currentPhase}${result.warning ? ` (${result.warning})` : ""}`);
+        console.log(`[daemon] phase advanced: ${currentPhase}${result.warning ? ` (${result.warning})` : ""}`);
         ws.sendEvent({ type: "PhaseAdvanced", payload: { phase: currentPhase } });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[supervisor] phase advance failed: ${msg}`);
+      console.error(`[daemon] phase advance failed: ${msg}`);
     }
   }
 
@@ -637,20 +637,20 @@ export async function startSupervisor(opts: SupervisorOpts) {
     const fresh = force ? matched : matched.filter((action) => {
       const key = `${action.name}:${event.type}`;
       if (completedActions.has(key)) {
-        console.log(`[supervisor] skipping "${action.name}" (already completed for ${event.type})`);
+        console.log(`[daemon] skipping "${action.name}" (already completed for ${event.type})`);
         return false;
       }
       return true;
     });
     if (force && matched.length > 0) {
-      console.log(`[supervisor] force flag: re-running ${matched.length} action(s) for ${event.type}`);
+      console.log(`[daemon] force flag: re-running ${matched.length} action(s) for ${event.type}`);
     }
 
     for (const action of fresh) {
       // In methodical/learning modes, prompt-only actions are queued
       if ((mode === "methodical" || mode === "learning") && isPromptOnly(action)) {
         pendingLlmTasks.push({ action, event });
-        console.log(`[supervisor] queued LLM task: ${action.name} (mode: ${mode}, pending: ${pendingLlmTasks.length})`);
+        console.log(`[daemon] queued LLM task: ${action.name} (mode: ${mode}, pending: ${pendingLlmTasks.length})`);
         continue;
       }
       dispatchAction(action, event);
@@ -672,7 +672,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     const toRelease = count != null ? pendingLlmTasks.splice(0, count) : pendingLlmTasks.splice(0);
     const released: string[] = [];
     for (const task of toRelease) {
-      console.log(`[supervisor] releasing pending LLM task: ${task.action.name}`);
+      console.log(`[daemon] releasing pending LLM task: ${task.action.name}`);
       dispatchAction(task.action, task.event);
       released.push(task.action.name);
     }
@@ -685,16 +685,16 @@ export async function startSupervisor(opts: SupervisorOpts) {
     if (closing) return;
     evaluateAndDispatch({ type: event.type, payload: event.payload, id: event.id });
   });
-  console.log("[supervisor] connecting to event stream");
+  console.log("[daemon] connecting to event stream");
 
   // Fire EngagementStarted only on first run (skip if engagement already has events)
   
   const priorEvents = await repo.listEvents(opts.engagementId, { type: "EngagementStarted" });
   if (priorEvents.length === 0) {
-    console.log("[supervisor] emitting EngagementStarted");
+    console.log("[daemon] emitting EngagementStarted");
     await repo.emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
   } else {
-    console.log("[supervisor] resuming (EngagementStarted already emitted, skipping)");
+    console.log("[daemon] resuming (EngagementStarted already emitted, skipping)");
   }
 
   const cleanup = async () => {
@@ -705,13 +705,13 @@ export async function startSupervisor(opts: SupervisorOpts) {
     if (workerContainer) {
       execFile("docker", ["stop", workerContainer], { timeout: 10000 }, () => {});
     }
-    if (orchContainer) {
-      execFile("docker", ["stop", orchContainer], { timeout: 10000 }, () => {});
+    if (supContainer) {
+      execFile("docker", ["stop", supContainer], { timeout: 10000 }, () => {});
     }
   };
 
   const shutdown = async () => {
-    console.log("\n[supervisor] shutting down...");
+    console.log("\n[daemon] shutting down...");
     await cleanup();
     process.exit(0);
   };
@@ -742,7 +742,7 @@ export async function startStandby(opts: StandbyOpts = {}) {
 
   async function ensureSupervisor(engId: string) {
     if (activeSupervisors.has(engId)) return;
-    console.log(`[supervisor] starting for engagement ${engId}`);
+    console.log(`[daemon] starting for engagement ${engId}`);
     const sup = await startSupervisor({ engagementId: engId, mode: opts.mode, ws: opts.ws });
     activeSupervisors.set(engId, sup);
   }
@@ -750,7 +750,7 @@ export async function startStandby(opts: StandbyOpts = {}) {
   async function stopSupervisorFor(engId: string) {
     const sup = activeSupervisors.get(engId);
     if (!sup) return;
-    console.log(`[supervisor] stopping for engagement ${engId}`);
+    console.log(`[daemon] stopping for engagement ${engId}`);
     await sup.stop();
     activeSupervisors.delete(engId);
   }
@@ -759,10 +759,10 @@ export async function startStandby(opts: StandbyOpts = {}) {
 
   const existing = await standbyRepo.listEngagements() as Array<{ id: string; status: string }>;
   const active = existing.filter((e) => e.status === "active");
-  console.log(`[supervisor] standby mode - ${active.length} active engagement(s), listening for new ones...`);
+  console.log(`[daemon] standby mode - ${active.length} active engagement(s), listening for new ones...`);
   for (const eng of active) {
     await ensureSupervisor(eng.id).catch((err: Error) =>
-      console.error(`[supervisor] failed to resume ${eng.id}:`, err.message));
+      console.error(`[daemon] failed to resume ${eng.id}:`, err.message));
   }
 
   // Subscribe to all events (no engagementId filter) for standby routing
@@ -783,12 +783,12 @@ export async function startStandby(opts: StandbyOpts = {}) {
         }
       }
     } catch (err) {
-      console.error(`[supervisor] standby event handler failed for ${engId}:`, err instanceof Error ? err.message : err);
+      console.error(`[daemon] standby event handler failed for ${engId}:`, err instanceof Error ? err.message : err);
     }
   });
 
   const shutdown = async () => {
-    console.log("[supervisor] shutting down all instances...");
+    console.log("[daemon] shutting down all instances...");
     for (const [, sup] of activeSupervisors) await sup.stop();
     standbyStream.close();
   };
@@ -817,7 +817,7 @@ if (isDirectRun) {
       process.on("SIGINT", async () => { await s.shutdown(); process.exit(0); });
       process.on("SIGTERM", async () => { await s.shutdown(); process.exit(0); });
     }).catch((err) => {
-      console.error("[supervisor] standby failed:", err);
+      console.error("[daemon] standby failed:", err);
       process.exit(1);
     });
   } else {
@@ -829,7 +829,7 @@ if (isDirectRun) {
     }
 
     startSupervisor({ engagementId, mode: cliMode }).catch((err) => {
-      console.error("[supervisor] fatal:", err);
+      console.error("[daemon] fatal:", err);
       process.exit(1);
     });
   }

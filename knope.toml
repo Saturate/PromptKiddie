@@ -27,10 +27,10 @@ versioned_files = ["packages/mcp-server/package.json"]
 changelog = "packages/mcp-server/CHANGELOG.md"
 scopes = ["mcp-server", "mcp"]
 
-[packages.supervisor]
-versioned_files = ["packages/supervisor/package.json"]
-changelog = "packages/supervisor/CHANGELOG.md"
-scopes = ["supervisor", "hosted", "containers", "spawn", "compose"]
+[packages.daemon]
+versioned_files = ["packages/daemon/package.json"]
+changelog = "packages/daemon/CHANGELOG.md"
+scopes = ["daemon", "hosted", "containers", "spawn", "compose"]
 
 [packages.init]
 versioned_files = ["packages/init/package.json"]

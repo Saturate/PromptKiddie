@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 concurrency:
   group: release
@@ -59,6 +60,27 @@ jobs:
         run: knope release
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        if: steps.check.outputs.has_changesets == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        if: steps.check.outputs.has_changesets == 'true'
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Build
+        if: steps.check.outputs.has_changesets == 'true'
+        run: pnpm build
+
+      - name: Publish to npm
+        if: steps.check.outputs.has_changesets == 'true'
+        run: pnpm publish --filter @promptkiddie/core --filter @promptkiddie/daemon --filter @promptkiddie/mcp-server --filter @promptkiddie/cli --filter @promptkiddie/init --no-git-checks --access public
 
       - name: Summary
         run: |

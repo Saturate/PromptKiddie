@@ -127,7 +127,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     },
 
     async spawnLlm(task: string, _llmOpts?: LlmOpts): Promise<string> {
-      console.log(`[supervisor] LLM task: ${task.slice(0, 100)}...`);
+      console.log(`[daemon] LLM task: ${task.slice(0, 100)}...`);
       await repo.addAgentLog({
         engagementId,
         agent: "supervisor",

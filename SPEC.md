@@ -1,71 +1,73 @@
-# Spec: Orchestrator Agent + Global Controller
+# Spec: Supervisor Agent + Global Orchestrator
 
 ## Objective
 
 Add two new LLM tiers to the PK platform:
 
-1. **Orchestrator** - a persistent per-engagement LLM agent that watches the engagement holistically, intervenes when the playbook runs out of ideas, and redirects stuck task agents. Replaces the throwaway stall_detection pattern.
+1. **Supervisor** - a persistent per-engagement LLM agent that watches the engagement holistically, intervenes when the playbook runs out of ideas, and redirects stuck task agents. Replaces the throwaway stall_detection pattern.
 
-2. **Controller** (optional, hosted mode only) - a global LLM that manages PK state across engagements: creates engagements, assigns playbooks, starts/stops them. Not scoped to a single engagement. On host mode, the PK MCP server fills this role via the user's own harness.
+2. **Orchestrator** (hosted or host mode) - a global LLM that manages PK state across engagements: creates engagements, assigns playbooks, starts/stops them. Not scoped to a single engagement. In host mode, the user's own harness (Claude Code, etc.) fills this role via the PK MCP server.
 
 ## Architecture
 
 ```
                           ┌─────────────────┐
-                          │   Controller     │  (optional, hosted only)
-                          │   global state   │  creates engagements,
-                          │   pk-controller  │  assigns playbooks
+                          │  Orchestrator    │  (hosted or host mode)
+                          │  global state    │  creates engagements,
+                          │  pk-orchestrator │  assigns playbooks
                           └────────┬────────┘
                                    │ MCP tools
                     ┌──────────────┼──────────────┐
                     │              │              │
               ┌─────▼─────┐ ┌─────▼─────┐ ┌─────▼─────┐
               │ Engagement │ │ Engagement │ │ Engagement │
-              │ Supervisor │ │ Supervisor │ │ Supervisor │
+              │   Daemon   │ │   Daemon   │ │   Daemon   │
               │  (code)    │ │  (code)    │ │  (code)    │
               └─────┬──────┘ └───────────┘ └───────────┘
                     │
          ┌──────────┼──────────┐
          │          │          │
    ┌─────▼────┐ ┌──▼───┐ ┌───▼────────┐
-   │Orchestr. │ │Worker│ │Task Agents │
+   │Supervisor│ │Worker│ │Task Agents │
    │ (LLM)    │ │(exec)│ │(LLM, temp) │
    │persistent│ │      │ │per-action  │
    └──────────┘ └──────┘ └────────────┘
 ```
 
-### Orchestrator (per-engagement)
+### Supervisor (per-engagement)
 
-- One persistent Cartridge container per active engagement: `pk-orch-<slug>`
+- One persistent Cartridge container per active engagement: `pk-sup-<slug>`
 - Uses `pk-agent` image (same as task agents; future: lighter image without heavy tools)
-- Spawned by supervisor at engagement start, stopped at pause/done
-- Reads ORCHESTRATOR.md (distinct from AGENT.md that task agents read)
+- Spawned by daemon at engagement start, stopped at pause/done
+- Reads SUPERVISOR.md (distinct from AGENT.md that task agents read)
 - Has all PK MCP tools scoped to its engagement
 - Watches engagement events via SSE/WS
 - Can emit events (including `force: true` to re-run actions)
 - Can adjust engagement phase, scope, targets
 - Redirects stuck task agents by sending keystrokes to their terminal via the Cartridge API (same channel as xterm.js)
 - Model is configurable (engagement setting or global default)
-- Shows in the agent panel as "Orchestrator" with a distinct indicator
+- Shows in the agent panel as "Supervisor" with a distinct indicator
 - Its terminal is the default view when opening the agent panel on an engagement page
 
-### Controller (global, hosted only)
+### Orchestrator (global)
 
-- Single container: `pk-controller`
-- Optional; only runs in hosted mode
+- Single container: `pk-orchestrator` (hosted) or user's harness (host mode)
+- In hosted mode: Cartridge container with PK MCP tools, global scope
+- In host mode: Claude Code (or any harness) with PK MCP server
 - Has PK MCP tools with global scope (all engagements)
 - Can create engagements, assign playbooks, start/stop engagements
-- Does NOT run tools or participate in engagements
+- Does NOT run tools or participate in engagements directly
 - Shows in the agent panel outside any engagement section
-- Future work; not in this spec's build scope
 
 ### What gets removed
 
-- `stall_detection` action from playbooks (replaced by the orchestrator)
+- `stall_detection` action from playbooks (replaced by the supervisor)
 - Message inbox system (messages table, SSE stream, sendMessage/pollInbox)
-  - The orchestrator's terminal IS the communication channel
+  - The supervisor's terminal IS the communication channel
   - Human types in xterm.js, keystrokes go to Cartridge via WS
   - Clean up: remove inbox MCP tools, API routes, and any SPA references
+
+**Note on naming:** The tiers were renamed after this spec was written. In the code examples below, "supervisor" refers to the daemon, "orchestrator" refers to the supervisor, and "controller" refers to the orchestrator. The architecture section above uses the current names.
 
 ## Detailed Design
 

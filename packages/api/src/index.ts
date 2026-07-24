@@ -31,7 +31,7 @@ api.use("/*", authMiddleware(config.api.secret ?? undefined));
 // Proxy Cartridge terminal output for a container
 api.get("/agents/:name/stream", async (c) => {
   const name = c.req.param("name");
-  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-orch-") && !name.startsWith("pk-worker-")) {
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-sup-") && !name.startsWith("pk-worker-")) {
     return c.json({ error: "invalid container" }, 400);
   }
   const rawOffset = c.req.query("offset") ?? "0";
@@ -60,7 +60,7 @@ api.get("/agents/:name/stream", async (c) => {
 
 api.get("/agents/:name/logs", async (c) => {
   const name = c.req.param("name");
-  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-") && !name.startsWith("pk-orch-")) return c.json({ error: "invalid container" }, 400);
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-") && !name.startsWith("pk-sup-")) return c.json({ error: "invalid container" }, 400);
   try {
     const { execFile: ef } = await import("node:child_process");
     const { promisify } = await import("node:util");
@@ -74,7 +74,7 @@ api.get("/agents/:name/logs", async (c) => {
 
 api.delete("/agents/:name/container", async (c) => {
   const name = c.req.param("name");
-  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-") && !name.startsWith("pk-orch-")) {
+  if (!name.startsWith("pk-agent-") && !name.startsWith("pk-worker-") && !name.startsWith("pk-sup-")) {
     return c.json({ error: "invalid container name" }, 400);
   }
   try {
@@ -144,11 +144,11 @@ if (databaseUrl) {
     });
   });
 
-  // Start supervisor standby: auto-manages per-engagement supervisors on status change
-  import("@promptkiddie/supervisor").then(({ startStandby }) => {
+  // Start daemon standby: auto-manages per-engagement supervisors on status change
+  import("@promptkiddie/daemon").then(({ startStandby }) => {
     startStandby({})
       .then((standby) => {
-        console.log(`[supervisor] standby started (${standby.activeCount} active engagement(s))`);
+        console.log(`[daemon] standby started (${standby.activeCount} active engagement(s))`);
         const update = () => setSupervisorState({
           running: true,
           activeCount: standby.activeCount,
@@ -158,9 +158,9 @@ if (databaseUrl) {
         setInterval(update, 5000);
       })
       .catch((err) => {
-        console.error("[supervisor] standby failed:", (err as Error).message ?? err);
+        console.error("[daemon] standby failed:", (err as Error).message ?? err);
       });
   }).catch((err) => {
-    console.error("[supervisor] import failed:", (err as Error).message ?? err);
+    console.error("[daemon] import failed:", (err as Error).message ?? err);
   });
 }

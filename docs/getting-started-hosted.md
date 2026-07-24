@@ -15,21 +15,21 @@ npx @promptkiddie/init --mode hosted my-project
 cd my-project
 ```
 
-This starts all services including the web dashboard, API, and an orchestrator
-container with the supervisor running in standby.
+This starts all services including the web dashboard, API, and a supervisor
+container with the daemon running in standby.
 
 ## Access
 
 | Service | URL / command | Purpose |
 |---------|--------------|---------|
 | Web UI | http://localhost:3100 | Dashboard, chat, engagement management |
-| SSH | `ssh -p 2222 root@localhost` | Direct CLI access to orchestrator |
+| SSH | `ssh -p 2222 root@localhost` | Direct CLI access to supervisor |
 | Terminal | http://localhost:7681 | Browser-based shell (ttyd) |
 | API | http://localhost:3200 | REST API |
 
 ## First engagement
 
-From the web UI, create an engagement and add targets. The supervisor picks it up
+From the web UI, create an engagement and add targets. The daemon picks it up
 automatically and starts the playbook.
 
 Or via SSH:

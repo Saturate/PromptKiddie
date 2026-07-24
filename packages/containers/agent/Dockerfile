@@ -184,7 +184,7 @@ ENV SHELL=/usr/local/bin/pk-shell-logger
 # ── 8. Agent instructions (last - cheapest to change) ────────────
 
 COPY packages/containers/agent/AGENT.md /workspace/AGENT.md
-COPY packages/containers/agent/ORCHESTRATOR.md /workspace/ORCHESTRATOR.md
+COPY packages/containers/agent/SUPERVISOR.md /workspace/SUPERVISOR.md
 COPY packages/containers/agent/role-init.sh /usr/local/bin/pk-role-init
 RUN chmod +x /usr/local/bin/pk-role-init && \
     ln -sf AGENT.md /workspace/CLAUDE.md
