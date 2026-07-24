@@ -2530,7 +2530,7 @@ initCmd
 
     mcpServers["promptkiddie"] = mcpServers["promptkiddie"] ?? {
       command: "npx",
-      args: ["@promptkiddie/cli", "mcp"],
+      args: ["-y", "-p", "@promptkiddie/cli", "pk", "mcp"],
       env: { DATABASE_URL: process.env.DATABASE_URL ?? "" },
     };
 
