@@ -1,11 +1,18 @@
 {
   "name": "@promptkiddie/cli",
   "version": "0.1.1",
-  "private": true,
+  "description": "PromptKiddie CLI for managing engagements, targets, findings, and running the MCP server.",
+  "license": "MIT",
   "type": "module",
+  "files": ["dist", "bin", "templates"],
   "bin": {
     "pk": "./dist/index.js",
     "pkx": "./bin/pkx"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Saturate/PromptKiddie.git",
+    "directory": "packages/cli"
   },
   "scripts": {
     "build": "tsc --build"
@@ -13,6 +20,7 @@
   "dependencies": {
     "@promptkiddie/core": "workspace:*",
     "@promptkiddie/daemon": "workspace:*",
+    "@promptkiddie/mcp-server": "workspace:*",
     "commander": "^13.0.0",
     "dotenv": "^16.4.0"
   },

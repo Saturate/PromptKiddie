@@ -13,7 +13,16 @@ import {
   loadConfig,
 } from "@promptkiddie/core";
 import { execFileSync, type StdioOptions } from "node:child_process";
+import { createRequire } from "node:module";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
+
+// Short-circuit for subcommands that don't need the PK API config
+if (process.argv[2] === "mcp") {
+  const esmRequire = createRequire(import.meta.url);
+  const mcpEntry = esmRequire.resolve("@promptkiddie/mcp-server");
+  execFileSync(process.execPath, [mcpEntry], { stdio: "inherit" });
+  process.exit(0);
+}
 
 const config = loadConfig();
 if (!config.api.url) {
@@ -2344,8 +2353,6 @@ You have access to PK's MCP server with these capabilities:
 - \`list_activity\` - watch what's happening
 - \`search_knowledge\` - query the technique knowledge base
 
-You also have the \`pk\` CLI for direct database operations.
-
 ## Decision framework
 
 ### When to create an engagement
@@ -2376,7 +2383,7 @@ Watch the activity stream across all engagements. Key events to act on:
 - Never run offensive tools directly. Delegate to engagements and their agents.
 - Create engagements with clear objectives, not vague goals.
 - When a flag is captured, submit it through the platform immediately.
-- Log strategic decisions via \`pk log_activity\` so the team can see your reasoning.
+- Log strategic decisions via \`log_activity\` so the team can see your reasoning.
 - If you're unsure about scope or rules of engagement, ask the user.
 `;
 
@@ -2386,13 +2393,19 @@ You are orchestrating a Hack The Box CTF event. Time is limited, points matter, 
 
 ## Platform tools
 
-Use the \`htb\` CLI (or HTB MCP if available) for platform operations:
-- \`htb challenges list --json\` - list all challenges with categories and points
-- \`htb challenges start <id>\` - spawn a challenge instance
-- \`htb challenges submit <id> '<flag>'\` - submit a flag
+### HTB CLI (bash)
+- \`htb ctf challenges <EVENT_ID> --json\` - list challenges with categories and points
+- \`htb ctf start <EVENT_ID> <CHALLENGE_ID>\` - spawn a challenge instance
+- \`htb ctf submit <CHALLENGE_ID> '<flag>'\` - submit a flag
 - \`htb machines list --json\` - list machines (if the event has machines)
 - \`htb machines start <name>\` - spawn a machine
-- \`htb machines submit <name> '<flag>'\` - submit machine flag
+
+### PK MCP tools
+The PK MCP server provides tools for engagement management. Use them directly:
+- \`create_engagement\`, \`list_engagements\`, \`get_engagement\`
+- \`add_target\`, \`add_objective\`, \`capture_flag\`
+- \`advance_phase\`, \`add_finding\`, \`add_service\`
+- \`log_activity\`, \`list_activity\`
 
 ## CTF strategy
 
@@ -2412,8 +2425,7 @@ Use the \`htb\` CLI (or HTB MCP if available) for platform operations:
 ### Phase 3: Triage ongoing
 - Every 30 minutes: check scoreboard, reprioritize
 - If an engagement is stuck for 20+ minutes, note it and move resources
-- When a flag is found, submit immediately via \`htb challenges submit\`
-- Log the flag to PK: \`pk capture_flag --flag 'HTB{...}'\`
+- When a flag is found, submit via \`htb ctf submit\` and log to PK via \`capture_flag\`
 
 ### Challenge-to-engagement mapping
 - **Web**: create engagement, set target to challenge URL/IP, use CTF playbook
@@ -2516,20 +2528,19 @@ initCmd
 
     const mcpServers: Record<string, unknown> = (settings.mcpServers as Record<string, unknown>) ?? {};
 
-    // PK MCP server
     mcpServers["promptkiddie"] = mcpServers["promptkiddie"] ?? {
-      command: "node",
-      args: ["packages/mcp-server/dist/index.js"],
+      command: "npx",
+      args: ["@promptkiddie/cli", "mcp"],
       env: { DATABASE_URL: process.env.DATABASE_URL ?? "" },
     };
 
-    // HTB MCP if platform is htb and htb CLI is available
+    // HTB MCP server if platform is htb and htb CLI is available
     if (o.platform === "htb") {
       try {
         execFileSync("htb", ["--version"], { timeout: 3000 });
         mcpServers["htb"] = mcpServers["htb"] ?? {
           command: "htb",
-          args: ["mcp"],
+          args: ["--mcp-stdio"],
         };
         console.error("[init] added HTB MCP server config");
       } catch {

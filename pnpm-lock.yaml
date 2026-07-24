@@ -79,6 +79,9 @@ importers:
       '@promptkiddie/daemon':
         specifier: workspace:*
         version: link:../daemon
+      '@promptkiddie/mcp-server':
+        specifier: workspace:*
+        version: link:../mcp-server
       commander:
         specifier: ^13.0.0
         version: 13.1.0
