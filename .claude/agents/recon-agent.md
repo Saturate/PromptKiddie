@@ -72,7 +72,7 @@ Use PK's tools instead of generic alternatives. These auto-log to the engagement
 
 | Task | PK command | Do NOT use |
 |------|-----------|------------|
-| Run attackbox tools | `pk exec -- <command>` | raw `docker exec` |
+| Run toolbox tools | `pk exec -- <command>` | raw `docker exec` |
 | Log activity | `pk activity log --phase recon --action "..."` | — |
 | Add target | `pk target add --kind host --id <ip> [--in-scope]` | — |
 | Register evidence | `pk evidence add --path ... --type scan` | — |

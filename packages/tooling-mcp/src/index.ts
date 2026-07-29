@@ -7,23 +7,10 @@ import { z } from "zod";
 import { parseNmapXml } from "./parsers/nmap.js";
 import { parseNucleiJsonl } from "./parsers/nuclei.js";
 
-const DEFAULT_CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-attackbox";
+const DEFAULT_CONTAINER = process.env.PK_TOOLING_CONTAINER ?? process.env.PK_TOOLBOX_CONTAINER ?? process.env.PK_ATTACKBOX ?? "pk-toolbox";
 const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
 const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
-
-const ATTACK_CONTAINER = process.env.PK_ATTACK_CONTAINER ?? "promptkiddie-attack";
-const PHASE_CONTAINERS: Record<string, string> = {
-  recon: process.env.PK_RECON_CONTAINER ?? "promptkiddie-recon",
-  enum: ATTACK_CONTAINER,
-  exploit: ATTACK_CONTAINER,
-  postexploit: ATTACK_CONTAINER,
-};
-
-function resolveContainer(phase?: string): string {
-  if (!phase) return DEFAULT_CONTAINER;
-  return PHASE_CONTAINERS[phase] ?? DEFAULT_CONTAINER;
-}
 
 const CONTAINER = DEFAULT_CONTAINER;
 
@@ -274,11 +261,10 @@ server.tool(
   "Run an arbitrary command inside the tooling container. Use for tools not covered by dedicated commands. Optionally route to a phase-specific container.",
   {
     command: z.string().describe("Shell command to execute"),
-    phase: z.string().optional().describe("Route to phase container: recon, enum, exploit (default: full attackbox)"),
+    phase: z.string().optional().describe("Ignored (legacy). All commands run in the toolbox container."),
   },
-  async ({ command, phase }: { command: string; phase?: string }) => {
-    const container = resolveContainer(phase);
-    return result(await dockerExec(["sh", "-c", command], "tooling_exec", container));
+  async ({ command }: { command: string; phase?: string }) => {
+    return result(await dockerExec(["sh", "-c", command], "tooling_exec"));
   },
 );
 
@@ -430,7 +416,7 @@ server.tool(
   "Upload a file to a target through a gleipnir session.",
   {
     session: z.string().describe("Session name"),
-    src: z.string().describe("Local source file path (on the attackbox)"),
+    src: z.string().describe("Local source file path (on the toolbox)"),
     dst: z.string().describe("Remote destination path (on the target)"),
   },
   async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
@@ -452,7 +438,7 @@ server.tool(
   {
     session: z.string().describe("Session name"),
     src: z.string().describe("Remote source file path (on the target)"),
-    dst: z.string().describe("Local destination path (on the attackbox)"),
+    dst: z.string().describe("Local destination path (on the toolbox)"),
   },
   async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
     try {

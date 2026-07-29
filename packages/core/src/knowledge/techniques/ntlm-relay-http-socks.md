@@ -13,7 +13,7 @@
 - Platform: Windows
 - Phase: exploit
 
-## Setup inside the attackbox container
+## Setup inside the toolbox container
 
 ntlmrelayx's `--socks` mode maintains the authenticated session server-side. You route
 HTTP requests through the SOCKS proxy with proxychains.
@@ -33,7 +33,7 @@ ntlmrelayx listens on port 445 for incoming NTLM auth and on port 1080 for SOCKS
 
 ### 2. Trigger NTLM authentication
 
-Coerce the victim to connect to the attackbox's IP on port 445:
+Coerce the victim to connect to the toolbox's IP on port 445:
 
 ```bash
 # PetitPotam
@@ -75,11 +75,11 @@ maintains.
 
 ## Container networking gotchas
 
-- ntlmrelayx must bind port 445. This works in the attackbox (runs as root) but NOT on
+- ntlmrelayx must bind port 445. This works in the toolbox (runs as root) but NOT on
   an unprivileged pivot host.
 - If running ntlmrelayx and the coercion tool in the same container, they share the
   network namespace; use 127.0.0.1 for the SOCKS proxy.
-- proxychains + ntlmrelayx 0.14.0 can produce zombie processes. The attackbox uses tini
+- proxychains + ntlmrelayx 0.14.0 can produce zombie processes. The toolbox uses tini
   as PID 1 to reap these, but if zombies accumulate, check with `ps aux | grep defunct`.
 - If proxychains hangs, verify the SOCKS session is still alive in ntlmrelayx's console.
   Sessions expire if the target closes the connection.
@@ -98,11 +98,11 @@ For relay attacks (ESC8, ESC11, RBCD, shadow creds):
 
 ```
 Correct:
-  Coerce target --> attackbox:445 (ntlmrelayx) --> relay to internal service
-                    attackbox:1080 (SOCKS) <-- proxychains curl
+  Coerce target --> toolbox:445 (ntlmrelayx) --> relay to internal service
+                    toolbox:1080 (SOCKS) <-- proxychains curl
 
 Wrong:
   Coerce target --> pivot-host:445 (fails: unprivileged, cannot bind)
 ```
 
-Run the relay server where you control privileged ports (attackbox), not on the pivot.
+Run the relay server where you control privileged ports (toolbox), not on the pivot.

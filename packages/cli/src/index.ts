@@ -880,7 +880,7 @@ vpn
 
     const colima = detectColima();
     const configFile = join(config.vpn.config_path, `${name}.ovpn`);
-    const container = config.attackbox.container;
+    const container = config.toolbox.container;
     const run = dockerExec(container);
 
     if (colima.isColima && colima.vmIP) {
@@ -980,7 +980,7 @@ vpn
     }
 
     // --- Linux / fallback: VPN in the container ---
-    console.error("[vpn] Running VPN in attackbox container.");
+    console.error("[vpn] Running VPN in toolbox container.");
 
     // Kill any running VPN and clean up stale tun devices
     try { await run(["pkill", "-9", "openvpn"]); } catch {}
@@ -1038,7 +1038,7 @@ vpn
   .command("down")
   .description("Disconnect the active VPN")
   .action(async () => {
-    const container = config.attackbox.container;
+    const container = config.toolbox.container;
     const run = dockerExec(container);
     const colima = detectColima();
 
@@ -1073,7 +1073,7 @@ vpn
   .command("status")
   .description("Show active VPN connection and profile")
   .action(async () => {
-    const container = config.attackbox.container;
+    const container = config.toolbox.container;
     const run = dockerExec(container);
     const colima = detectColima();
 
@@ -1120,7 +1120,7 @@ vpn
     }
     let activeProfile = "";
     try {
-      const container = config.attackbox.container;
+      const container = config.toolbox.container;
       const run = dockerExec(container);
       activeProfile = (await run(["cat", "/tmp/.pk-vpn-profile"])).trim();
     } catch {}
@@ -1154,7 +1154,7 @@ tmux
   .argument("<name>", "session name")
   .option("--container <name>", "container to use (default: active phase container)")
   .action(async (name: string, o) => {
-    const container = o.container ?? config.attackbox.container;
+    const container = o.container ?? config.toolbox.container;
     const { spawnSync } = await import("node:child_process");
     spawnSync("docker", ["exec", container, "tmux", "new-session", "-d", "-s", name], { stdio: "inherit" });
     console.log(`Session '${name}' created in ${container}`);
@@ -1166,7 +1166,7 @@ tmux
   .argument("<name>", "session name")
   .option("--container <name>")
   .action(async (name: string, o) => {
-    const container = o.container ?? config.attackbox.container;
+    const container = o.container ?? config.toolbox.container;
     const { spawnSync } = await import("node:child_process");
     spawnSync("docker", ["exec", "-it", container, "tmux", "attach-session", "-t", name], { stdio: "inherit" });
   });
@@ -1176,7 +1176,7 @@ tmux
   .description("List tmux sessions")
   .option("--container <name>")
   .action(async (o) => {
-    const container = o.container ?? config.attackbox.container;
+    const container = o.container ?? config.toolbox.container;
     const { execFile: exec } = await import("node:child_process");
     exec("docker", ["exec", container, "tmux", "list-sessions"], (err, stdout) => {
       if (err) { console.log("No active sessions"); return; }
@@ -1190,7 +1190,7 @@ tmux
   .argument("<name>", "session name")
   .option("--container <name>")
   .action(async (name: string, o) => {
-    const container = o.container ?? config.attackbox.container;
+    const container = o.container ?? config.toolbox.container;
     const { execFile: exec } = await import("node:child_process");
     exec("docker", ["exec", container, "tmux", "kill-session", "-t", name], (err) => {
       if (err) console.error(`Failed to kill session: ${err.message}`);
@@ -1231,7 +1231,7 @@ ws.command("exec")
 
     const cmdStr = command.join(" ");
     const start = Date.now();
-    const container = config.attackbox.container;
+    const container = config.toolbox.container;
 
     const { execFile: exec } = await import("node:child_process");
     const curlArgs = o.method === "GET"
@@ -1302,13 +1302,13 @@ program
     const eid = await resolveEngagementId(o.engagement);
     const { execFileSync: efs } = await import("node:child_process");
     const { mkdirSync, readFileSync, writeFileSync } = await import("node:fs");
-    const container = config.attackbox.container;
+    const container = config.toolbox.container;
 
     const keyDir = `engagements/${((await repo.getEngagement(eid)) as Record<string, string> | null)?.slug ?? eid}/ssh`;
     mkdirSync(keyDir, { recursive: true });
     const keyPath = `${keyDir}/${o.user}_ed25519`;
 
-    // Generate key pair in attackbox
+    // Generate key pair in toolbox
     try {
       efs("docker", ["exec", "-e", "PK_EXEC=1", container, "ssh-keygen", "-t", "ed25519", "-f", `/tmp/pk_ssh_${o.user}`, "-N", "", "-q"],
         { timeout: 10000, stdio: "pipe" });
@@ -1337,7 +1337,7 @@ program
       console.error(`  ${installCmd}`);
     }
 
-    // Copy private key into attackbox for SSH access
+    // Copy private key into toolbox for SSH access
     efs("docker", ["exec", container, "cp", `/tmp/pk_ssh_${o.user}`, `/root/.ssh/pk_${o.user}`],
       { timeout: 5000, stdio: "pipe" });
     efs("docker", ["exec", container, "chmod", "600", `/root/.ssh/pk_${o.user}`],
@@ -1603,7 +1603,7 @@ agentCmd
       }
     } catch {
       console.error(`Agent directory not found: ${AGENT_DIR}`);
-      console.error("Set PK_AGENT_DIR or build the attackbox image.");
+      console.error("Set PK_AGENT_DIR or build the pk-agent image.");
       process.exit(1);
     }
   });
@@ -1672,7 +1672,7 @@ knowledge
   .description("Clone and ingest a registered knowledge source (clones inside Docker to avoid AV)")
   .argument("[source]", "Source name (PayloadsAllTheThings, GTFObins, HackTricks) or --all")
   .option("--all", "Pull all registered sources")
-  .option("--container <name>", "Docker container to clone inside", config.attackbox.container)
+  .option("--container <name>", "Docker container to clone inside", config.toolbox.container)
   .action(async (sourceName, o) => {
     const { KNOWLEDGE_SOURCES, getKnowledgeSource, ingestDocument, clearSource, parseFrontmatter } = await import("@promptkiddie/core");
     const container = o.container;
@@ -1832,27 +1832,9 @@ knowledge
   });
 
 // --- exec (run command + auto-log) -----------------------------------------
-const DEFAULT_CONTAINER = config.attackbox.container;
-const USE_DOCKER = config.attackbox.exec_mode !== "local";
+const DEFAULT_CONTAINER = config.toolbox.container;
+const USE_DOCKER = config.toolbox.exec_mode !== "local";
 
-const ATTACK_CONTAINER = process.env.PK_ATTACK_CONTAINER ?? "promptkiddie-attack";
-const PHASE_CONTAINERS: Record<string, string> = {
-  recon: process.env.PK_RECON_CONTAINER ?? "promptkiddie-recon",
-  enum: ATTACK_CONTAINER,
-  exploit: ATTACK_CONTAINER,
-  postexploit: ATTACK_CONTAINER,
-};
-
-async function resolveContainer(phase?: string): Promise<string> {
-  if (!phase || !PHASE_CONTAINERS[phase]) return DEFAULT_CONTAINER;
-  const target = PHASE_CONTAINERS[phase];
-  const { execFile: exec } = await import("node:child_process");
-  return new Promise((resolve) => {
-    exec("docker", ["inspect", "--format", "{{.State.Running}}", target], (err, stdout) => {
-      resolve(stdout?.trim() === "true" ? target : DEFAULT_CONTAINER);
-    });
-  });
-}
 
 program
   .command("exec")
@@ -1871,7 +1853,7 @@ program
     const phase = o.phase ?? eng?.phase ?? "recon";
     const start = Date.now();
     const local = o.host || !USE_DOCKER;
-    const container = local ? "" : await resolveContainer(phase);
+    const container = local ? "" : DEFAULT_CONTAINER;
 
     const { execFile: exec } = await import("node:child_process");
 
@@ -1921,46 +1903,7 @@ program
       combined.includes("not found") ||
       combined.includes("No such file or directory");
 
-    if (isNotFound && !local && container !== DEFAULT_CONTAINER) {
-      process.stderr.write(
-        `[pk] Command "${toolName}" not available in ${container} (${o.phase} image).\n` +
-        `[pk] Retrying on full attackbox (${DEFAULT_CONTAINER})...\n`
-      );
-
-      await repo.logActivity({
-        engagementId: eid,
-        phase: phase,
-        action: `[${o.agent}] ${toolName} not found in ${container}, retrying on ${DEFAULT_CONTAINER}`,
-        command: cmdStr,
-        actor: "agent",
-      });
-
-      const retry = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
-        const proc = exec(
-          "docker", ["exec", "-e", "PK_EXEC=1", DEFAULT_CONTAINER, "sh", "-c", cmdStr],
-          { maxBuffer: 10 * 1024 * 1024, timeout: 300000 },
-          (err, stdout, stderr) => {
-            resolve({
-              stdout: stdout ?? "",
-              stderr: stderr ?? "",
-              code: err && "code" in err ? (err.code as number) : err ? 1 : 0,
-            });
-          },
-        );
-        proc.on("error", (err) => resolve({ stdout: "", stderr: err.message, code: 1 }));
-      });
-
-      const retryNotFound = retry.code === 127 ||
-        (retry.stdout + retry.stderr).includes("not found");
-
-      if (retryNotFound) {
-        process.stderr.write(
-          `[pk] "${toolName}" not available in any container. Install it with: pk exec -- apt-get install <package>\n`
-        );
-      }
-
-      Object.assign(result, retry);
-    } else if (isNotFound) {
+    if (isNotFound) {
       process.stderr.write(
         `[pk] "${toolName}" not found in ${local ? "host" : container}. ` +
         `Install it with: ${local ? "apt-get install <package>" : "pk exec -- apt-get install <package>"}\n`
@@ -2177,7 +2120,7 @@ const spawn = program.command("spawn").description("Spawn agent/supervisor conta
 spawn
   .command("agent")
   .description("Spawn an agent container for an engagement")
-  .requiredOption("--image <image>", "Container image: pk-agent-recon, pk-agent-attack, pk-agent-full")
+  .requiredOption("--image <image>", "Container image: pk-agent")
   .option("--target <ip>", "Override primary target IP (default: first in-scope target from DB)")
   .option("--target-hostname <host>", "Add /etc/hosts entry: host -> target IP (repeatable)", (v: string, prev: string[]) => [...prev, v], [] as string[])
   .option("--lhost <ip>", "Override LHOST (default: auto-detect from VPN tun0)")
@@ -2217,7 +2160,7 @@ spawn
       if (!lhost) {
         try {
           const { execFileSync: efs } = await import("node:child_process");
-          const tunOut = efs("docker", ["exec", config.attackbox.container, "ip", "-4", "addr", "show", "tun0"],
+          const tunOut = efs("docker", ["exec", config.toolbox.container, "ip", "-4", "addr", "show", "tun0"],
             { timeout: 5000 }).toString();
           const m = tunOut.match(/inet ([\d.]+)/);
           if (m) lhost = m[1];

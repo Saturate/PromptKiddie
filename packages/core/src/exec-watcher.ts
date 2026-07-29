@@ -52,10 +52,7 @@ const IGNORE_COMMANDS = [
 ];
 
 const SERVICE_TO_PHASE: Record<string, string> = {
-  attackbox: "exploit",
-  "pk-recon": "recon",
-  "pk-attack": "exploit",
-  "pk-enum": "enum",
+  toolbox: "exploit",
 };
 
 function parseDockerHost(): { socketPath?: string; hostname?: string; port?: number; protocol: "http" | "https" } {
