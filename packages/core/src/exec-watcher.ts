@@ -51,9 +51,7 @@ const IGNORE_COMMANDS = [
   "sleep infinity",
 ];
 
-const SERVICE_TO_PHASE: Record<string, string> = {
-  toolbox: "exploit",
-};
+const SERVICE_TO_PHASE: Record<string, string> = {};
 
 function parseDockerHost(): { socketPath?: string; hostname?: string; port?: number; protocol: "http" | "https" } {
   const dockerHost = process.env.DOCKER_HOST;

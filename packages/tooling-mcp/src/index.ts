@@ -258,12 +258,11 @@ server.tool(
 
 server.tool(
   "tooling_exec",
-  "Run an arbitrary command inside the tooling container. Use for tools not covered by dedicated commands. Optionally route to a phase-specific container.",
+  "Run an arbitrary command inside the toolbox container. Use for tools not covered by dedicated commands.",
   {
     command: z.string().describe("Shell command to execute"),
-    phase: z.string().optional().describe("Ignored (legacy). All commands run in the toolbox container."),
   },
-  async ({ command }: { command: string; phase?: string }) => {
+  async ({ command }: { command: string }) => {
     return result(await dockerExec(["sh", "-c", command], "tooling_exec"));
   },
 );
