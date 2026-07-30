@@ -12,7 +12,7 @@ const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
 const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
 
-const CONTAINER = DEFAULT_CONTAINER;
+
 
 try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
@@ -41,7 +41,7 @@ function hostExec(cmd: string, args: string[]): Promise<{ stdout: string; stderr
 }
 
 function dockerExec(cmd: string[], toolName?: string, container?: string): Promise<{ stdout: string; stderr: string; code: number }> {
-  const target = container ?? CONTAINER;
+  const target = container ?? DEFAULT_CONTAINER;
   const start = Date.now();
   const env = ["-e", "PK_EXEC=1"];
   return new Promise((resolve) => {
@@ -283,7 +283,7 @@ server.tool(
     args.push(name);
     const create = await hostExec(args[0], args.slice(1));
     if (create.code !== 0) return result(create);
-    const connect = await hostExec("docker", ["network", "connect", name, CONTAINER]);
+    const connect = await hostExec("docker", ["network", "connect", name, DEFAULT_CONTAINER]);
     if (connect.code !== 0) return result(connect);
     return { content: [{ type: "text" as const, text: JSON.stringify({ network: name, connected: true }) }] };
   },
@@ -297,7 +297,7 @@ server.tool(
   },
   async ({ engagementSlug }: { engagementSlug: string }) => {
     const name = `${NET_PREFIX}${engagementSlug}`;
-    await hostExec("docker", ["network", "disconnect", name, CONTAINER]);
+    await hostExec("docker", ["network", "disconnect", name, DEFAULT_CONTAINER]);
     const rm = await hostExec("docker", ["network", "rm", name]);
     return result(rm);
   },
