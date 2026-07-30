@@ -12,8 +12,6 @@ const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
 const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
 
-
-
 try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
 function logToolCall(tool: string, args: Record<string, unknown>, exitCode: number, durationMs: number) {

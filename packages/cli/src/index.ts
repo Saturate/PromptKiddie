@@ -1152,7 +1152,7 @@ tmux
   .command("new")
   .description("Create a named tmux session in the active container")
   .argument("<name>", "session name")
-  .option("--container <name>", "container to use (default: active phase container)")
+  .option("--container <name>", "container to use (default: toolbox)")
   .action(async (name: string, o) => {
     const container = o.container ?? config.toolbox.container;
     const { spawnSync } = await import("node:child_process");
@@ -1834,7 +1834,6 @@ knowledge
 // --- exec (run command + auto-log) -----------------------------------------
 const DEFAULT_CONTAINER = config.toolbox.container;
 const USE_DOCKER = config.toolbox.exec_mode !== "local";
-
 
 program
   .command("exec")

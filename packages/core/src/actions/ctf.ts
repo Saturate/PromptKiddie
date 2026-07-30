@@ -17,11 +17,10 @@ const portScan: Action = {
     let result = await ctx.exec("rustscan", ["-a", ctx.target, "--", "-sV", "-sC"], { stream: true });
     let scanner = "rustscan";
     if (result.code === 127) {
-      ctx.log("[port_scan] rustscan not found, falling back to nmap");
       scanner = "nmap";
+      ctx.log(`[port_scan] rustscan not found, falling back to ${scanner}`);
       result = await ctx.exec("nmap", ["-p-", "-sV", "-sC", "--open", "--min-rate", "5000", ctx.target], { stream: true });
     }
-    ctx.log(`[port_scan] using ${scanner}`);
     await ctx.evidence(`exec/${scanner}-${Date.now()}.txt`, "scan");
     const lines = result.stdout.split("\n");
     for (const line of lines) {

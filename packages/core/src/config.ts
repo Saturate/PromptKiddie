@@ -149,8 +149,11 @@ export function loadConfig(): PkConfig {
 
   // Migrate legacy [attackbox] TOML section to [toolbox]
   const raw = merged as Record<string, unknown>;
-  if (raw.attackbox && !raw.toolbox) {
-    raw.toolbox = raw.attackbox;
+  if (raw.attackbox) {
+    raw.toolbox = deepMerge(
+      raw.toolbox as Record<string, unknown>,
+      raw.attackbox as Record<string, unknown>,
+    );
     delete raw.attackbox;
   }
 

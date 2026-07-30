@@ -12,7 +12,10 @@
     "promptkiddie-tooling": {
       "type": "local",
       "command": ["node", "packages/tooling-mcp/dist/index.js"],
-      "enabled": true
+      "enabled": true,
+      "env": {
+        "PK_TOOLING_CONTAINER": "pk-toolbox"
+      }
     }
   }
 }
