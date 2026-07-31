@@ -1,3 +1,14 @@
+## 0.1.2 (2026-07-31)
+
+### Features
+
+- Rename `[attackbox]` config section to `[toolbox]`, consolidate phase containers into single `pk-agent` image. Legacy `[attackbox]` TOML configs are auto-migrated.
+- Publish core, daemon, mcp-server, and cli to npm. Adds `pk mcp` subcommand that starts the MCP server on stdio. `pk init ctf` now generates `npx @promptkiddie/cli mcp` for the PK MCP config and `htb --mcp-stdio` for HTB. Release workflow publishes to npm via OIDC trusted publishing.
+
+### Fixes
+
+- npx needs -p flag since bin name differs from package name
+
 ## 0.1.1 (2026-07-21)
 
 ### Features

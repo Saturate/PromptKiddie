@@ -1,11 +1,13 @@
 {
   "name": "@promptkiddie/mcp-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server exposing the PromptKiddie engagement database to AI agents.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Saturate/PromptKiddie.git",
