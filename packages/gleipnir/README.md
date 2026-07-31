@@ -6,7 +6,7 @@ Persistent reverse shell handler + agent for PromptKiddie engagements.
 
 Two Rust binaries in one Cargo workspace:
 
-- **Relay** (runs on the attackbox): TCP/TLS listener, session manager, Unix socket JSON
+- **Relay** (runs on the toolbox): TCP/TLS listener, session manager, Unix socket JSON
   API for CLI/MCP integration, SOCKS5 proxy server. Auto-generates a self-signed TLS cert
   on startup. Starts automatically via `docker compose up`.
 - **Agent** (deployed to targets): reverse TCP/TLS connect with auto-reconnect and
@@ -35,7 +35,7 @@ cross build --release --bin gleipnir-agent --target x86_64-pc-windows-gnu
 cross build --release --bin gleipnir-agent --target x86_64-unknown-linux-musl
 ```
 
-Pre-compiled agent binaries are available in the attackbox at `/opt/gleipnir/agents/`
+Pre-compiled agent binaries are available in the toolbox at `/opt/gleipnir/agents/`
 (fetched from GitHub releases on build).
 
 ## Quick start

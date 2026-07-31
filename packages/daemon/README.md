@@ -47,4 +47,4 @@ Messages from daemon to client:
 
 - `DATABASE_URL` - Postgres connection string
 - `PK_WS_PORT` - WebSocket server port (default: 3200)
-- `PK_ATTACKBOX` - Docker container name (default: promptkiddie-attackbox)
+- `PK_TOOLING_CONTAINER` - Docker container name (default: pk-toolbox)

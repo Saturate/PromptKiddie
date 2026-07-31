@@ -36,7 +36,7 @@ When adding hostnames to /etc/hosts, always check first:
 ```bash
 pk exec -- sh -c 'grep -q "hostname.htb" /etc/hosts || echo "10.x.x.x hostname.htb" >> /etc/hosts'
 ```
-Never append without checking. Multiple agents share the attackbox.
+Never append without checking. Multiple agents share the toolbox.
 
 ## Command discipline
 
@@ -45,7 +45,7 @@ or docker exec calls are invisible to the engagement log. This is non-negotiable
 
 If a gleipnir session exists on the target, use `pk shell exec <session> <command>` for
 target-side enumeration (reading config files, listing services, checking permissions).
-`pk exec` remains the default for attackbox tools (nmap, enum4linux, etc.).
+`pk exec` remains the default for toolbox tools (nmap, enum4linux, etc.).
 
 ## Version logging (mandatory)
 
@@ -93,7 +93,7 @@ Use PK's tools instead of generic alternatives. These auto-log to the engagement
 
 | Task | PK command | Do NOT use |
 |------|-----------|------------|
-| Run attackbox tools | `pk exec -- <command>` | raw `docker exec` |
+| Run toolbox tools | `pk exec -- <command>` | raw `docker exec` |
 | Run command on target | `pk shell exec <session> <command>` | manual reverse shell |
 | Upload file to target | `pk upload <session> <src> <dst>` | base64 encode/decode |
 | Download from target | `pk download <session> <src> <dst>` | manual transfer |

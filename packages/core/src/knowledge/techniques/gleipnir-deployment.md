@@ -25,7 +25,7 @@ Find the right binary for the target with `pk agent path <target>`:
 | `windows-amd64` | pk-agent-windows-amd64.exe | Plain TCP |
 | `windows-amd64-tls` | pk-agent-windows-amd64-tls.exe | Encrypted |
 
-Pre-compiled binaries are in `/opt/gleipnir/agents/` on the attackbox.
+Pre-compiled binaries are in `/opt/gleipnir/agents/` on the toolbox.
 
 ## Deployment: Linux
 

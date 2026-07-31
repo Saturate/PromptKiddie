@@ -425,7 +425,7 @@ export default function ToolsPage() {
       <div className="space-y-1">
         <h1 className="text-xl font-bold font-mono">Tools</h1>
         <p className="text-sm text-muted-foreground font-mono">
-          {totalCount} tools in the attackbox. {mcpCount} exposed via MCP, all available through{" "}
+          {totalCount} tools in the toolbox. {mcpCount} exposed via MCP, all available through{" "}
           <code className="text-primary bg-primary/10 px-1.5 py-0.5 rounded text-xs">pk exec</code>.
         </p>
       </div>
@@ -439,7 +439,7 @@ export default function ToolsPage() {
                 Built on Kali Linux Rolling
               </p>
               <p className="text-[11px] font-mono text-muted-foreground leading-relaxed">
-                The PK attackbox is a custom Docker image based on{" "}
+                The PK toolbox is a custom Docker image based on{" "}
                 <code className="text-primary/80">kalilinux/kali-rolling</code> with 338+ packages.
                 Everything Kali ships is available, plus RustScan, rustcat, and the full SecLists collection.
                 The tools below are the ones PK uses most; run anything else with{" "}
@@ -526,7 +526,7 @@ export default function ToolsPage() {
 
       <div className="text-center py-4 space-y-2">
         <p className="text-xs text-muted-foreground font-mono">
-          This page lists PK&apos;s most-used tools. The attackbox has 338+ Kali packages installed.
+          This page lists PK&apos;s most-used tools. The toolbox has 338+ Kali packages installed.
         </p>
         <p className="text-xs text-muted-foreground font-mono">
           Need something not listed? <code className="text-primary bg-primary/10 px-1.5 py-0.5 rounded text-[10px]">pk exec -- &lt;command&gt;</code> runs anything in the container.

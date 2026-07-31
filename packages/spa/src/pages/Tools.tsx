@@ -82,7 +82,7 @@ export default function Tools() {
     <div className="space-y-6">
       <PageHeader
         title="Tools"
-        subtitle={`${TOOLS.length} tools in the attackbox. ${mcpCount} exposed via MCP.`}
+        subtitle={`${TOOLS.length} tools in the toolbox. ${mcpCount} exposed via MCP.`}
       />
 
       <div className="border border-pk-amber/20 bg-pk-amber/5 rounded-lg p-4">

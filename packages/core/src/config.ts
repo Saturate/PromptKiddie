@@ -18,7 +18,7 @@ export interface PkConfig {
   database: {
     url: string;
   };
-  attackbox: {
+  toolbox: {
     container: string;
     host: string | null;
     timeout: number;
@@ -53,8 +53,8 @@ const DEFAULTS: PkConfig = {
   database: {
     url: "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie",
   },
-  attackbox: {
-    container: "promptkiddie-attackbox",
+  toolbox: {
+    container: "pk-toolbox",
     host: null,
     timeout: 300000,
     exec_mode: "docker",
@@ -112,9 +112,10 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
 
 function applyEnvOverrides(config: PkConfig): PkConfig {
   if (process.env.DATABASE_URL) config.database.url = process.env.DATABASE_URL;
-  if (process.env.PK_TOOLING_CONTAINER) config.attackbox.container = process.env.PK_TOOLING_CONTAINER;
-  if (process.env.PK_EXEC_MODE) config.attackbox.exec_mode = process.env.PK_EXEC_MODE as "docker" | "local";
-  if (process.env.PK_TOOLING_TIMEOUT) config.attackbox.timeout = Number(process.env.PK_TOOLING_TIMEOUT);
+  const toolboxContainer = process.env.PK_TOOLING_CONTAINER ?? process.env.PK_TOOLBOX_CONTAINER ?? process.env.PK_ATTACKBOX;
+  if (toolboxContainer) config.toolbox.container = toolboxContainer;
+  if (process.env.PK_EXEC_MODE) config.toolbox.exec_mode = process.env.PK_EXEC_MODE as "docker" | "local";
+  if (process.env.PK_TOOLING_TIMEOUT) config.toolbox.timeout = Number(process.env.PK_TOOLING_TIMEOUT);
   if (process.env.PK_EVIDENCE_ROOT) config.workspace.evidence_root = process.env.PK_EVIDENCE_ROOT;
   if (process.env.PK_TOOL_LOG_DIR) config.workspace.tool_log_dir = process.env.PK_TOOL_LOG_DIR;
   if (process.env.PK_VPN_CONFIG) config.vpn.config_path = process.env.PK_VPN_CONFIG;
@@ -144,6 +145,16 @@ export function loadConfig(): PkConfig {
   merged = deepMerge(merged, loadToml(workspacePath));
   if (process.env.PK_CONTAINER === "1") {
     merged = deepMerge(merged, loadToml(containerPath));
+  }
+
+  // Migrate legacy [attackbox] TOML section to [toolbox]
+  const raw = merged as Record<string, unknown>;
+  if (raw.attackbox) {
+    raw.toolbox = deepMerge(
+      raw.toolbox as Record<string, unknown>,
+      raw.attackbox as Record<string, unknown>,
+    );
+    delete raw.attackbox;
   }
 
   _config = applyEnvOverrides(merged as unknown as PkConfig);

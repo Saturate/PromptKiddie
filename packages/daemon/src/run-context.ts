@@ -36,7 +36,7 @@ interface RunContextOpts {
 export function createRunContext(opts: RunContextOpts): RunContext {
   const { engagementId, target, event, engagement, repo, actionName, onReprioritize, onOutput, signal } = opts;
   const actorLabel = actionName ?? "supervisor";
-  const execContainer = opts.containerName ?? process.env.PK_ATTACKBOX ?? "promptkiddie-attackbox";
+  const execContainer = opts.containerName ?? process.env.PK_TOOLING_CONTAINER ?? process.env.PK_TOOLBOX_CONTAINER ?? process.env.PK_ATTACKBOX ?? "pk-toolbox";
 
   return {
     target,

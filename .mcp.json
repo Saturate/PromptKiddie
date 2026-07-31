@@ -15,7 +15,7 @@
       "command": "node",
       "args": ["packages/tooling-mcp/dist/index.js"],
       "env": {
-        "PK_TOOLING_CONTAINER": "promptkiddie-attackbox"
+        "PK_TOOLING_CONTAINER": "pk-toolbox"
       }
     },
     "chrome-devtools-vpn": {

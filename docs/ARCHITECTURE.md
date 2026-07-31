@@ -10,7 +10,7 @@ graph TD
     ORCH["Agent Orchestrator<br/><small>plans engagement, polls inbox,<br/>delegates to sub-agents,<br/>logs via pk</small>"]
     PG["PostgreSQL<br/><small>engagements, targets, findings,<br/>evidence, activity_log,<br/>agent_runs, messages</small>"]
     SUB["Sub-agents<br/><small>recon, enum, exploit, report</small>"]
-    TOOLS["Tooling layer<br/><small>nmap, ffuf, nuclei, sqlmap<br/>runs inside attackbox container</small>"]
+    TOOLS["Tooling layer<br/><small>nmap, ffuf, nuclei, sqlmap<br/>runs inside toolbox container</small>"]
     GLEIPNIR["Gleipnir relay<br/><small>TCP/TLS listener, session manager,<br/>SOCKS proxy, Unix socket API</small>"]
     TARGETS["Targets<br/><small>gleipnir-agent deployed,<br/>connects back over TCP/TLS</small>"]
 
@@ -91,7 +91,7 @@ Because both call the same core, behavior stays identical no matter which is use
 
 ## Tooling layer
 
-Offensive tools (nmap, ffuf, nuclei, sqlmap, etc.) run inside the **attackbox** Docker
+Offensive tools (nmap, ffuf, nuclei, sqlmap, etc.) run inside the **toolbox** Docker
 container. The orchestrator and sub-agents invoke them via `pk exec`, which auto-logs
 commands and output to the engagement activity trail.
 
@@ -103,7 +103,7 @@ tools for type-safe invocation.
 Gleipnir is PK's persistent reverse shell handler. It replaces ad-hoc netcat/chisel setups
 with a structured C2 channel.
 
-**Relay** (`packages/gleipnir/relay`): runs as a Docker service sharing the attackbox
+**Relay** (`packages/gleipnir/relay`): runs as a Docker service sharing the toolbox
 network (and VPN tunnel). Listens for agent callbacks on TCP with TLS enabled by default
 (auto-generates a self-signed cert if none provided). Exposes a Unix socket API
 (`/tmp/gleipnir.sock`) for the CLI and MCP server to send commands.
@@ -127,7 +127,7 @@ No recognizable protocol signatures for DPI.
 
 **Integration**: `pk shell`/`pk upload`/`pk download`/`pk tunnel` CLI commands and
 `gleipnir_exec`/`gleipnir_upload`/`gleipnir_download`/`gleipnir_sessions`/`gleipnir_tunnel`
-MCP tools. Pre-compiled agent binaries are fetched from GitHub releases into the attackbox
+MCP tools. Pre-compiled agent binaries are fetched from GitHub releases into the toolbox
 at `/opt/gleipnir/agents/`.
 
 ## Frameworks

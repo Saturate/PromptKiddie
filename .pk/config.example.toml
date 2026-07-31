@@ -5,9 +5,9 @@
 [database]
 url = "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie"
 
-[attackbox]
-container = "promptkiddie-attackbox"  # Docker container name
-# host = "ssh://user@remote"         # remote attackbox (future)
+[toolbox]
+container = "pk-toolbox"             # Docker container name (pk-agent image)
+# host = "ssh://user@remote"         # remote toolbox (future)
 timeout = 300000                      # command timeout in ms
 exec_mode = "docker"                  # "docker" or "local"
 
@@ -16,7 +16,7 @@ evidence_root = "./engagements"
 tool_log_dir = "./engagements/.tool-log"
 
 [vpn]
-config_path = "./vpn"                 # mounted to /vpn in the attackbox
+config_path = "./vpn"                 # mounted to /vpn in the toolbox
 
 [inbox]
 poll_seconds = 15

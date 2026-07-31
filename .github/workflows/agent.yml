@@ -1,22 +1,22 @@
-name: Build attackbox image
+name: Build pk-agent image
 
 on:
   push:
     branches: [main]
     paths:
-      - "packages/tooling/**"
-      - ".github/workflows/attackbox.yml"
+      - "packages/containers/agent/**"
+      - ".github/workflows/agent.yml"
   release:
     types: [published]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/promptkiddie-attackbox
+  IMAGE_NAME: ${{ github.repository_owner }}/pk-agent
 
 jobs:
   build-and-push:
-    if: ${{ !github.event.release || startsWith(github.event.release.tag_name, 'tooling-mcp/') }}
+    if: ${{ !github.event.release || startsWith(github.event.release.tag_name, 'containers/') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,7 +42,7 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: packages/tooling
+          context: packages/containers/agent
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

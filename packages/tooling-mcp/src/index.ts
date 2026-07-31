@@ -7,25 +7,10 @@ import { z } from "zod";
 import { parseNmapXml } from "./parsers/nmap.js";
 import { parseNucleiJsonl } from "./parsers/nuclei.js";
 
-const DEFAULT_CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "promptkiddie-attackbox";
+const DEFAULT_CONTAINER = process.env.PK_TOOLING_CONTAINER ?? process.env.PK_TOOLBOX_CONTAINER ?? process.env.PK_ATTACKBOX ?? "pk-toolbox";
 const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
 const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
-
-const ATTACK_CONTAINER = process.env.PK_ATTACK_CONTAINER ?? "promptkiddie-attack";
-const PHASE_CONTAINERS: Record<string, string> = {
-  recon: process.env.PK_RECON_CONTAINER ?? "promptkiddie-recon",
-  enum: ATTACK_CONTAINER,
-  exploit: ATTACK_CONTAINER,
-  postexploit: ATTACK_CONTAINER,
-};
-
-function resolveContainer(phase?: string): string {
-  if (!phase) return DEFAULT_CONTAINER;
-  return PHASE_CONTAINERS[phase] ?? DEFAULT_CONTAINER;
-}
-
-const CONTAINER = DEFAULT_CONTAINER;
 
 try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
@@ -54,7 +39,7 @@ function hostExec(cmd: string, args: string[]): Promise<{ stdout: string; stderr
 }
 
 function dockerExec(cmd: string[], toolName?: string, container?: string): Promise<{ stdout: string; stderr: string; code: number }> {
-  const target = container ?? CONTAINER;
+  const target = container ?? DEFAULT_CONTAINER;
   const start = Date.now();
   const env = ["-e", "PK_EXEC=1"];
   return new Promise((resolve) => {
@@ -271,14 +256,12 @@ server.tool(
 
 server.tool(
   "tooling_exec",
-  "Run an arbitrary command inside the tooling container. Use for tools not covered by dedicated commands. Optionally route to a phase-specific container.",
+  "Run an arbitrary command inside the toolbox container. Use for tools not covered by dedicated commands.",
   {
     command: z.string().describe("Shell command to execute"),
-    phase: z.string().optional().describe("Route to phase container: recon, enum, exploit (default: full attackbox)"),
   },
-  async ({ command, phase }: { command: string; phase?: string }) => {
-    const container = resolveContainer(phase);
-    return result(await dockerExec(["sh", "-c", command], "tooling_exec", container));
+  async ({ command }: { command: string }) => {
+    return result(await dockerExec(["sh", "-c", command], "tooling_exec"));
   },
 );
 
@@ -298,7 +281,7 @@ server.tool(
     args.push(name);
     const create = await hostExec(args[0], args.slice(1));
     if (create.code !== 0) return result(create);
-    const connect = await hostExec("docker", ["network", "connect", name, CONTAINER]);
+    const connect = await hostExec("docker", ["network", "connect", name, DEFAULT_CONTAINER]);
     if (connect.code !== 0) return result(connect);
     return { content: [{ type: "text" as const, text: JSON.stringify({ network: name, connected: true }) }] };
   },
@@ -312,7 +295,7 @@ server.tool(
   },
   async ({ engagementSlug }: { engagementSlug: string }) => {
     const name = `${NET_PREFIX}${engagementSlug}`;
-    await hostExec("docker", ["network", "disconnect", name, CONTAINER]);
+    await hostExec("docker", ["network", "disconnect", name, DEFAULT_CONTAINER]);
     const rm = await hostExec("docker", ["network", "rm", name]);
     return result(rm);
   },
@@ -430,7 +413,7 @@ server.tool(
   "Upload a file to a target through a gleipnir session.",
   {
     session: z.string().describe("Session name"),
-    src: z.string().describe("Local source file path (on the attackbox)"),
+    src: z.string().describe("Local source file path (on the toolbox)"),
     dst: z.string().describe("Remote destination path (on the target)"),
   },
   async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
@@ -452,7 +435,7 @@ server.tool(
   {
     session: z.string().describe("Session name"),
     src: z.string().describe("Remote source file path (on the target)"),
-    dst: z.string().describe("Local destination path (on the attackbox)"),
+    dst: z.string().describe("Local destination path (on the toolbox)"),
   },
   async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
     try {

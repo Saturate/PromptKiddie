@@ -365,7 +365,7 @@ const pkTools = {
     execute: async (params) => sendMessage(params),
   }),
   exec: tool({
-    description: "Run a command on the attackbox. If running nmap/rustscan, provide targetId to auto-record discovered ports.",
+    description: "Run a command on the toolbox. If running nmap/rustscan, provide targetId to auto-record discovered ports.",
     inputSchema: z.object({
       engagementId: z.string().uuid(),
       command: z.string().describe("Shell command to run"),
@@ -377,12 +377,12 @@ const pkTools = {
       const { execFile } = await import("node:child_process");
       const { loadConfig } = await import("@promptkiddie/core");
       const config = loadConfig();
-      const container = config.attackbox.container;
+      const container = config.toolbox.container;
 
       const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
         const proc = execFile(
           "docker", ["exec", container, "sh", "-c", command],
-          { maxBuffer: 10 * 1024 * 1024, timeout: config.attackbox.timeout },
+          { maxBuffer: 10 * 1024 * 1024, timeout: config.toolbox.timeout },
           (err, stdout, stderr) => {
             resolve({
               stdout: stdout ?? "",

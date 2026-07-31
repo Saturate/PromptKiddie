@@ -14,8 +14,14 @@ const portScan: Action = {
   on: (e) => e.type === "EngagementStarted",
   emits: ["PortDiscovered", "VersionIdentified"],
   async run(ctx) {
-    const result = await ctx.exec("rustscan", ["-a", ctx.target, "--", "-sV", "-sC"], { stream: true });
-    await ctx.evidence(`exec/rustscan-${Date.now()}.txt`, "scan");
+    let result = await ctx.exec("rustscan", ["-a", ctx.target, "--", "-sV", "-sC"], { stream: true });
+    let scanner = "rustscan";
+    if (result.code === 127) {
+      scanner = "nmap";
+      ctx.log(`[port_scan] rustscan not found, falling back to ${scanner}`);
+      result = await ctx.exec("nmap", ["-p-", "-sV", "-sC", "--open", "--min-rate", "5000", ctx.target], { stream: true });
+    }
+    await ctx.evidence(`exec/${scanner}-${Date.now()}.txt`, "scan");
     const lines = result.stdout.split("\n");
     for (const line of lines) {
       const portMatch = line.match(/(\d+)\/tcp\s+open\s+(\S+)\s*(.*)/);
@@ -80,7 +86,7 @@ const sslHostnames: Action = {
 
 const resolveHostname: Action = {
   name: "resolve_hostname",
-  description: "Inject discovered hostname into attackbox /etc/hosts so subsequent actions can reach vhosts",
+  description: "Inject discovered hostname into toolbox /etc/hosts so subsequent actions can reach vhosts",
   on: (e) => e.type === "HostnameFound" && !!e.payload.hostname,
   async run(ctx) {
     const hostname = ctx.event.payload.hostname as string;

@@ -189,7 +189,7 @@ export interface RunContext {
   engagement: EngagementState;
 
   /**
-   * Run a command in the attackbox container. Raw output is stored in DB
+   * Run a command in the toolbox container. Raw output is stored in DB
    * and optionally streamed to the terminal. Returns structured result.
    *
    * @example
@@ -272,7 +272,7 @@ export interface RunContext {
    */
   evidence(path: string, type: "screenshot" | "scan" | "output" | "file" | "flag"): Promise<void>;
 
-  /** Read a file from the engagement directory or attackbox filesystem. */
+  /** Read a file from the engagement directory or toolbox filesystem. */
   readFile(path: string): Promise<string>;
 
   /** Log a progress message (visible in the Agent Log UI tab). */
