@@ -9,7 +9,7 @@ COPY packages/web/package.json packages/web/
 COPY packages/api/package.json packages/api/
 COPY packages/cli/package.json packages/cli/
 COPY packages/mcp-server/package.json packages/mcp-server/
-COPY packages/supervisor/package.json packages/supervisor/
+COPY packages/daemon/package.json packages/daemon/
 COPY packages/tooling-mcp/package.json packages/tooling-mcp/
 RUN pnpm install --frozen-lockfile
 
@@ -34,10 +34,10 @@ COPY --from=build /app/package.json ./
 EXPOSE 3200
 CMD ["node", "packages/api/dist/index.js"]
 
-FROM base AS supervisor
+FROM base AS daemon
 RUN apk add --no-cache docker-cli
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/core ./packages/core
-COPY --from=build /app/packages/supervisor ./packages/supervisor
+COPY --from=build /app/packages/daemon ./packages/daemon
 COPY --from=build /app/package.json ./
-CMD ["node", "packages/supervisor/dist/index.js", "--standby"]
+CMD ["node", "packages/daemon/dist/index.js", "--standby"]

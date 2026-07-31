@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - "packages/containers/agent/**"
-      - ".github/workflows/agent.yml"
   release:
     types: [published]
   workflow_dispatch:

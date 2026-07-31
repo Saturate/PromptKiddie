@@ -98,8 +98,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gleipnir-relay
+          tags: type=raw,value=latest
       - uses: docker/build-push-action@v5
         with:
           context: packages/gleipnir
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/gleipnir-relay:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
