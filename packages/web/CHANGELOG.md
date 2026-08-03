@@ -1,3 +1,9 @@
+## 0.1.3 (2026-08-03)
+
+### Fixes
+
+- remove dead sendMessage import and scrapped inbox component (#19)
+
 ## 0.1.2 (2026-07-21)
 
 ### Features
