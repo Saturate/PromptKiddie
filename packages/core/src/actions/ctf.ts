@@ -107,6 +107,68 @@ const resolveHostname: Action = {
   },
 };
 
+const browserRenderSpa: Action = {
+  name: "browser_render_spa",
+  description: "Detect JavaScript SPAs early so agents use a browser instead of static analysis",
+  on: (e) => e.type === "PortDiscovered" && ["http", "http-proxy", "https", "ssl/http"].includes(e.payload.service as string),
+  async run(ctx) {
+    const port = ctx.event.payload.port as number;
+    const service = ctx.event.payload.service as string | undefined;
+    const scheme = schemeForPort(port, service);
+    const result = await ctx.exec("curl", ["-sk", "--max-time", "10", `${scheme}://${ctx.target}:${port}/`]);
+    if (result.code !== 0) return;
+    const body = result.stdout;
+    const hasScript = body.includes("<script");
+    const isSmallHtml = body.length < 2048;
+    const hasBootLoader = /aria-busy|loading|__next|__nuxt|root.*app/i.test(body);
+    if (hasScript && isSmallHtml && hasBootLoader) {
+      ctx.log(`[browser_render_spa] SPA detected on port ${port} (${body.length}B HTML with script loader). Use a browser to interact - static analysis and JS deobfuscation are dead ends.`);
+      await ctx.discover("positive", "web", `SPA detected on port ${port}: small HTML shell with JS loader. Requires browser rendering for endpoint discovery.`);
+    }
+  },
+};
+
+const apiFuzzPost: Action = {
+  name: "api_fuzz_post",
+  description: "POST-based API endpoint discovery (complements GET-based dir_brute)",
+  on: (e) => e.type === "PortDiscovered" && ["http", "http-proxy", "https", "ssl/http"].includes(e.payload.service as string),
+  emits: ["PathDiscovered"],
+  async run(ctx) {
+    const port = ctx.event.payload.port as number;
+    const service = ctx.event.payload.service as string | undefined;
+    const scheme = schemeForPort(port, service);
+    const baseUrl = `${scheme}://${ctx.target}:${port}`;
+
+    // Get baseline response size for a nonsense API path
+    const baseline = await ctx.exec("curl", ["-sk", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}", "-o", "/dev/null", "-w", "%{size_download}", `${baseUrl}/api/zzznonexistent_baseline_7291`]);
+    const baselineSize = baseline.code === 0 ? baseline.stdout.trim() : "";
+
+    const outFile = `/tmp/ffuf-api-post-${port}-${Date.now()}.json`;
+    const filterFlags = baselineSize ? ["-fs", baselineSize] : [];
+    const result = await ctx.exec("ffuf", [
+      "-u", `${baseUrl}/api/FUZZ`,
+      "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}",
+      "-w", "/usr/share/seclists/Discovery/Web-Content/raft-small-words.txt",
+      "-mc", "all", "-fc", "404", ...filterFlags, "-t", "50", "-timeout", "10",
+      "-o", outFile, "-of", "json",
+    ], { stream: true });
+
+    if (result.code === 0) {
+      try {
+        const content = await ctx.readFile(outFile);
+        const data = JSON.parse(content) as { results?: Array<{ url: string; status: number; length: number }> };
+        for (const p of data.results ?? []) {
+          await ctx.emit("PathDiscovered", { url: p.url, status: p.status, size: p.length, method: "POST" });
+          await ctx.discover("positive", "web", `POST API endpoint: ${p.url} (${p.status}, ${p.length}B)`);
+        }
+        if (!data.results?.length) await ctx.discover("negative", "web", `ffuf POST: 0 API endpoints on port ${port}`);
+      } catch {
+        await ctx.discover("negative", "web", `ffuf POST output parse failed on port ${port}`);
+      }
+    }
+  },
+};
+
 const dirBrute: Action = {
   name: "dir_brute",
   description: "Directory and file discovery on web services",
@@ -474,6 +536,15 @@ const sourceCodeAnalysis: Action = {
   },
 };
 
+const webAppRegister: Action = {
+  name: "web_app_register",
+  description: "Attempt to register an account on web applications",
+  on: (e) => e.type === "PortDiscovered" && ["http", "http-proxy", "https", "ssl/http"].includes(e.payload.service as string),
+  emits: ["PathDiscovered", "FindingAdded"],
+  prompt: "Browse {target} on port {port}. Look for registration, signup, or create account forms. If found, register with a test account (test@test.htb / TestPass123!) and explore the authenticated surface. Report any new endpoints, features, or functionality visible after login.",
+  llm: { priority: 25 },
+};
+
 const defaultCreds: Action = {
   name: "default_creds",
   description: "Try default and anonymous credentials per service",
@@ -667,10 +738,10 @@ export const CTF_PLAYBOOK: Playbook = {
   },
   actions: [
     // Recon
-    portScan, udpScan, webRecon, sslHostnames, resolveHostname, dirBrute, dirBruteVhost, vhostBrute,
+    portScan, udpScan, webRecon, browserRenderSpa, sslHostnames, resolveHostname, dirBrute, apiFuzzPost, dirBruteVhost, vhostBrute,
     // Enumeration
     gitSecretScan, nucleiScan, smbEnum, ftpEnum, snmpEnum, nfsEnum, imapEnum,
-    cveSearch, sourceCodeAnalysis, defaultCreds,
+    cveSearch, sourceCodeAnalysis, defaultCreds, webAppRegister,
     webVulnTests, pathTraversalAction,
     // Credential testing
     credentialTest,

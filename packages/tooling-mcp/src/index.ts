@@ -14,6 +14,14 @@ const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
 
 try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
+execFile("docker", ["inspect", "--format", "{{.State.Running}}", DEFAULT_CONTAINER], { timeout: 5000 }, (err, stdout) => {
+  if (err || stdout.trim() !== "true") {
+    console.error(`[pk-tooling] WARNING: container "${DEFAULT_CONTAINER}" not found or not running. All tool calls will fail. Set PK_TOOLING_CONTAINER to the active worker (e.g. pk-worker-<slug>) or start an engagement.`);
+  } else {
+    console.error(`[pk-tooling] container "${DEFAULT_CONTAINER}" is ready`);
+  }
+});
+
 function logToolCall(tool: string, args: Record<string, unknown>, exitCode: number, durationMs: number) {
   const entry = {
     ts: new Date().toISOString(),
@@ -541,6 +549,123 @@ server.tool(
       ? ["curl", "-s", `${url}?${p}=${encodeURIComponent(command)}`]
       : ["curl", "-s", url, "--data-urlencode", `${p}=${command}`];
     return result(await dockerExec(curlArgs, "webshell"));
+  },
+);
+
+// --- ws_shell (WebSocket terminal) ------------------------------------------
+
+const WS_SHELL_PY = `
+import socket, ssl, os, struct, base64, time, re, sys, json
+
+args = json.loads(sys.argv[1])
+url = args["url"]
+command = args["command"]
+timeout_ms = args.get("timeout", 5000)
+init_wait_ms = args.get("initWait", 1000)
+
+# Parse URL
+import urllib.parse
+parsed = urllib.parse.urlparse(url)
+use_tls = parsed.scheme == "wss"
+host = parsed.hostname
+port = parsed.port or (443 if use_tls else 80)
+path = parsed.path or "/"
+if parsed.query:
+    path += "?" + parsed.query
+
+# Connect
+sock = socket.create_connection((host, port), timeout=10)
+if use_tls:
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    sock = ctx.wrap_socket(sock, server_hostname=host)
+
+# WebSocket handshake
+key = base64.b64encode(os.urandom(16)).decode()
+req = f"GET {path} HTTP/1.1\\r\\nHost: {host}\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Key: {key}\\r\\nSec-WebSocket-Version: 13\\r\\n\\r\\n"
+sock.sendall(req.encode())
+resp = b""
+while b"\\r\\n\\r\\n" not in resp:
+    resp += sock.recv(4096)
+status = resp.split(b"\\r\\n")[0].decode()
+if b"101" not in resp.split(b"\\r\\n")[0]:
+    print(f"WebSocket handshake failed: {status}", file=sys.stderr)
+    sys.exit(1)
+
+def ws_send(s, data):
+    p = data.encode()
+    m = os.urandom(4)
+    ln = len(p)
+    if ln < 126:
+        f = bytearray([0x81, 0x80 | ln]) + m
+    elif ln < 65536:
+        f = bytearray([0x81, 0x80 | 126]) + struct.pack(">H", ln) + m
+    else:
+        f = bytearray([0x81, 0x80 | 127]) + struct.pack(">Q", ln) + m
+    f.extend(bytearray(b ^ m[i % 4] for i, b in enumerate(p)))
+    s.sendall(f)
+
+def ws_recv(s, t):
+    s.settimeout(t)
+    out = b""
+    try:
+        while True:
+            d = s.recv(65536)
+            if not d:
+                break
+            out += d
+    except (socket.timeout, ssl.SSLError):
+        pass
+    txt = ""
+    i = 0
+    while i < len(out):
+        if i + 2 > len(out):
+            break
+        l = out[i + 1] & 0x7F
+        o = i + 2
+        if l == 126:
+            if i + 4 > len(out): break
+            l = struct.unpack(">H", out[i+2:i+4])[0]; o = i + 4
+        elif l == 127:
+            if i + 10 > len(out): break
+            l = struct.unpack(">Q", out[i+2:i+10])[0]; o = i + 10
+        if o + l > len(out):
+            break
+        txt += out[o:o+l].decode("utf-8", errors="replace")
+        i = o + l
+    return txt
+
+# Wait for initial prompt
+time.sleep(init_wait_ms / 1000.0)
+ws_recv(sock, 0.5)
+
+# Send command
+ws_send(sock, command + "\\n")
+time.sleep(timeout_ms / 1000.0)
+output = ws_recv(sock, 1)
+
+# Strip terminal escapes
+output = re.sub(r"\\x1b\\[[^a-zA-Z]*[a-zA-Z]", "", output)
+output = re.sub(r"\\x1b\\][^\\x07]*\\x07", "", output)
+output = output.replace("\\r", "")
+
+sock.close()
+print(output.strip())
+`;
+
+server.tool(
+  "ws_shell",
+  "Connect to a WebSocket endpoint, send a command, and return the response. For interactive WebSocket shells (e.g., terminal endpoints, auth bypasses).",
+  {
+    url: z.string().describe("WebSocket URL, e.g. wss://host/terminal/ws"),
+    command: z.string().describe("Command to send after connecting"),
+    timeout: z.number().optional().describe("Milliseconds to wait for response (default: 5000)"),
+    initWait: z.number().optional().describe("Milliseconds to wait after connect before sending (default: 1000)"),
+  },
+  async ({ url, command, timeout, initWait }: { url: string; command: string; timeout?: number; initWait?: number }) => {
+    const args = JSON.stringify({ url, command, timeout: timeout ?? 5000, initWait: initWait ?? 1000 });
+    return result(await dockerExec(["python3", "-c", WS_SHELL_PY, args], "ws_shell"));
   },
 );
 

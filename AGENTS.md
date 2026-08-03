@@ -122,6 +122,8 @@ docker compose up -d postgres
 pnpm db:migrate
 ```
 
+The daemon spawns `pk-worker-<slug>` containers per engagement using the `pk-agent` image. The tooling MCP and daemon `ctx.exec()` run all attack tools inside these workers. Set `PK_TOOLING_CONTAINER=pk-worker-<slug>` in the MCP env to target a specific engagement's worker (scaffolded by `pk init`).
+
 ## Testing
 
 No global test command yet. Run per-package where tests exist. Rust packages use `cargo test`. The `core` package has the most coverage.
