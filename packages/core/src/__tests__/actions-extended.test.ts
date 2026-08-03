@@ -508,6 +508,66 @@ describe("cred_crack", () => {
   });
 });
 
+describe("cve_search", () => {
+  it("uses searchsploit when available", async () => {
+    const action = findAction("cve_search")!;
+    const ctx = createMockContext({
+      target: "10.0.0.1",
+      event: { type: "VersionIdentified", payload: { product: "Flowise", version: "1.6.2" } },
+      execResults: {
+        searchsploit: {
+          stdout: "Flowise 1.6.2 - Remote Code Execution\n  exploits/python/webapps/51234.py",
+          stderr: "", code: 0, durationMs: 500,
+        },
+      },
+    });
+
+    await action.run!(ctx);
+
+    expect(ctx.discoveries.some((d) => d.type === "positive" && d.category === "cve" && d.summary.includes("searchsploit hits"))).toBe(true);
+  });
+
+  it("falls back to knowledge search when searchsploit is missing (exit 127)", async () => {
+    const action = findAction("cve_search")!;
+    const ctx = createMockContext({
+      target: "10.0.0.1",
+      event: { type: "VersionIdentified", payload: { product: "Flowise", version: "1.6.2" } },
+      execResults: {
+        searchsploit: { stdout: "", stderr: "searchsploit: command not found", code: 127, durationMs: 10 },
+      },
+    });
+
+    await action.run!(ctx);
+
+    expect(ctx.logs.some((l) => l.includes("WARNING") && l.includes("searchsploit not installed"))).toBe(true);
+    expect(ctx.discoveries.some((d) => d.type === "negative" && d.category === "tooling" && d.summary.includes("searchsploit"))).toBe(true);
+    expect(ctx.discoveries.some((d) => d.category === "cve")).toBe(true);
+  });
+
+  it("records negative when searchsploit returns no results", async () => {
+    const action = findAction("cve_search")!;
+    const ctx = createMockContext({
+      target: "10.0.0.1",
+      event: { type: "VersionIdentified", payload: { product: "CustomApp", version: "3.0" } },
+      execResults: {
+        searchsploit: { stdout: "No results", stderr: "", code: 0, durationMs: 200 },
+      },
+    });
+
+    await action.run!(ctx);
+
+    expect(ctx.discoveries.some((d) => d.type === "negative" && d.summary.includes("0 results"))).toBe(true);
+  });
+
+  it("prompt searches broadly, not limited to RCE", () => {
+    const action = findAction("cve_search")!;
+    expect(action.prompt).toContain("auth bypass");
+    expect(action.prompt).toContain("password reset");
+    expect(action.prompt).toContain("SSRF");
+    expect(action.prompt).toContain("Do NOT limit to RCE");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // LLM-only actions (no run(), just prompt + trigger)
 // ---------------------------------------------------------------------------
