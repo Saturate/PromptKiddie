@@ -118,9 +118,11 @@ cd packages/ratatosk && cargo build
 Postgres via docker compose. Drizzle ORM with migration files in `db/migrations/`.
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres toolbox   # DB + pentest toolbox (pk-toolbox)
 pnpm db:migrate
 ```
+
+The `pk-toolbox` container is required for engagements. The tooling MCP and daemon `ctx.exec()` run all attack tools (nmap, rustscan, ffuf, nuclei, etc.) inside it. Override the container name with `PK_TOOLING_CONTAINER` env var if needed.
 
 ## Testing
 

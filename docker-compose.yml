@@ -62,6 +62,21 @@ services:
     networks:
       - pk-network
 
+  # Pentest toolbox: all attack tools (nmap, rustscan, ffuf, nuclei, etc.) + headless Chrome.
+  # The tooling MCP and daemon ctx.exec() run commands inside this container.
+  toolbox:
+    image: ghcr.io/saturate/promptkiddie-attackbox:latest
+    container_name: pk-toolbox
+    restart: unless-stopped
+    command: sleep infinity
+    cap_add:
+      - NET_RAW
+    ports:
+      - "${PK_SOCKS_PORT:-1080}:1080"
+      - "${PK_TOOLBOX_CDP_PORT:-9223}:9222"
+    networks:
+      - pk-network
+
   # Gleipnir C2 server
   # On macOS/Colima: pk-network routes through VM (VPN works via host routes)
   # On Linux with VPN sidecar: use profile linux-vpn-gleipnir to share VPN network
