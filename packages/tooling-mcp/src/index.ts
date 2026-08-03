@@ -16,7 +16,7 @@ try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
 execFile("docker", ["inspect", "--format", "{{.State.Running}}", DEFAULT_CONTAINER], { timeout: 5000 }, (err, stdout) => {
   if (err || stdout.trim() !== "true") {
-    console.error(`[pk-tooling] WARNING: container "${DEFAULT_CONTAINER}" not found or not running. All tool calls will fail. Start it with: docker compose up -d toolbox`);
+    console.error(`[pk-tooling] WARNING: container "${DEFAULT_CONTAINER}" not found or not running. All tool calls will fail. Set PK_TOOLING_CONTAINER to the active worker (e.g. pk-worker-<slug>) or start an engagement.`);
   } else {
     console.error(`[pk-tooling] container "${DEFAULT_CONTAINER}" is ready`);
   }
