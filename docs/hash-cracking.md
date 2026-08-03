@@ -2,7 +2,7 @@
 
 ## In-container cracking (CPU)
 
-The toolbox includes `john` and `hashcat`. CPU cracking is fine for weak hashes or
+The worker container includes `john` and `hashcat`. CPU cracking is fine for weak hashes or
 small wordlists but is orders of magnitude slower than GPU cracking for bcrypt, PBKDF2,
 or large wordlists.
 
@@ -20,13 +20,13 @@ pk exec -- hashcat -m <mode> /tmp/hashes.txt /tmp/trimmed.txt --force
 ## Host GPU cracking
 
 For serious cracking (bcrypt, PBKDF2, large wordlists), use the host machine's GPU.
-The toolbox container does not have GPU passthrough.
+The worker container does not have GPU passthrough.
 
 ### Manual path
 
 1. Copy the hash file out of the container:
    ```bash
-   docker cp pk-toolbox:/tmp/hashes.txt ./hashes.txt
+   docker cp pk-worker-<slug>:/tmp/hashes.txt ./hashes.txt
    ```
 
 2. Run hashcat on the host with GPU:
@@ -36,7 +36,7 @@ The toolbox container does not have GPU passthrough.
 
 3. Copy results back and register as evidence:
    ```bash
-   docker cp ./hashcat.potfile pk-toolbox:/tmp/
+   docker cp ./hashcat.potfile pk-worker-<slug>:/tmp/
    pk evidence add --path /tmp/hashcat.potfile --type output
    ```
 

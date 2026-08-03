@@ -17,12 +17,15 @@ services:
       timeout: 5s
       retries: 10
 
-  toolbox:
+  # Default worker container for tool execution.
+  # The daemon spawns per-engagement pk-worker-<slug> containers automatically;
+  # this static fallback is used when running tools outside an engagement.
+  worker:
     image: ghcr.io/saturate/pk-agent:latest
     build:
       context: packages/containers/agent
       dockerfile: Dockerfile
-    container_name: pk-toolbox
+    container_name: pk-worker
     restart: unless-stopped
     volumes:
       - ./engagements:/workspace/engagements

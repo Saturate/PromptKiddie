@@ -112,7 +112,7 @@ export async function runInit(options: InitOptions) {
     `url = "${dbUrl}"`,
     "",
     "[toolbox]",
-    'container = "pk-toolbox"',
+    'container = "pk-worker"',
     "timeout = 300000",
     'exec_mode = "docker"',
     "",

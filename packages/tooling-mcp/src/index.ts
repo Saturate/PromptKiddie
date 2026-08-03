@@ -7,7 +7,7 @@ import { z } from "zod";
 import { parseNmapXml } from "./parsers/nmap.js";
 import { parseNucleiJsonl } from "./parsers/nuclei.js";
 
-const DEFAULT_CONTAINER = process.env.PK_TOOLING_CONTAINER ?? process.env.PK_TOOLBOX_CONTAINER ?? process.env.PK_ATTACKBOX ?? "pk-toolbox";
+const DEFAULT_CONTAINER = process.env.PK_TOOLING_CONTAINER ?? "pk-worker";
 const TIMEOUT = Number(process.env.PK_TOOLING_TIMEOUT ?? "300000");
 const NET_PREFIX = "pk-eng-";
 const LOG_DIR = process.env.PK_TOOL_LOG_DIR ?? "./engagements/.tool-log";
