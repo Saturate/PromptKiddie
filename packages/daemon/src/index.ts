@@ -566,7 +566,8 @@ export async function startSupervisor(opts: SupervisorOpts) {
     } finally {
       const key = [...activeActions.entries()].find(([k]) => k.startsWith(action.name))?.[0];
       if (key) activeActions.delete(key);
-      completedActions.add(`${action.name}:${event.type}`);
+      const payloadKey = event.payload.hostname ?? event.payload.port ?? event.payload.product ?? event.payload.url ?? "";
+      completedActions.add(`${action.name}:${event.type}:${payloadKey}`);
       opts.onActionEnd?.(action.name);
       bus.emit("slot_free", {});
     }
@@ -631,13 +632,16 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
     matched.sort((a, b) => getActionPriority(a) - getActionPriority(b));
 
-    // Filter out actions that already completed for this event type.
+    // Filter out actions that already completed for this event type + payload.
     // Events with payload.force=true bypass this check.
     const force = event.payload?.force === true;
     const fresh = force ? matched : matched.filter((action) => {
-      const key = `${action.name}:${event.type}`;
+      // Build a dedup key from action name, event type, and payload-derived key.
+      // This prevents the same action from re-running for identical events
+      // while still allowing it to run for new payloads (e.g., different hostnames).
+      const payloadKey = event.payload.hostname ?? event.payload.port ?? event.payload.product ?? event.payload.url ?? "";
+      const key = `${action.name}:${event.type}:${payloadKey}`;
       if (completedActions.has(key)) {
-        console.log(`[daemon] skipping "${action.name}" (already completed for ${event.type})`);
         return false;
       }
       return true;

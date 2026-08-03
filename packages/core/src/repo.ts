@@ -688,6 +688,15 @@ export async function addFinding(input: {
       verdictReason: input.verdictReason,
     })
     .returning();
+
+  await emitEvent(input.engagementId, "FindingAdded", {
+    title: input.title,
+    severity: input.severity ?? "info",
+    status: input.status ?? "triage",
+    cve: input.cve,
+    findingId: row.id,
+  }, "mcp");
+
   return row;
 }
 
