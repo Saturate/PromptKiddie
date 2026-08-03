@@ -64,8 +64,9 @@ services:
 
   # Pentest toolbox: all attack tools (nmap, rustscan, ffuf, nuclei, etc.) + headless Chrome.
   # The tooling MCP and daemon ctx.exec() run commands inside this container.
+  # Uses the same pk-agent image that Cartridge-based agents run on.
   toolbox:
-    image: ghcr.io/saturate/promptkiddie-attackbox:latest
+    image: pk-agent
     container_name: pk-toolbox
     restart: unless-stopped
     command: sleep infinity
