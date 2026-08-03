@@ -54,7 +54,7 @@ const DEFAULTS: PkConfig = {
     url: "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie",
   },
   toolbox: {
-    container: "pk-toolbox",
+    container: "pk-worker",
     host: null,
     timeout: 300000,
     exec_mode: "docker",
@@ -112,7 +112,7 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
 
 function applyEnvOverrides(config: PkConfig): PkConfig {
   if (process.env.DATABASE_URL) config.database.url = process.env.DATABASE_URL;
-  const toolboxContainer = process.env.PK_TOOLING_CONTAINER ?? process.env.PK_TOOLBOX_CONTAINER ?? process.env.PK_ATTACKBOX;
+  const toolboxContainer = process.env.PK_TOOLING_CONTAINER;
   if (toolboxContainer) config.toolbox.container = toolboxContainer;
   if (process.env.PK_EXEC_MODE) config.toolbox.exec_mode = process.env.PK_EXEC_MODE as "docker" | "local";
   if (process.env.PK_TOOLING_TIMEOUT) config.toolbox.timeout = Number(process.env.PK_TOOLING_TIMEOUT);
@@ -145,16 +145,6 @@ export function loadConfig(): PkConfig {
   merged = deepMerge(merged, loadToml(workspacePath));
   if (process.env.PK_CONTAINER === "1") {
     merged = deepMerge(merged, loadToml(containerPath));
-  }
-
-  // Migrate legacy [attackbox] TOML section to [toolbox]
-  const raw = merged as Record<string, unknown>;
-  if (raw.attackbox) {
-    raw.toolbox = deepMerge(
-      raw.toolbox as Record<string, unknown>,
-      raw.attackbox as Record<string, unknown>,
-    );
-    delete raw.attackbox;
   }
 
   _config = applyEnvOverrides(merged as unknown as PkConfig);

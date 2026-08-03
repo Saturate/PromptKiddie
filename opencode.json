@@ -14,7 +14,7 @@
       "command": ["node", "packages/tooling-mcp/dist/index.js"],
       "enabled": true,
       "env": {
-        "PK_TOOLING_CONTAINER": "pk-toolbox"
+        "PK_TOOLING_CONTAINER": "pk-worker"
       }
     }
   }

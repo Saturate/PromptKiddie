@@ -13,7 +13,7 @@ Monorepo for the PromptKiddie platform. pnpm workspaces, TypeScript for the plat
 | `web` | TS/Next.js | Legacy Next.js UI (being replaced by spa) |
 | `mcp-server` | TS | MCP server exposing engagement DB to Claude Code |
 | `daemon` | TS | Event-driven process that runs playbook actions against targets |
-| `tooling` | Docker | Attackbox container image with pentest tools |
+| `tooling-mcp` | TS | MCP server exposing pentest tools (nmap, ffuf, nuclei, etc.) for structured invocation |
 | `gleipnir` | Rust | Persistent reverse shell handler (relay + agent binary) |
 | `ratatosk` | Rust | Privilege escalation scanner (runs on target, outputs JSON) |
 | `init` | TS | `pk init` workspace scaffolding |
