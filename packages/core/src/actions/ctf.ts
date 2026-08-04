@@ -507,15 +507,29 @@ const cveSearch: Action = {
   description: "Search for known CVEs matching discovered versions",
   on: (e) => e.type === "VersionIdentified" && e.payload.version != null,
   emits: ["ExploitAvailable"],
-  prompt: "Search the web for CVEs and PoC exploits for {product} {version}. Check GitHub for public PoC scripts. Report findings with CVE number, CVSS, and PoC URL.",
+  prompt: "Search the web for all known vulnerabilities in {product} {version}. Do NOT limit to RCE - check for auth bypass, password reset, SSRF, info disclosure, deserialization, file upload, and any other CVE. Search: '{product} {version} CVE vulnerability exploit PoC'. Check GitHub for public PoC scripts. Report findings with CVE number, CVSS, and PoC URL.",
   async run(ctx) {
     const { product, version } = ctx.event.payload;
+
     const searchsploit = await ctx.exec("searchsploit", [product as string, version as string]);
-    if (searchsploit.stdout.trim() && !searchsploit.stdout.includes("No results")) {
+    if (searchsploit.code === 127) {
+      ctx.log(`[cve_search] WARNING: searchsploit not installed in worker image, falling back to knowledge search`);
+      await ctx.discover("negative", "tooling", `searchsploit not installed in worker image; CVE search degraded to knowledge base only`);
+      const query = `${product} ${version} CVE vulnerability exploit`;
+      const results = await ctx.searchKnowledge(query);
+      if (results.length > 0) {
+        await ctx.discover("positive", "cve", `Knowledge base hits for ${product} ${version}`, {
+          hits: results.map((r) => ({ source: r.source, score: r.score, excerpt: r.content.slice(0, 200) })),
+        });
+      } else {
+        await ctx.discover("negative", "cve", `No knowledge base results for ${product} ${version}`);
+      }
+    } else if (searchsploit.stdout.trim() && !searchsploit.stdout.includes("No results")) {
       await ctx.discover("positive", "cve", `searchsploit hits for ${product} ${version}`, { raw: searchsploit.stdout.slice(0, 1000) });
     } else {
       await ctx.discover("negative", "cve", `searchsploit: 0 results for ${product} ${version}`);
     }
+
     const hits = await ctx.searchExploitIndex(product as string, version as string);
     for (const hit of hits) {
       await ctx.emit("ExploitAvailable", { cve: hit.cve, product: hit.product, cvss: hit.cvss, pocPath: hit.pocPath });
