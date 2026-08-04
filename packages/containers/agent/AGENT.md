@@ -56,6 +56,17 @@ pk msg send --body "User flag captured"
 
 Or use the PK MCP tools if available: `add_finding`, `add_evidence`, `log_activity`, `add_artifact`, `send_message`.
 
+## When a PoC fails: read the source
+
+When a CVE exploit or PoC returns unexpected results on the target version, **stop retrying the same endpoint with variations**. Read the vulnerable source code first.
+
+1. Find the source on GitHub for the target's version/tag
+2. Trace the code path: HTTP route → controller → service → vulnerable function
+3. Check whether the target version changed the code path vs. the version the PoC was written for
+4. Build a new exploit based on what the code actually does, not what the PoC assumes
+
+Don't spend more than 2-3 attempts on the same endpoint before switching to source analysis.
+
 ## When you're stuck
 
 - After 3 failed attempts at the same approach, try a different vector.
