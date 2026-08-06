@@ -12,6 +12,8 @@ pub enum BoxedStream {
     Tcp(TcpStream),
     #[cfg(feature = "tls")]
     Tls(tokio_rustls::client::TlsStream<TcpStream>),
+    #[cfg(feature = "tls")]
+    TlsServer(tokio_rustls::server::TlsStream<TcpStream>),
 }
 
 impl AsyncRead for BoxedStream {
@@ -24,6 +26,8 @@ impl AsyncRead for BoxedStream {
             BoxedStream::Tcp(s) => Pin::new(s).poll_read(cx, buf),
             #[cfg(feature = "tls")]
             BoxedStream::Tls(s) => Pin::new(s).poll_read(cx, buf),
+            #[cfg(feature = "tls")]
+            BoxedStream::TlsServer(s) => Pin::new(s).poll_read(cx, buf),
         }
     }
 }
@@ -38,6 +42,8 @@ impl AsyncWrite for BoxedStream {
             BoxedStream::Tcp(s) => Pin::new(s).poll_write(cx, buf),
             #[cfg(feature = "tls")]
             BoxedStream::Tls(s) => Pin::new(s).poll_write(cx, buf),
+            #[cfg(feature = "tls")]
+            BoxedStream::TlsServer(s) => Pin::new(s).poll_write(cx, buf),
         }
     }
 
@@ -46,6 +52,8 @@ impl AsyncWrite for BoxedStream {
             BoxedStream::Tcp(s) => Pin::new(s).poll_flush(cx),
             #[cfg(feature = "tls")]
             BoxedStream::Tls(s) => Pin::new(s).poll_flush(cx),
+            #[cfg(feature = "tls")]
+            BoxedStream::TlsServer(s) => Pin::new(s).poll_flush(cx),
         }
     }
 
@@ -54,6 +62,8 @@ impl AsyncWrite for BoxedStream {
             BoxedStream::Tcp(s) => Pin::new(s).poll_shutdown(cx),
             #[cfg(feature = "tls")]
             BoxedStream::Tls(s) => Pin::new(s).poll_shutdown(cx),
+            #[cfg(feature = "tls")]
+            BoxedStream::TlsServer(s) => Pin::new(s).poll_shutdown(cx),
         }
     }
 }

