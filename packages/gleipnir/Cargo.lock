@@ -546,12 +546,13 @@ dependencies = [
 
 [[package]]
 name = "gleipnir-agent"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "clap",
  "futures-util",
  "libc",
+ "rcgen",
  "rustls",
  "rustls-pemfile",
  "serde",
@@ -566,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "gleipnir-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64",
  "clap",
@@ -582,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "gleipnir-server"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "axum",
  "base64",

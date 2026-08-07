@@ -64,6 +64,17 @@ enum Commands {
         #[arg(short, long, default_value = "raw")]
         mode: String,
     },
+    /// Connect to a bind-mode agent
+    Connect {
+        /// Agent host
+        host: String,
+        /// Agent port
+        #[arg(short, long, default_value_t = 4444)]
+        port: u16,
+        /// Use TLS
+        #[arg(long)]
+        tls: bool,
+    },
     /// Generate reverse shell one-liners for a target callback
     Payload {
         /// Callback IP address
@@ -258,6 +269,16 @@ async fn main() {
             Ok(v) => print_json(&v),
             Err(e) => eprintln!("error: {e}"),
         },
+        Commands::Connect { host, port, tls } => {
+            let body = serde_json::json!({ "host": host, "port": port, "tls": tls });
+            match c.post("/api/connect", &body).await {
+                Ok(v) => {
+                    print_json(&v);
+                    eprintln!("[*] Connection initiated. Check 'gleipnir sessions' for the new session.");
+                }
+                Err(e) => eprintln!("error: {e}"),
+            }
+        }
         Commands::Payload {
             host,
             port,

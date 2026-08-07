@@ -78,6 +78,7 @@ pub async fn start(port: u16, state: AppState) {
             "/api/listeners/{id}",
             get(get_listener).delete(close_listener),
         )
+        .route("/api/connect", post(connect_to_agent))
         .route("/api/agents", get(list_agents))
         .route("/api/agents/{platform}/{arch}", get(get_agent))
         .route("/ws/events", get(ws::ws_events))
@@ -431,6 +432,120 @@ async fn close_listener(
     match state.listener_manager.close(&id).await {
         Ok(()) => Ok(Json(serde_json::json!({ "closed": id }))),
         Err(e) => Err(err(StatusCode::NOT_FOUND, e)),
+    }
+}
+
+// ── Connect out (bind mode agents) ──
+
+#[derive(Deserialize)]
+struct ConnectRequest {
+    host: String,
+    port: u16,
+    #[serde(default)]
+    tls: bool,
+}
+
+async fn connect_to_agent(
+    State(state): State<AppState>,
+    Json(body): Json<ConnectRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
+    let addr = format!("{}:{}", body.host, body.port);
+    let stream = tokio::net::TcpStream::connect(&addr)
+        .await
+        .map_err(|e| err(StatusCode::BAD_GATEWAY, format!("connect to {addr}: {e}")))?;
+
+    let _ = stream.set_nodelay(true);
+    let sock_ref = socket2::SockRef::from(&stream);
+    let keepalive = socket2::TcpKeepalive::new()
+        .with_time(std::time::Duration::from_secs(5))
+        .with_interval(std::time::Duration::from_secs(2));
+    let _ = sock_ref.set_tcp_keepalive(&keepalive);
+
+    let peer = stream
+        .peer_addr()
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("peer addr: {e}")))?;
+
+    #[cfg(feature = "tls")]
+    let boxed = if body.tls {
+        let config = rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(std::sync::Arc::new(DangerousClientVerifier))
+            .with_no_client_auth();
+        let connector =
+            tokio_rustls::TlsConnector::from(std::sync::Arc::new(config));
+        let server_name = rustls::pki_types::ServerName::try_from("gleipnir")
+            .expect("valid server name")
+            .to_owned();
+        match connector.connect(server_name, stream).await {
+            Ok(tls_stream) => crate::session::BoxedStream::TlsClient(tls_stream),
+            Err(e) => {
+                return Err(err(
+                    StatusCode::BAD_GATEWAY,
+                    format!("TLS handshake with {addr}: {e}"),
+                ))
+            }
+        }
+    } else {
+        crate::session::BoxedStream::Tcp(stream)
+    };
+
+    #[cfg(not(feature = "tls"))]
+    let boxed = crate::session::BoxedStream::Tcp(stream);
+
+    info!("connecting out to bind agent at {addr}");
+    let mgr = state.manager.clone();
+    tokio::spawn(async move {
+        mgr.handle_connection(boxed, peer).await;
+    });
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "connecting": addr,
+            "tls": body.tls,
+        })),
+    ))
+}
+
+#[cfg(feature = "tls")]
+#[derive(Debug)]
+struct DangerousClientVerifier;
+
+#[cfg(feature = "tls")]
+impl rustls::client::danger::ServerCertVerifier for DangerousClientVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _server_name: &rustls::pki_types::ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        rustls::crypto::ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }
 
