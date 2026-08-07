@@ -689,16 +689,22 @@ export async function startSupervisor(opts: SupervisorOpts) {
     if (closing) return;
     evaluateAndDispatch({ type: event.type, payload: event.payload, id: event.id });
   });
-  console.log("[daemon] connecting to event stream");
+  // Wait for the event stream listener to be ready before emitting events
+  await eventStream.ready;
+  console.log("[daemon] event stream connected");
 
   // Fire EngagementStarted only on first run (skip if engagement already has events)
-  
+
   const priorEvents = await repo.listEvents(opts.engagementId, { type: "EngagementStarted" });
   if (priorEvents.length === 0) {
     console.log("[daemon] emitting EngagementStarted");
     await repo.emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
   } else {
-    console.log("[daemon] resuming (EngagementStarted already emitted, skipping)");
+    console.log("[daemon] resuming, replaying missed events");
+    const allEvents = await repo.listEvents(opts.engagementId) as Array<{ id: string; type: string; payload: Record<string, unknown> }>;
+    for (const event of allEvents) {
+      evaluateAndDispatch({ type: event.type, payload: event.payload, id: event.id });
+    }
   }
 
   const cleanup = async () => {
