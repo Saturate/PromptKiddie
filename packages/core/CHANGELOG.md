@@ -1,3 +1,9 @@
+## 0.1.4 (2026-08-07)
+
+### Fixes
+
+- broaden cve_search and fall back to knowledge search (#24) (#27)
+
 ## 0.1.3 (2026-07-31)
 
 ### Features

@@ -1,6 +1,6 @@
 {
   "name": "@promptkiddie/core",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Database schema, engagement repo, playbook SDK, and action graph for PromptKiddie.",
   "license": "MIT",
   "type": "module",
