@@ -229,8 +229,10 @@ export async function startSupervisor(opts: SupervisorOpts) {
   const engagement = engOrNull;
   currentPhase = engagement.phase ?? "scoping";
 
-  const targets = await repo.listTargets(opts.engagementId) as Array<{ identifier: string; inScope: boolean; notes?: string }>;
-  const primaryTarget = targets.find((t) => t.inScope)?.identifier ?? targets[0]?.identifier ?? "unknown";
+  const targets = await repo.listTargets(opts.engagementId) as Array<{ identifier: string; inScope: boolean; kind?: string; notes?: string }>;
+  const inScope = targets.filter((t) => t.inScope);
+  const primaryTarget = inScope.find((t) => t.kind === "host")?.identifier
+    ?? inScope[0]?.identifier ?? targets[0]?.identifier ?? "unknown";
 
   // Track completed actions to avoid re-running the same work on resume.
   // Seeded from activity log so restarting the supervisor doesn't re-run
@@ -689,10 +691,11 @@ export async function startSupervisor(opts: SupervisorOpts) {
     if (closing) return;
     evaluateAndDispatch({ type: event.type, payload: event.payload, id: event.id });
   });
-  console.log("[daemon] connecting to event stream");
+  await eventStream.ready;
+  console.log("[daemon] event stream connected");
 
   // Fire EngagementStarted only on first run (skip if engagement already has events)
-  
+
   const priorEvents = await repo.listEvents(opts.engagementId, { type: "EngagementStarted" });
   if (priorEvents.length === 0) {
     console.log("[daemon] emitting EngagementStarted");
@@ -743,12 +746,18 @@ export interface StandbyOpts {
 
 export async function startStandby(opts: StandbyOpts = {}) {
   const activeSupervisors = new Map<string, { stop: () => Promise<void> }>();
+  const pendingSupervisors = new Set<string>();
 
   async function ensureSupervisor(engId: string) {
-    if (activeSupervisors.has(engId)) return;
+    if (activeSupervisors.has(engId) || pendingSupervisors.has(engId)) return;
+    pendingSupervisors.add(engId);
     console.log(`[daemon] starting for engagement ${engId}`);
-    const sup = await startSupervisor({ engagementId: engId, mode: opts.mode, ws: opts.ws });
-    activeSupervisors.set(engId, sup);
+    try {
+      const sup = await startSupervisor({ engagementId: engId, mode: opts.mode, ws: opts.ws });
+      activeSupervisors.set(engId, sup);
+    } finally {
+      pendingSupervisors.delete(engId);
+    }
   }
 
   async function stopSupervisorFor(engId: string) {

@@ -167,8 +167,8 @@ COPY packages/core/src/knowledge /opt/pk/packages/core/src/knowledge
 COPY packages/cli/package.json packages/cli/tsconfig.json /opt/pk/packages/cli/
 COPY packages/cli/dist /opt/pk/packages/cli/dist
 COPY packages/cli/bin /opt/pk/packages/cli/bin
-COPY packages/supervisor/package.json packages/supervisor/tsconfig.json /opt/pk/packages/supervisor/
-COPY packages/supervisor/src /opt/pk/packages/supervisor/src
+COPY packages/daemon/package.json packages/daemon/tsconfig.json /opt/pk/packages/daemon/
+COPY packages/daemon/dist /opt/pk/packages/daemon/dist
 COPY packages/mcp-server/package.json packages/mcp-server/tsconfig.json /opt/pk/packages/mcp-server/
 COPY packages/mcp-server/dist /opt/pk/packages/mcp-server/dist
 
