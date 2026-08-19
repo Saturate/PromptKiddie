@@ -67,7 +67,7 @@ export function createApiBroadcaster(engagementId: string): ApiBroadcaster {
 export function connectEventStream(
   engagementId: string,
   onEvent: (event: { id?: string; type: string; payload: Record<string, unknown> }) => void,
-): { close: () => void } {
+): { close: () => void; ready: Promise<void> } {
   const dbUrl = process.env.DATABASE_URL;
 
   // In-process mode: listen to Postgres directly (avoids WS self-connection issues)
@@ -83,8 +83,10 @@ function connectViaPg(
   dbUrl: string,
   engagementId: string,
   onEvent: (event: { id?: string; type: string; payload: Record<string, unknown> }) => void,
-): { close: () => void } {
+): { close: () => void; ready: Promise<void> } {
   const state = { closed: false, client: null as { end: () => Promise<void> } | null };
+  let resolveReady: () => void;
+  const ready = new Promise<void>((r) => { resolveReady = r; });
 
   function startListening() {
     if (state.closed) return;
@@ -95,6 +97,7 @@ function connectViaPg(
       await client.connect();
       await client.query("LISTEN pk_events");
       console.log("[event-stream] listening via Postgres NOTIFY");
+      resolveReady();
 
       client.on("notification", (msg) => {
         if (msg.channel !== "pk_events" || !msg.payload) return;
@@ -129,16 +132,19 @@ function connectViaPg(
       state.closed = true;
       state.client?.end().catch(() => {});
     },
+    ready,
   };
 }
 
 function connectViaWs(
   engagementId: string,
   onEvent: (event: { id?: string; type: string; payload: Record<string, unknown> }) => void,
-): { close: () => void } {
+): { close: () => void; ready: Promise<void> } {
   const wsUrl = API_URL.replace(/^http/, "ws") + `/ws/events?engagementId=${engagementId}`;
   let ws: WebSocket | null = null;
   let closed = false;
+  let resolveReady: () => void;
+  const ready = new Promise<void>((r) => { resolveReady = r; });
 
   function connect() {
     if (closed) return;
@@ -147,6 +153,7 @@ function connectViaWs(
     ws.on("open", () => {
       console.log("[event-stream] connected to API WebSocket");
       if (API_KEY) ws!.send(JSON.stringify({ key: API_KEY }));
+      resolveReady();
     });
 
     ws.on("message", (data) => {
@@ -175,5 +182,6 @@ function connectViaWs(
       closed = true;
       ws?.close();
     },
+    ready,
   };
 }

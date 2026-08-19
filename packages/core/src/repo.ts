@@ -1080,7 +1080,7 @@ export async function isExecBlocked(
         eq(execDedup.engagementId, engagementId),
         eq(execDedup.commandNormalized, command),
         eq(execDedup.target, target),
-        sql`${execDedup.exitCode} != 0`,
+        sql`${execDedup.exitCode} NOT IN (0, 127)`,
       ),
     );
   return rows.some((r) => r.count >= 2);
