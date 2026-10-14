@@ -1,3 +1,9 @@
+## 0.1.4 (2026-10-14)
+
+### Fixes
+
+- resolve dual-supervisor race and event stream startup ordering (#33)
+
 ## 0.1.3 (2026-07-31)
 
 ### Features
