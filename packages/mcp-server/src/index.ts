@@ -478,6 +478,177 @@ server.tool(
   async ({ engagementId }) => json(await repo.listAllCreds(engagementId)),
 );
 
+// --- Ports -------------------------------------------------------------------
+
+server.tool(
+  "add_port",
+  "Record a discovered port on a target (upserts on target+port+protocol)",
+  {
+    targetId: z.string().uuid(),
+    port: z.number(),
+    protocol: z.enum(["tcp", "udp"]).optional(),
+    state: z.enum(["open", "closed", "filtered"]).optional(),
+    service: z.string().optional(),
+    version: z.string().optional(),
+    banner: z.string().optional(),
+    notes: z.string().optional(),
+  },
+  async (input) => json(await repo.addPort(input)),
+);
+
+server.tool(
+  "list_ports",
+  "List ports for a target, ordered by port number",
+  { targetId: z.string().uuid() },
+  async ({ targetId }) => json(await repo.listPorts(targetId)),
+);
+
+server.tool(
+  "update_port",
+  "Update a port's state, service, version, banner, or notes",
+  {
+    id: z.string().uuid(),
+    state: z.enum(["open", "closed", "filtered"]).optional(),
+    service: z.string().optional(),
+    version: z.string().optional(),
+    banner: z.string().optional(),
+    notes: z.string().optional(),
+  },
+  async ({ id, ...rest }) => json(await repo.updatePort(id, rest)),
+);
+
+// --- Webshells ---------------------------------------------------------------
+
+server.tool(
+  "register_webshell",
+  "Register a deployed webshell for an engagement",
+  {
+    engagementId: z.string().uuid(),
+    name: z.string().describe("Webshell name"),
+    url: z.string().describe("Full URL to the webshell"),
+    param: z.string().optional().describe("Query parameter for commands (default: cmd)"),
+  },
+  async ({ engagementId, ...entry }) => json(await repo.registerWebshell(engagementId, entry)),
+);
+
+server.tool(
+  "list_webshells",
+  "List registered webshells for an engagement",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => json(await repo.listWebshells(engagementId)),
+);
+
+server.tool(
+  "get_webshell",
+  "Look up a webshell by name or URL",
+  {
+    engagementId: z.string().uuid(),
+    nameOrUrl: z.string().describe("Webshell name or URL"),
+  },
+  async ({ engagementId, nameOrUrl }) => json(await repo.getWebshell(engagementId, nameOrUrl)),
+);
+
+// --- Events ------------------------------------------------------------------
+
+server.tool(
+  "list_events",
+  "List domain events for an engagement, optionally filtered by type",
+  {
+    engagementId: z.string().uuid(),
+    type: z.string().optional().describe("Filter by event type"),
+  },
+  async ({ engagementId, type }) => json(await repo.listEvents(engagementId, type ? { type } : undefined)),
+);
+
+// --- Discoveries -------------------------------------------------------------
+
+server.tool(
+  "add_discovery",
+  "Record a discovery (positive, negative, or attempted) for an engagement",
+  {
+    engagementId: z.string().uuid(),
+    type: z.enum(["positive", "negative", "attempted"]),
+    category: z.string().describe("Category: port, service, credential, vulnerability, etc."),
+    summary: z.string(),
+    detail: z.record(z.unknown()).optional(),
+    sourceEventId: z.string().uuid().optional(),
+    parentId: z.string().uuid().optional(),
+  },
+  async (input) => json(await repo.addDiscovery(input)),
+);
+
+server.tool(
+  "list_discoveries",
+  "List discoveries for an engagement, optionally filtered by category or type",
+  {
+    engagementId: z.string().uuid(),
+    category: z.string().optional(),
+    type: z.enum(["positive", "negative", "attempted"]).optional(),
+  },
+  async ({ engagementId, category, type }) =>
+    json(await repo.listDiscoveries(engagementId, { category, type })),
+);
+
+// --- Agent log ---------------------------------------------------------------
+
+server.tool(
+  "add_agent_log",
+  "Append an agent log entry for an engagement",
+  {
+    engagementId: z.string().uuid(),
+    agent: z.string(),
+    phase: z.enum(["scoping", "recon", "enum", "exploit", "postexploit", "report"]),
+    message: z.string(),
+    category: z.string().optional(),
+  },
+  async (input) => json(await repo.addAgentLog(input)),
+);
+
+server.tool(
+  "list_agent_log",
+  "List agent log entries for an engagement",
+  { engagementId: z.string().uuid() },
+  async ({ engagementId }) => json(await repo.listAgentLog(engagementId)),
+);
+
+// --- Evidence data -----------------------------------------------------------
+
+server.tool(
+  "get_evidence_data",
+  "Get the binary data, MIME type, and path for an evidence record",
+  { id: z.string().uuid() },
+  async ({ id }) => {
+    const row = await repo.getEvidenceData(id);
+    if (!row) return json({ error: `No evidence with id ${id}` });
+    return json(row);
+  },
+);
+
+// --- Settings ----------------------------------------------------------------
+
+server.tool(
+  "get_setting",
+  "Get a platform setting by key",
+  { key: z.string() },
+  async ({ key }) => json(await repo.getSetting(key)),
+);
+
+server.tool(
+  "set_setting",
+  "Set a platform setting (upserts)",
+  {
+    key: z.string(),
+    value: z.unknown(),
+  },
+  async ({ key, value }) => json(await repo.setSetting(key, value)),
+);
+
+server.tool(
+  "list_settings",
+  "List all platform settings",
+  async () => json(await repo.getAllSettings()),
+);
+
 // --- Version identification (backward compat alias) --------------------------
 
 server.tool(

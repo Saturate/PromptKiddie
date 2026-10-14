@@ -377,12 +377,12 @@ const pkTools = {
       const { execFile } = await import("node:child_process");
       const { loadConfig } = await import("@promptkiddie/core");
       const config = loadConfig();
-      const container = config.toolbox.container;
+      const container = config.worker.container;
 
       const result = await new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
         const proc = execFile(
           "docker", ["exec", container, "sh", "-c", command],
-          { maxBuffer: 10 * 1024 * 1024, timeout: config.toolbox.timeout },
+          { maxBuffer: 10 * 1024 * 1024, timeout: config.worker.timeout },
           (err, stdout, stderr) => {
             resolve({
               stdout: stdout ?? "",

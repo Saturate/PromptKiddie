@@ -1,7 +1,7 @@
 /**
  * PK Playbook SDK
  *
- * Playbooks are TypeScript modules exporting {@link Action} arrays. The supervisor
+ * Playbooks are TypeScript modules exporting {@link Action} arrays. The daemon
  * evaluates each action's {@link Action.on | on} trigger when an event arrives and
  * calls {@link Action.run | run} with a {@link RunContext} for matches.
  *
@@ -42,7 +42,7 @@
  * @packageDocumentation
  */
 
-/** An event produced by tools, actions, or the supervisor. Immutable, append-only. */
+/** An event produced by tools, actions, or the daemon. Immutable, append-only. */
 export interface EngagementEvent {
   /** Unique event ID (UUID). */
   id: string;
@@ -133,7 +133,7 @@ export interface LlmOpts {
 /**
  * LLM runner configuration for prompt-based actions.
  *
- * When an action has a {@link Action.prompt} field, the supervisor sends it to
+ * When an action has a {@link Action.prompt} field, the daemon sends it to
  * Cartridge. This config controls how.
  */
 export interface LlmRunner {
@@ -178,7 +178,7 @@ export interface CallbackInfo {
  * interaction with the engagement: run commands, emit events, search knowledge,
  * delegate to LLMs.
  *
- * The supervisor creates a real context; tests use {@link createMockContext}.
+ * The daemon creates a real context; tests use {@link createMockContext}.
  */
 export interface RunContext {
   /** Primary in-scope target (e.g. `"10.129.45.196"`). */
@@ -189,7 +189,7 @@ export interface RunContext {
   engagement: EngagementState;
 
   /**
-   * Run a command in the toolbox container. Raw output is stored in DB
+   * Run a command in the worker container. Raw output is stored in DB
    * and optionally streamed to the terminal. Returns structured result.
    *
    * @example
@@ -272,7 +272,7 @@ export interface RunContext {
    */
   evidence(path: string, type: "screenshot" | "scan" | "output" | "file" | "flag"): Promise<void>;
 
-  /** Read a file from the engagement directory or toolbox filesystem. */
+  /** Read a file from the engagement directory or worker filesystem. */
   readFile(path: string): Promise<string>;
 
   /** Log a progress message (visible in the Agent Log UI tab). */
@@ -296,7 +296,7 @@ export interface RunContext {
 /**
  * A playbook action. The core building block.
  *
- * The supervisor evaluates {@link on} against each incoming event. When it
+ * The daemon evaluates {@link on} against each incoming event. When it
  * returns `true`, the action fires. What happens depends on which fields
  * are set:
  *
@@ -355,7 +355,7 @@ export interface Action {
   on: (event: EngagementEvent) => boolean;
   /**
    * Script handler. Receives a {@link RunContext} with methods for exec, emit,
-   * LLM delegation, and discovery logging. The supervisor calls this when
+   * LLM delegation, and discovery logging. The daemon calls this when
    * {@link on} returns `true`.
    *
    * If both `run` and `prompt` are set, `run` executes first (auto-tier work),
@@ -363,7 +363,7 @@ export interface Action {
    */
   run?: (ctx: RunContext) => Promise<void>;
   /**
-   * LLM task prompt. When set, the supervisor sends this string + the structured
+   * LLM task prompt. When set, the daemon sends this string + the structured
    * engagement context to a Cartridge agent session. Template variables like
    * `{target}`, `{product}`, `{version}` are interpolated from the event payload.
    *
@@ -382,7 +382,7 @@ export interface Action {
    */
   emits?: string[];
   /**
-   * Docker image override for this action. When set, the supervisor uses this
+   * Docker image override for this action. When set, the daemon uses this
    * image instead of the playbook default. Useful when a specific action needs
    * heavier tooling (e.g. metasploit for exploit, or a custom image with
    * domain-specific tools).
@@ -390,7 +390,7 @@ export interface Action {
   image?: string;
 }
 
-/** Playbook metadata controlling how the supervisor runs it. */
+/** Playbook metadata controlling how the daemon runs it. */
 export interface PlaybookMeta {
   /** Default Docker image for all actions. Default: "pk-agent". */
   image?: string;

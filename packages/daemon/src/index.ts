@@ -1,13 +1,16 @@
 /**
- * PK Supervisor
+ * PK Daemon
  *
  * Event-driven process that watches engagement events via Postgres LISTEN/NOTIFY
  * and dispatches playbook actions. Not an LLM; pure code.
  *
- * Usage: pk supervisor start [--engagement <id>] [--playbook ctf]
+ * Usage: pk daemon start [--engagement <id>] [--playbook ctf]
  */
 import "dotenv/config";
 import { execFile } from "node:child_process";
+import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import {
   CTF_ACTIONS,
   getRepo,
@@ -23,9 +26,9 @@ const API_URL = process.env.PK_API_URL ?? "http://localhost:3200";
 const API_KEY = process.env.PK_API_KEY ?? "";
 
 /** Execution mode controls concurrency and LLM dispatch scheduling. */
-export type SupervisorMode = "race" | "standard" | "methodical" | "learning";
+export type DaemonMode = "race" | "standard" | "methodical" | "learning";
 
-const MODE_CONCURRENCY: Record<SupervisorMode, number> = {
+const MODE_CONCURRENCY: Record<DaemonMode, number> = {
   race: 5,
   standard: 3,
   methodical: 1,
@@ -37,10 +40,10 @@ interface PendingLlmTask {
   event: { type: string; payload: Record<string, unknown>; id?: string };
 }
 
-interface SupervisorOpts {
+interface DaemonOpts {
   engagementId: string;
   playbook?: Playbook;
-  mode?: SupervisorMode;
+  mode?: DaemonMode;
   maxConcurrent?: number;
   /** External WS broadcaster (e.g. from the API process). If omitted, creates a standalone WS server. */
   ws?: ApiBroadcaster;
@@ -109,8 +112,6 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
   ];
 
   // Write cartridge.toml so the harness inside the container can authenticate
-  const { writeFileSync, mkdirSync, unlinkSync } = await import("node:fs");
-  const { join } = await import("node:path");
   const configDir = "/tmp/pk-agent-configs";
   mkdirSync(configDir, { recursive: true, mode: 0o700 });
   const tomlPath = join(configDir, `${containerName}.toml`);
@@ -128,10 +129,8 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
 
   // Mount host ~/.claude for dev mode (shares auth session)
   try {
-    const { existsSync: exists } = await import("node:fs");
-    const { homedir } = await import("node:os");
     const claudeDir = `${homedir()}/.claude`;
-    if (exists(claudeDir)) {
+    if (existsSync(claudeDir)) {
       dockerArgs.push("-v", `${claudeDir}:/root/.claude:ro`);
     }
   } catch {}
@@ -172,10 +171,12 @@ async function spawnAgentContainer(repo: Repo, engagementId: string, image: stri
   });
 }
 
-export async function startSupervisor(opts: SupervisorOpts) {
+/** @deprecated Use startDaemon instead. */
+export { startDaemon as startSupervisor };
+export async function startDaemon(opts: DaemonOpts) {
   const repo = getRepo();
   const playbook = opts.playbook ?? CTF_ACTIONS;
-  const mode: SupervisorMode = opts.mode ?? "standard";
+  const mode: DaemonMode = opts.mode ?? "standard";
   const maxConcurrent = opts.maxConcurrent ?? MODE_CONCURRENCY[mode];
   const activeActions = new Map<string, AbortController>();
   const bus = new EventBus();
@@ -235,7 +236,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
     ?? inScope[0]?.identifier ?? targets[0]?.identifier ?? "unknown";
 
   // Track completed actions to avoid re-running the same work on resume.
-  // Seeded from activity log so restarting the supervisor doesn't re-run
+  // Seeded from activity log so restarting the daemon doesn't re-run
   // actions that already completed in a previous session.
   const completedActions = new Set<string>();
 
@@ -372,10 +373,8 @@ export async function startSupervisor(opts: SupervisorOpts) {
 
       // Mount host ~/.claude for dev mode (shares auth session)
       try {
-        const { existsSync: exists } = await import("node:fs");
-        const { homedir } = await import("node:os");
         const claudeDir = `${homedir()}/.claude`;
-        if (exists(claudeDir)) {
+        if (existsSync(claudeDir)) {
           orchDockerArgs.push("-v", `${claudeDir}:/root/.claude:ro`);
         }
       } catch {}
@@ -470,7 +469,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
             id: event.id ?? `evt-${Date.now()}`,
             type: event.type,
             payload: event.payload,
-            source: "supervisor",
+            source: "daemon",
             engagementId: opts.engagementId,
             createdAt: new Date(),
           },
@@ -619,7 +618,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
           id: event.id ?? `evt-${Date.now()}`,
           type: event.type,
           payload: event.payload,
-          source: "supervisor",
+          source: "daemon",
           engagementId: opts.engagementId,
           createdAt: new Date(),
         };
@@ -699,7 +698,7 @@ export async function startSupervisor(opts: SupervisorOpts) {
   const priorEvents = await repo.listEvents(opts.engagementId, { type: "EngagementStarted" });
   if (priorEvents.length === 0) {
     console.log("[daemon] emitting EngagementStarted");
-    await repo.emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "supervisor");
+    await repo.emitEvent(opts.engagementId, "EngagementStarted", { target: primaryTarget }, "daemon");
   } else {
     console.log("[daemon] resuming (EngagementStarted already emitted, skipping)");
   }
@@ -737,35 +736,35 @@ export async function startSupervisor(opts: SupervisorOpts) {
   };
 }
 
-/** Standby mode: one supervisor per active engagement, auto-start/stop on status changes. */
+/** Standby mode: one daemon per active engagement, auto-start/stop on status changes. */
 export interface StandbyOpts {
-  mode?: SupervisorMode;
-  /** External WS broadcaster shared across all supervisor instances. */
+  mode?: DaemonMode;
+  /** External WS broadcaster shared across all daemon instances. */
   ws?: ApiBroadcaster;
 }
 
 export async function startStandby(opts: StandbyOpts = {}) {
-  const activeSupervisors = new Map<string, { stop: () => Promise<void> }>();
-  const pendingSupervisors = new Set<string>();
+  const activeDaemons = new Map<string, { stop: () => Promise<void> }>();
+  const pendingDaemons = new Set<string>();
 
-  async function ensureSupervisor(engId: string) {
-    if (activeSupervisors.has(engId) || pendingSupervisors.has(engId)) return;
-    pendingSupervisors.add(engId);
+  async function ensureDaemon(engId: string) {
+    if (activeDaemons.has(engId) || pendingDaemons.has(engId)) return;
+    pendingDaemons.add(engId);
     console.log(`[daemon] starting for engagement ${engId}`);
     try {
-      const sup = await startSupervisor({ engagementId: engId, mode: opts.mode, ws: opts.ws });
-      activeSupervisors.set(engId, sup);
+      const sup = await startDaemon({ engagementId: engId, mode: opts.mode, ws: opts.ws });
+      activeDaemons.set(engId, sup);
     } finally {
-      pendingSupervisors.delete(engId);
+      pendingDaemons.delete(engId);
     }
   }
 
-  async function stopSupervisorFor(engId: string) {
-    const sup = activeSupervisors.get(engId);
+  async function stopDaemonFor(engId: string) {
+    const sup = activeDaemons.get(engId);
     if (!sup) return;
     console.log(`[daemon] stopping for engagement ${engId}`);
     await sup.stop();
-    activeSupervisors.delete(engId);
+    activeDaemons.delete(engId);
   }
 
   const standbyRepo = getRepo();
@@ -774,7 +773,7 @@ export async function startStandby(opts: StandbyOpts = {}) {
   const active = existing.filter((e) => e.status === "active");
   console.log(`[daemon] standby mode - ${active.length} active engagement(s), listening for new ones...`);
   for (const eng of active) {
-    await ensureSupervisor(eng.id).catch((err: Error) =>
+    await ensureDaemon(eng.id).catch((err: Error) =>
       console.error(`[daemon] failed to resume ${eng.id}:`, err.message));
   }
 
@@ -786,13 +785,13 @@ export async function startStandby(opts: StandbyOpts = {}) {
 
     try {
       if (event.type === "EngagementStarted") {
-        await ensureSupervisor(engId);
+        await ensureDaemon(engId);
       } else if (event.type === "StatusChanged") {
         const payload = event.payload as { status?: string };
         if (payload.status === "active") {
-          await ensureSupervisor(engId);
+          await ensureDaemon(engId);
         } else if (payload.status === "paused" || payload.status === "done") {
-          await stopSupervisorFor(engId);
+          await stopDaemonFor(engId);
         }
       }
     } catch (err) {
@@ -802,24 +801,24 @@ export async function startStandby(opts: StandbyOpts = {}) {
 
   const shutdown = async () => {
     console.log("[daemon] shutting down all instances...");
-    for (const [, sup] of activeSupervisors) await sup.stop();
+    for (const [, sup] of activeDaemons) await sup.stop();
     standbyStream.close();
   };
 
   return {
     shutdown,
-    get activeCount() { return activeSupervisors.size; },
-    get activeEngagements() { return [...activeSupervisors.keys()]; },
+    get activeCount() { return activeDaemons.size; },
+    get activeEngagements() { return [...activeDaemons.keys()]; },
   };
 }
 
 // CLI entry point (only when run directly, not when imported)
-const isDirectRun = process.argv[1]?.includes("supervisor");
+const isDirectRun = process.argv[1]?.includes("supervisor") || process.argv[1]?.includes("daemon");
 if (isDirectRun) {
   const standby = process.argv.includes("--standby");
   const modeArgIdx = process.argv.indexOf("--mode");
-  const cliMode = modeArgIdx >= 0 ? (process.argv[modeArgIdx + 1] as SupervisorMode | undefined) : undefined;
-  const validModes: SupervisorMode[] = ["race", "standard", "methodical", "learning"];
+  const cliMode = modeArgIdx >= 0 ? (process.argv[modeArgIdx + 1] as DaemonMode | undefined) : undefined;
+  const validModes: DaemonMode[] = ["race", "standard", "methodical", "learning"];
   if (cliMode && !validModes.includes(cliMode)) {
     console.error(`Invalid mode "${cliMode}". Valid modes: ${validModes.join(", ")}`);
     process.exit(1);
@@ -836,12 +835,12 @@ if (isDirectRun) {
   } else {
     const engagementId = process.argv[2];
     if (!engagementId) {
-      console.error("Usage: pk supervisor <engagement-id> [--mode race|standard|methodical|learning]");
-      console.error("       pk supervisor --standby [--mode ...]");
+      console.error("Usage: pk daemon <engagement-id> [--mode race|standard|methodical|learning]");
+      console.error("       pk daemon --standby [--mode ...]");
       process.exit(1);
     }
 
-    startSupervisor({ engagementId, mode: cliMode }).catch((err) => {
+    startDaemon({ engagementId, mode: cliMode }).catch((err) => {
       console.error("[daemon] fatal:", err);
       process.exit(1);
     });

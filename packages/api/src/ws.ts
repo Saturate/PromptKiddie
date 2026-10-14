@@ -275,9 +275,11 @@ export function setupWebSocket(server: Server, databaseUrl: string) {
       try { const msg = JSON.parse(data.toString()); key = msg.key ?? ""; } catch {}
       if (!resolveKey(key)) { ws.close(4001, "unauthorized"); return; }
 
-      if (!ptyClients.has(agentId)) ptyClients.set(agentId, new Set());
-      ptyClients.get(agentId)!.add(ws);
-      ws.on("close", () => { ptyClients.get(agentId)?.delete(ws); if (ptyClients.get(agentId)?.size === 0) ptyClients.delete(agentId); });
+      for (const id of subscribeIds) {
+        if (!ptyClients.has(id)) ptyClients.set(id, new Set());
+        ptyClients.get(id)!.add(ws);
+      }
+      ws.on("close", () => { for (const id of subscribeIds) { ptyClients.get(id)?.delete(ws); if (ptyClients.get(id)?.size === 0) ptyClients.delete(id); } });
       ws.send(JSON.stringify({ type: "authenticated" }));
     });
   });

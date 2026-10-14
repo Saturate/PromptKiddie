@@ -5,7 +5,7 @@ import { loadConfig } from "@promptkiddie/core";
 import { createApp } from "./app.js";
 import { initKeys, authMiddleware } from "./middleware/auth.js";
 import { setupWebSocket } from "./ws.js";
-import { setSupervisorState } from "./supervisor-state.js";
+import { setDaemonState } from "./daemon-state.js";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -144,12 +144,12 @@ if (databaseUrl) {
     });
   });
 
-  // Start daemon standby: auto-manages per-engagement supervisors on status change
+  // Start daemon standby: auto-manages per-engagement daemons on status change
   import("@promptkiddie/daemon").then(({ startStandby }) => {
     startStandby({})
       .then((standby) => {
         console.log(`[daemon] standby started (${standby.activeCount} active engagement(s))`);
-        const update = () => setSupervisorState({
+        const update = () => setDaemonState({
           running: true,
           activeCount: standby.activeCount,
           activeEngagements: standby.activeEngagements,

@@ -21,4 +21,10 @@ app.put("/settings", async (c) => {
   return c.json(await getAllSettings());
 });
 
+app.put("/settings/:key", async (c) => {
+  const body = await c.req.json() as { value: unknown };
+  const row = await setSetting(c.req.param("key"), body.value);
+  return c.json(row);
+});
+
 export default app;

@@ -18,12 +18,12 @@ import {
   advancePhase,
   closeDb,
 } from "@promptkiddie/core";
-import { startSupervisor } from "../index.js";
+import { startDaemon } from "../index.js";
 
 let engagementId: string;
 let phaseEngagementId: string;
-let supervisor: Awaited<ReturnType<typeof startSupervisor>> | null = null;
-let phaseSupervisor: Awaited<ReturnType<typeof startSupervisor>> | null = null;
+let daemon: Awaited<ReturnType<typeof startDaemon>> | null = null;
+let phaseDaemon: Awaited<ReturnType<typeof startDaemon>> | null = null;
 
 const actionsStarted: string[] = [];
 
@@ -44,7 +44,7 @@ beforeAll(async () => {
   await addTarget({ engagementId, kind: "host", identifier: "10.99.99.99", inScope: true });
 
   process.env.PK_WS_PORT = "0";
-  supervisor = await startSupervisor({
+  daemon = await startDaemon({
     engagementId,
     playbook: CTF_ACTIONS,
     mode: "standard",
@@ -63,7 +63,7 @@ beforeAll(async () => {
     actions: CTF_ACTIONS.actions.map((a) => ({ ...a, run: undefined, prompt: undefined })),
   };
 
-  phaseSupervisor = await startSupervisor({
+  phaseDaemon = await startDaemon({
     engagementId: phaseEngagementId,
     playbook: triggerOnlyPlaybook,
     mode: "standard",
@@ -72,15 +72,15 @@ beforeAll(async () => {
 }, 15000);
 
 afterAll(async () => {
-  if (supervisor) await supervisor.cleanup().catch(() => {});
-  if (phaseSupervisor) await phaseSupervisor.cleanup().catch(() => {});
+  if (daemon) await daemon.cleanup().catch(() => {});
+  if (phaseDaemon) await phaseDaemon.cleanup().catch(() => {});
   await new Promise((r) => setTimeout(r, 500));
   if (engagementId) await deleteEngagement(engagementId).catch(() => {});
   if (phaseEngagementId) await deleteEngagement(phaseEngagementId).catch(() => {});
   await closeDb();
 }, 15000);
 
-describe.skipIf(skipDb)("Supervisor event cascade", () => {
+describe.skipIf(skipDb)("Daemon event cascade", () => {
   it("EngagementStarted triggers port_scan and udp_scan", async () => {
     await waitFor(async () =>
       actionsStarted.includes("port_scan") && actionsStarted.includes("udp_scan"),
@@ -92,9 +92,9 @@ describe.skipIf(skipDb)("Supervisor event cascade", () => {
 
   it("PortDiscovered with service=http triggers web_recon, dir_brute, nuclei_scan", async () => {
     actionsStarted.length = 0;
-    expect(supervisor).toBeDefined();
+    expect(daemon).toBeDefined();
 
-    supervisor?.dispatch({
+    daemon?.dispatch({
       type: "PortDiscovered",
       payload: { port: 80, service: "http", state: "open" },
     });
@@ -110,9 +110,9 @@ describe.skipIf(skipDb)("Supervisor event cascade", () => {
 
   it("VersionIdentified with product+version triggers cve_search", async () => {
     actionsStarted.length = 0;
-    expect(supervisor).toBeDefined();
+    expect(daemon).toBeDefined();
 
-    supervisor?.dispatch({
+    daemon?.dispatch({
       type: "VersionIdentified",
       payload: { product: "nginx", version: "1.24.0", port: 80 },
     });
@@ -124,9 +124,9 @@ describe.skipIf(skipDb)("Supervisor event cascade", () => {
 
   it("PortDiscovered with service=ssh does NOT trigger web_recon", async () => {
     actionsStarted.length = 0;
-    expect(supervisor).toBeDefined();
+    expect(daemon).toBeDefined();
 
-    supervisor?.dispatch({
+    daemon?.dispatch({
       type: "PortDiscovered",
       payload: { port: 22, service: "ssh", state: "open" },
     });
@@ -140,9 +140,9 @@ describe.skipIf(skipDb)("Supervisor event cascade", () => {
 
 describe.skipIf(skipDb)("Phase advancement", () => {
   it("PortDiscovered advances recon -> enum", async () => {
-    expect(phaseSupervisor).toBeDefined();
+    expect(phaseDaemon).toBeDefined();
 
-    phaseSupervisor?.dispatch({
+    phaseDaemon?.dispatch({
       type: "PortDiscovered",
       payload: { port: 443, service: "https" },
     });
@@ -157,7 +157,7 @@ describe.skipIf(skipDb)("Phase advancement", () => {
   });
 
   it("FindingAdded advances enum -> exploit", async () => {
-    phaseSupervisor?.dispatch({
+    phaseDaemon?.dispatch({
       type: "FindingAdded",
       payload: { severity: "high", title: "test vuln" },
     });
@@ -172,7 +172,7 @@ describe.skipIf(skipDb)("Phase advancement", () => {
   });
 
   it("ShellObtained advances exploit -> postexploit", async () => {
-    phaseSupervisor?.dispatch({
+    phaseDaemon?.dispatch({
       type: "ShellObtained",
       payload: { user: "www-data", host: "10.99.99.98" },
     });
@@ -187,7 +187,7 @@ describe.skipIf(skipDb)("Phase advancement", () => {
   });
 
   it("FlagCaptured with type=root advances -> report", async () => {
-    phaseSupervisor?.dispatch({
+    phaseDaemon?.dispatch({
       type: "FlagCaptured",
       payload: { type: "root", flag: "test{root_flag}" },
     });

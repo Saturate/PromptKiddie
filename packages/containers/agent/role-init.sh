@@ -6,6 +6,10 @@ case "${PK_ROLE}" in
     ln -sf ORCHESTRATOR.md /workspace/CLAUDE.md
     echo "[pk-role] orchestrator mode"
     ;;
+  supervisor)
+    ln -sf SUPERVISOR.md /workspace/CLAUDE.md
+    echo "[pk-role] supervisor mode"
+    ;;
   *)
     ln -sf AGENT.md /workspace/CLAUDE.md
     ;;

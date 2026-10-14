@@ -49,6 +49,7 @@ export interface Repo {
   listArtifacts(engagementId: string): Promise<unknown[]>;
 
   addEvidence(input: { engagementId: string; path: string; type: string; findingId?: string; sha256?: string; sizeBytes?: number; meta?: Record<string, unknown> }): Promise<unknown>;
+  getEvidenceData(id: string): Promise<unknown>;
   listEvidence(engagementId: string): Promise<unknown[]>;
 
   logActivity(input: { engagementId: string; phase: string; action: string; command?: string; actor?: string; resultEvidenceId?: string }): Promise<unknown>;
@@ -69,6 +70,10 @@ export interface Repo {
   recordExecOutcome(engagementId: string, command: string, target: string, exitCode: number, outcomeSummary?: string): Promise<unknown>;
   getExecDedup(engagementId: string): Promise<unknown[]>;
   isExecBlocked(engagementId: string, command: string, target: string): Promise<boolean>;
+
+  getSetting(key: string): Promise<unknown>;
+  setSetting(key: string, value: unknown): Promise<unknown>;
+  getAllSettings(): Promise<unknown[]>;
 }
 
 function createLocalRepo(): Repo {
@@ -109,6 +114,7 @@ function createLocalRepo(): Repo {
     addArtifact: async (i) => (await r).addArtifact(i),
     listArtifacts: async (eid) => (await r).listArtifacts(eid),
     addEvidence: async (i) => (await r).addEvidence(i as Parameters<Awaited<typeof r>["addEvidence"]>[0]),
+    getEvidenceData: async (id) => (await r).getEvidenceData(id),
     listEvidence: async (eid) => (await r).listEvidence(eid),
     logActivity: async (i) => (await r).logActivity(i as Parameters<Awaited<typeof r>["logActivity"]>[0]),
     listActivity: async (eid) => (await r).listActivity(eid),
@@ -125,6 +131,9 @@ function createLocalRepo(): Repo {
     recordExecOutcome: async (eid, cmd, tgt, exit, summary) => (await r).recordExecOutcome(eid, cmd, tgt, exit, summary),
     getExecDedup: async (eid) => (await r).getExecDedup(eid),
     isExecBlocked: async (eid, cmd, tgt) => (await r).isExecBlocked(eid, cmd, tgt),
+    getSetting: async (key) => (await r).getSetting(key),
+    setSetting: async (key, value) => (await r).setSetting(key, value),
+    getAllSettings: async () => (await r).getAllSettings(),
   };
 }
 
@@ -195,6 +204,7 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     addArtifact: (i) => post(`/engagements/${i.engagementId}/artifacts`, i),
     listArtifacts: (eid) => get<unknown[]>(`/engagements/${eid}/artifacts`),
     addEvidence: (i) => post(`/engagements/${i.engagementId}/evidence`, i),
+    getEvidenceData: (id) => get(`/evidence/${id}/data`),
     listEvidence: (eid) => get<unknown[]>(`/engagements/${eid}/evidence`),
     logActivity: (i) => post(`/engagements/${i.engagementId}/activity`, i),
     listActivity: (eid) => get<unknown[]>(`/engagements/${eid}/activity`),
@@ -217,6 +227,9 @@ function createHttpRepo(baseUrl: string, secret: string | null): Repo {
     recordExecOutcome: (eid, cmd, tgt, exit, summary) => post(`/engagements/${eid}/exec-dedup`, { command: cmd, target: tgt, exitCode: exit, outcomeSummary: summary }),
     getExecDedup: (eid) => get<unknown[]>(`/engagements/${eid}/exec-dedup`),
     isExecBlocked: (eid, cmd, tgt) => get(`/engagements/${eid}/exec-dedup/blocked?command=${encodeURIComponent(cmd)}&target=${encodeURIComponent(tgt)}`),
+    getSetting: (key) => get(`/settings/${encodeURIComponent(key)}`),
+    setSetting: (key, value) => put(`/settings/${encodeURIComponent(key)}`, { value }),
+    getAllSettings: () => get<unknown[]>("/settings"),
   };
 }
 
