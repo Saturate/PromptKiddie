@@ -16,14 +16,14 @@ env:
 
 jobs:
   build-and-push:
-    if: ${{ !github.event.release || startsWith(github.event.release.tag_name, 'core/') || startsWith(github.event.release.tag_name, 'web/') || startsWith(github.event.release.tag_name, 'api/') }}
+    if: ${{ !github.event.release || startsWith(github.event.release.tag_name, 'core/') || startsWith(github.event.release.tag_name, 'api/') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     strategy:
       matrix:
-        target: [web, api]
+        target: [api]
     steps:
       - uses: actions/checkout@v4
 

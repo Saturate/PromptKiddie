@@ -17,10 +17,6 @@ versioned_files = ["packages/api/package.json"]
 changelog = "packages/api/CHANGELOG.md"
 scopes = ["api"]
 
-[packages.web]
-versioned_files = ["packages/web/package.json"]
-changelog = "packages/web/CHANGELOG.md"
-scopes = ["web"]
 
 [packages.mcp-server]
 versioned_files = ["packages/mcp-server/package.json"]
