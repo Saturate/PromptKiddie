@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { sql } from "drizzle-orm";
 import { getDb, schema } from "@promptkiddie/core";
 import { getWsClientCount, getContainerMeta, getAllContainerMeta } from "../ws.js";
-import { getSupervisorState } from "../supervisor-state.js";
+import { getDaemonState } from "../daemon-state.js";
 
 const execFileAsync = promisify(execFile);
 const startTime = Date.now();
@@ -102,7 +102,8 @@ app.get("/status", async (c) => {
     docker,
     containers,
     agents,
-    supervisor: getSupervisorState(),
+    daemon: getDaemonState(),
+    supervisor: getDaemonState(),
     websockets: { connections: getWsClientCount() },
   });
 });

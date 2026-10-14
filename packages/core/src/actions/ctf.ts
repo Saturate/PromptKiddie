@@ -86,7 +86,7 @@ const sslHostnames: Action = {
 
 const resolveHostname: Action = {
   name: "resolve_hostname",
-  description: "Inject discovered hostname into toolbox /etc/hosts so subsequent actions can reach vhosts",
+  description: "Inject discovered hostname into worker /etc/hosts so subsequent actions can reach vhosts",
   on: (e) => e.type === "HostnameFound" && !!e.payload.hostname,
   async run(ctx) {
     const hostname = ctx.event.payload.hostname as string;

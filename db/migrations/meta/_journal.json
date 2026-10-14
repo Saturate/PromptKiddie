@@ -23,6 +23,7 @@
     { "idx": 18, "version": "7", "when": 1781548856774, "tag": "0018_attribution", "breakpoints": true },
     { "idx": 19, "version": "7", "when": 1781548856775, "tag": "0019_drop_old_playbooks", "breakpoints": true },
     { "idx": 20, "version": "7", "when": 1781548856776, "tag": "0020_event_notify", "breakpoints": true },
-    { "idx": 21, "version": "7", "when": 1781548856777, "tag": "0021_target_status", "breakpoints": true }
+    { "idx": 21, "version": "7", "when": 1781548856777, "tag": "0021_target_status", "breakpoints": true },
+    { "idx": 22, "version": "7", "when": 1781548856778, "tag": "0022_events_created_at_idx", "breakpoints": true }
   ]
 }

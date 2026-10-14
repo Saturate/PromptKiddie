@@ -264,7 +264,7 @@ server.tool(
 
 server.tool(
   "tooling_exec",
-  "Run an arbitrary command inside the toolbox container. Use for tools not covered by dedicated commands.",
+  "Run an arbitrary command inside the worker container. Use for tools not covered by dedicated commands.",
   {
     command: z.string().describe("Shell command to execute"),
   },
@@ -421,7 +421,7 @@ server.tool(
   "Upload a file to a target through a gleipnir session.",
   {
     session: z.string().describe("Session name"),
-    src: z.string().describe("Local source file path (on the toolbox)"),
+    src: z.string().describe("Local source file path (on the worker)"),
     dst: z.string().describe("Remote destination path (on the target)"),
   },
   async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
@@ -443,7 +443,7 @@ server.tool(
   {
     session: z.string().describe("Session name"),
     src: z.string().describe("Remote source file path (on the target)"),
-    dst: z.string().describe("Local destination path (on the toolbox)"),
+    dst: z.string().describe("Local destination path (on the worker)"),
   },
   async ({ session, src, dst }: { session: string; src: string; dst: string }) => {
     try {

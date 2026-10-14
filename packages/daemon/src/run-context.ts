@@ -1,5 +1,5 @@
 /**
- * Real RunContext implementation for the supervisor.
+ * Real RunContext implementation for the daemon.
  * Executes commands via pk exec, emits events to DB via repo, searches knowledge base.
  */
 import { execFile } from "node:child_process";
@@ -35,7 +35,7 @@ interface RunContextOpts {
 
 export function createRunContext(opts: RunContextOpts): RunContext {
   const { engagementId, target, event, engagement, repo, actionName, onReprioritize, onOutput, signal } = opts;
-  const actorLabel = actionName ?? "supervisor";
+  const actorLabel = actionName ?? "daemon";
   const execContainer = opts.containerName ?? process.env.PK_TOOLING_CONTAINER ?? "pk-worker";
 
   return {
@@ -98,7 +98,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
     },
 
     async emit(type: string, payload: Record<string, unknown>): Promise<void> {
-      await repo.emitEvent(engagementId, type, payload, "supervisor");
+      await repo.emitEvent(engagementId, type, payload, "daemon");
     },
 
     async searchExploitIndex(_product: string, _version: string): Promise<ExploitHit[]> {
@@ -130,7 +130,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
       console.log(`[daemon] LLM task: ${task.slice(0, 100)}...`);
       await repo.addAgentLog({
         engagementId,
-        agent: "supervisor",
+        agent: "daemon",
         phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
         message: `LLM task: ${task.slice(0, 200)}`,
         category: "llm-task",
@@ -169,7 +169,7 @@ export function createRunContext(opts: RunContextOpts): RunContext {
       onOutput?.(message);
       repo.addAgentLog({
         engagementId,
-        agent: "supervisor",
+        agent: "daemon",
         phase: engagement.phase as "recon" | "enum" | "exploit" | "postexploit" | "report" | "scoping",
         message,
         category: "progress",

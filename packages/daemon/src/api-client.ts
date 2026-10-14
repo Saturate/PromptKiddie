@@ -1,6 +1,6 @@
 /**
  * Lightweight API broadcaster that replaces the old ws-server.ts.
- * Instead of running a WS server, the supervisor POSTs output to the API,
+ * Instead of running a WS server, the daemon POSTs output to the API,
  * which broadcasts to frontends via its own WebSocket.
  */
 import WebSocket from "ws";

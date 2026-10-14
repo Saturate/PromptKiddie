@@ -18,7 +18,7 @@ export interface PkConfig {
   database: {
     url: string;
   };
-  toolbox: {
+  worker: {
     container: string;
     host: string | null;
     timeout: number;
@@ -53,7 +53,7 @@ const DEFAULTS: PkConfig = {
   database: {
     url: "postgres://promptkiddie:changeme_local_only@localhost:5432/promptkiddie",
   },
-  toolbox: {
+  worker: {
     container: "pk-worker",
     host: null,
     timeout: 300000,
@@ -112,10 +112,10 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
 
 function applyEnvOverrides(config: PkConfig): PkConfig {
   if (process.env.DATABASE_URL) config.database.url = process.env.DATABASE_URL;
-  const toolboxContainer = process.env.PK_TOOLING_CONTAINER;
-  if (toolboxContainer) config.toolbox.container = toolboxContainer;
-  if (process.env.PK_EXEC_MODE) config.toolbox.exec_mode = process.env.PK_EXEC_MODE as "docker" | "local";
-  if (process.env.PK_TOOLING_TIMEOUT) config.toolbox.timeout = Number(process.env.PK_TOOLING_TIMEOUT);
+  const workerContainer = process.env.PK_TOOLING_CONTAINER;
+  if (workerContainer) config.worker.container = workerContainer;
+  if (process.env.PK_EXEC_MODE) config.worker.exec_mode = process.env.PK_EXEC_MODE as "docker" | "local";
+  if (process.env.PK_TOOLING_TIMEOUT) config.worker.timeout = Number(process.env.PK_TOOLING_TIMEOUT);
   if (process.env.PK_EVIDENCE_ROOT) config.workspace.evidence_root = process.env.PK_EVIDENCE_ROOT;
   if (process.env.PK_TOOL_LOG_DIR) config.workspace.tool_log_dir = process.env.PK_TOOL_LOG_DIR;
   if (process.env.PK_VPN_CONFIG) config.vpn.config_path = process.env.PK_VPN_CONFIG;
@@ -145,6 +145,13 @@ export function loadConfig(): PkConfig {
   merged = deepMerge(merged, loadToml(workspacePath));
   if (process.env.PK_CONTAINER === "1") {
     merged = deepMerge(merged, loadToml(containerPath));
+  }
+
+  // Migrate legacy [toolbox] TOML section to [worker]
+  const raw = merged as Record<string, unknown>;
+  if (raw.toolbox && !raw.worker) {
+    raw.worker = raw.toolbox;
+    delete raw.toolbox;
   }
 
   _config = applyEnvOverrides(merged as unknown as PkConfig);
