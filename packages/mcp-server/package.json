@@ -1,6 +1,6 @@
 {
   "name": "@promptkiddie/mcp-server",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "MCP server exposing the PromptKiddie engagement database to AI agents.",
   "license": "MIT",
   "type": "module",

@@ -1,3 +1,9 @@
+## 0.1.3 (2026-11-11)
+
+### Features
+
+- Add `pk engage` command for workspace creation, source-repo guards on engagement commands, and Claude Code mod with engagement dashboard.
+
 ## 0.1.2 (2026-07-31)
 
 ### Features
