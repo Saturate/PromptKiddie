@@ -1,0 +1,6 @@
+{
+  "name": "pk-engage",
+  "version": "0.1.0",
+  "description": "PromptKiddie engagement integration: status line, auto-route guard, engagement dashboard",
+  "types": "./types/index.d.ts"
+}

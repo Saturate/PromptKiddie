@@ -15,8 +15,30 @@ import {
 import { execFileSync, type StdioOptions } from "node:child_process";
 import { createRequire } from "node:module";
 import { resolveEngagementId, setActiveEngagement } from "./state.js";
+import { guardSourceRepo } from "./guards.js";
 
 // Short-circuit for subcommands that don't need the PK API config
+if (process.argv[2] === "engage") {
+  const { engage } = await import("./engage.js");
+  const args = process.argv.slice(3);
+  const name = args.find(a => !a.startsWith("-"));
+  if (!name) {
+    console.error("Usage: pk engage <name> [--target <ip>] [--type ctf|pentest|bugbounty]");
+    process.exit(1);
+  }
+  const getFlag = (flag: string) => { const i = args.indexOf(flag); return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined; };
+  await engage(name, {
+    target: getFlag("--target"),
+    type: getFlag("--type"),
+    scope: getFlag("--scope"),
+    vpn: getFlag("--vpn"),
+    baseDir: getFlag("--base-dir"),
+    open: args.includes("--open"),
+    force: args.includes("--force"),
+  });
+  process.exit(0);
+}
+
 if (process.argv[2] === "mcp") {
   const esmRequire = createRequire(import.meta.url);
   const mcpEntry = esmRequire.resolve("@promptkiddie/mcp-server");
@@ -289,7 +311,9 @@ finding
   .option("--confidence <score>", "0.0-1.0 confidence", parseFloat)
   .option("--remediation <text>")
   .option("--engagement <id>")
+  .option("--force", "bypass source-repo guard")
   .action(async (o) => {
+    guardSourceRepo(process.cwd(), "finding add", o.force);
     const eid = await resolveEngagementId(o.engagement);
     out(
       await repo.addFinding({
@@ -382,7 +406,9 @@ ev.command("add")
   .requiredOption("--type <type>", "flag | screenshot | scan | output | file")
   .option("--finding <id>", "link to a finding")
   .option("--engagement <id>")
+  .option("--force", "bypass source-repo guard")
   .action(async (o) => {
+    guardSourceRepo(process.cwd(), "evidence add", o.force);
     const eid = await resolveEngagementId(o.engagement);
     out(await repo.addEvidence({ engagementId: eid, path: o.path, type: o.type, findingId: o.finding }));
   });
@@ -448,7 +474,9 @@ act.command("log")
   .option("--actor <actor>", "orchestrator | agent | human", isContainer ? "agent" : "orchestrator")
   .option("--result <evidenceId>")
   .option("--engagement <id>")
+  .option("--force", "bypass source-repo guard")
   .action(async (o) => {
+    guardSourceRepo(process.cwd(), "activity log", o.force);
     const eid = await resolveEngagementId(o.engagement);
     out(
       await repo.logActivity({
@@ -1845,8 +1873,10 @@ program
   .option("--max-output <bytes>", "max bytes returned to caller (full output saved to file)", parseInt, 4096)
   .option("--script <path>", "copy a local script into the container and run it (avoids quoting issues)")
   .option("--engagement <id>")
+  .option("--force", "bypass source-repo guard")
   .argument("<command...>", "command to run")
   .action(async (cmd: string[], o) => {
+    guardSourceRepo(process.cwd(), "exec", o.force);
     const eid = await resolveEngagementId(o.engagement);
     const eng = await repo.getEngagement(eid) as { phase?: string } | null;
     const phase = o.phase ?? eng?.phase ?? "recon";
