@@ -18,6 +18,27 @@ import { resolveEngagementId, setActiveEngagement } from "./state.js";
 import { guardSourceRepo } from "./guards.js";
 
 // Short-circuit for subcommands that don't need the PK API config
+if (process.argv[2] === "engage") {
+  const { engage } = await import("./engage.js");
+  const args = process.argv.slice(3);
+  const name = args.find(a => !a.startsWith("-"));
+  if (!name) {
+    console.error("Usage: pk engage <name> [--target <ip>] [--type ctf|pentest|bugbounty]");
+    process.exit(1);
+  }
+  const getFlag = (flag: string) => { const i = args.indexOf(flag); return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined; };
+  await engage(name, {
+    target: getFlag("--target"),
+    type: getFlag("--type"),
+    scope: getFlag("--scope"),
+    vpn: getFlag("--vpn"),
+    baseDir: getFlag("--base-dir"),
+    open: args.includes("--open"),
+    force: args.includes("--force"),
+  });
+  process.exit(0);
+}
+
 if (process.argv[2] === "mcp") {
   const esmRequire = createRequire(import.meta.url);
   const mcpEntry = esmRequire.resolve("@promptkiddie/mcp-server");
