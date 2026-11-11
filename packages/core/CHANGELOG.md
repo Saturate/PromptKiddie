@@ -1,3 +1,9 @@
+## 0.1.5 (2026-11-11)
+
+### Features
+
+- Add 16 knowledge cards from Season 12 HTB engagements covering MSSQL credential decryption, Backup Operators privesc, LLM prompt extraction, ADCS dangling templates, kiosk escape, MySQL UDF, XXE lxml, and more.
+
 ## 0.1.4 (2026-08-07)
 
 ### Fixes
