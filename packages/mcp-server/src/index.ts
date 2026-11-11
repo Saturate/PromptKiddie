@@ -4,13 +4,56 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { getRepo } from "@promptkiddie/core";
+import { existsSync } from "node:fs";
+import { join, dirname } from "node:path";
 
 const repo = getRepo();
+
+function isSourceRepo(cwd: string): boolean {
+  let dir = cwd;
+  for (;;) {
+    if (existsSync(join(dir, ".pksource"))) return true;
+    const parent = dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+}
+
+const WRITE_TOOLS = new Set([
+  "log_activity", "add_finding", "add_evidence", "add_discovery",
+  "add_service", "add_port", "add_service_cred", "add_service_app",
+  "add_service_cve", "add_target", "add_objective", "add_artifact",
+  "update_finding", "update_target", "update_service", "update_objective",
+  "capture_flag", "start_agent_run", "finish_agent_run", "add_agent_log",
+  "advance_phase", "set_engagement_status", "register_webshell",
+]);
+
+const SOURCE_REPO = isSourceRepo(process.cwd());
+
+const SOURCE_REPO_ERROR = {
+  content: [{
+    type: "text" as const,
+    text: `[PK] Blocked: you're in the PK source repo. Engagement commands belong in a workspace directory.\n\nRun: pk engage <name> --target <ip>\nThen open that directory in Claude Code.`,
+  }],
+  isError: true as const,
+};
 
 const server = new McpServer({
   name: "promptkiddie",
   version: "0.1.0",
 });
+
+if (SOURCE_REPO) {
+  const _origTool = server.tool.bind(server);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).tool = function (...args: any[]) {
+    const name = args[0] as string;
+    if (WRITE_TOOLS.has(name)) {
+      args[args.length - 1] = async () => SOURCE_REPO_ERROR;
+    }
+    return (_origTool as Function).apply(server, args);
+  };
+}
 
 const json = (v: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(v, null, 2) }],
